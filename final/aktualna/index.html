@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Ticketowy Apple Service - Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        .scrollbar-custom::-webkit-scrollbar { width: 6px; }
+        .scrollbar-custom::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 600; }
+        body { overflow: hidden; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="flex h-screen">
+        <!-- SIDEBAR -->
+        <aside class="w-64 bg-slate-900 text-white flex flex-col shadow-xl">
+            <div class="h-16 flex items-center px-6 border-b border-slate-800">
+                <h1 class="text-lg font-bold tracking-wide"><i class="fas fa-apple mr-2"></i>Apple Service</h1>
+            </div>
+            
+            <nav class="flex-1 py-6 px-3 space-y-1">
+                <button onclick="app.switchSection('dashboard')" class="menu-item w-full flex items-center px-4 py-3 bg-blue-600 text-white rounded-lg transition" data-section="dashboard">
+                    <i class="fas fa-ticket w-6 text-center"></i>
+                    <span class="ml-3 font-medium">Zgłoszenia</span>
+                </button>
+                <button onclick="app.switchSection('stats')" class="menu-item w-full flex items-center px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition" data-section="stats">
+                    <i class="fas fa-chart-line w-6 text-center"></i>
+                    <span class="ml-3 font-medium">Statystyki</span>
+                </button>
+                <button onclick="app.switchSection('users')" class="menu-item w-full flex items-center px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition" data-section="users">
+                    <i class="fas fa-users w-6 text-center"></i>
+                    <span class="ml-3 font-medium">Użytkownicy</span>
+                </button>
+                <button onclick="app.switchSection('vat')" class="menu-item w-full flex items-center px-4 py-3 text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition" data-section="vat">
+                    <i class="fas fa-percent w-6 text-center"></i>
+                    <span class="ml-3 font-medium">Stawki VAT</span>
+                </button>
+            </nav>
+
+            <div class="p-4 border-t border-slate-800">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center font-bold text-sm">AN</div>
+                    <div>
+                        <p class="text-sm font-semibold">Anna Nowak</p>
+                        <p class="text-xs text-slate-400">Administrator</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="flex-1 flex flex-col h-screen">
+            <!-- HEADER -->
+            <header class="h-16 bg-white shadow-sm flex items-center justify-between px-6 border-b border-gray-200">
+                <span class="text-sm text-gray-600">Panel Administracyjny</span>
+                <div class="flex items-center gap-4">
+                    <button class="relative p-2 text-gray-600 hover:text-blue-600"><i class="fas fa-bell"></i><span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span></button>
+                    <button onclick="app.openNewTicketModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"><i class="fas fa-plus mr-2"></i>Nowe Zgłoszenie</button>
+                </div>
+            </header>
+
+            <!-- CONTENT -->
+            <div class="flex-1 overflow-y-auto scrollbar-custom">
+                <!-- DASHBOARD -->
+                <div id="section-dashboard" class="p-6">
+                    <!-- STATS -->
+                    <div class="grid grid-cols-4 gap-4 mb-8">
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-gray-500 font-bold">OTWARTE</p>
+                                    <p class="text-3xl font-bold text-blue-600 mt-1" id="stat-new">0</p>
+                                </div>
+                                <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-lg"><i class="fas fa-folder-open"></i></div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-gray-500 font-bold">PILNE</p>
+                                    <p class="text-3xl font-bold text-red-600 mt-1" id="stat-urgent">0</p>
+                                </div>
+                                <div class="w-12 h-12 bg-red-50 text-red-600 rounded-lg flex items-center justify-center text-lg"><i class="fas fa-fire"></i></div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-gray-500 font-bold">W TOKU</p>
+                                    <p class="text-3xl font-bold text-yellow-600 mt-1" id="stat-progress">0</p>
+                                </div>
+                                <div class="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-lg flex items-center justify-center text-lg"><i class="fas fa-hourglass-end"></i></div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <p class="text-xs text-gray-500 font-bold">ZAMKNIĘTE</p>
+                                    <p class="text-3xl font-bold text-green-600 mt-1" id="stat-closed">0</p>
+                                </div>
+                                <div class="w-12 h-12 bg-green-50 text-green-600 rounded-lg flex items-center justify-center text-lg"><i class="fas fa-check"></i></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SEARCH & FILTERS -->
+                    <div class="bg-white p-4 rounded-t-xl border-b border-gray-200 flex gap-4">
+                        <input type="text" id="searchInput" placeholder="Szukaj..." class="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <select id="filterStatus" class="px-4 py-2 border border-gray-300 rounded-lg text-sm">
+                            <option value="">Wszystkie statusy</option>
+                            <option value="NEW">Nowe</option>
+                            <option value="IN_PROGRESS">W toku</option>
+                            <option value="WAITING_FOR_CUSTOMER">Oczekujące</option>
+                            <option value="CLOSED">Zamknięte</option>
+                        </select>
+                    </div>
+
+                    <!-- TICKETS TABLE -->
+                    <div class="bg-white rounded-b-xl shadow-sm overflow-hidden">
+                        <table class="w-full">
+                            <thead class="bg-gray-50 text-xs font-semibold text-gray-600 border-b border-gray-200">
+                                <tr>
+                                    <th class="px-6 py-3 text-left">ID</th>
+                                    <th class="px-6 py-3 text-left">TEMAT</th>
+                                    <th class="px-6 py-3 text-left">ZGŁASZAJĄCY</th>
+                                    <th class="px-6 py-3 text-left">URZĄDZENIE</th>
+                                    <th class="px-6 py-3 text-left">STATUS</th>
+                                    <th class="px-6 py-3 text-left">PRIORYTET</th>
+                                    <th class="px-6 py-3 text-left">AGENT</th>
+                                    <th class="px-6 py-3 text-right">AKCJE</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ticketsTableBody" class="divide-y divide-gray-100 text-sm"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- STATYSTYKI -->
+                <div id="section-stats" class="hidden p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-chart-line mr-2"></i>Statystyki</h2>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-gray-800 mb-4">Po statusach</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between"><span>Nowe</span><span class="font-bold">3</span></div>
+                                <div class="flex justify-between"><span>W toku</span><span class="font-bold">2</span></div>
+                                <div class="flex justify-between"><span>Oczekujące</span><span class="font-bold">1</span></div>
+                                <div class="flex justify-between"><span>Zamknięte</span><span class="font-bold">4</span></div>
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 class="font-bold text-gray-800 mb-4">Wydajność agentów</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between"><span>Anna Nowak</span><span class="font-bold text-blue-600">5 zg.</span></div>
+                                <div class="flex justify-between"><span>Piotr Sikora</span><span class="font-bold text-green-600">3 zg.</span></div>
+                                <div class="flex justify-between"><span>Agnieszka Żak</span><span class="font-bold text-yellow-600">2 zg.</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- UŻYTKOWNICY -->
+                <div id="section-users" class="hidden p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-users mr-2"></i>Użytkownicy</h2>
+                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <table class="w-full">
+                            <thead class="bg-gray-50 border-b">
+                                <tr class="text-xs font-semibold text-gray-600">
+                                    <th class="px-6 py-3 text-left">Imię i nazwisko</th>
+                                    <th class="px-6 py-3 text-left">Email</th>
+                                    <th class="px-6 py-3 text-left">Rola</th>
+                                    <th class="px-6 py-3 text-left">Status</th>
+                                    <th class="px-6 py-3 text-right">Akcje</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 text-sm">
+                                <tr class="hover:bg-gray-50"><td class="px-6 py-3 font-medium">Anna Nowak</td><td class="px-6 py-3 text-gray-600">anna@apple-service.pl</td><td class="px-6 py-3"><span class="badge bg-blue-100 text-blue-800">Administrator</span></td><td class="px-6 py-3"><span class="badge bg-green-100 text-green-800">Aktywny</span></td><td class="px-6 py-3 text-right"><i class="fas fa-edit text-blue-600 cursor-pointer"></i></td></tr>
+                                <tr class="hover:bg-gray-50"><td class="px-6 py-3 font-medium">Piotr Sikora</td><td class="px-6 py-3 text-gray-600">piotr@apple-service.pl</td><td class="px-6 py-3"><span class="badge bg-green-100 text-green-800">Technik</span></td><td class="px-6 py-3"><span class="badge bg-green-100 text-green-800">Aktywny</span></td><td class="px-6 py-3 text-right"><i class="fas fa-edit text-blue-600 cursor-pointer"></i></td></tr>
+                                <tr class="hover:bg-gray-50"><td class="px-6 py-3 font-medium">Agnieszka Żak</td><td class="px-6 py-3 text-gray-600">agnieszka@apple-service.pl</td><td class="px-6 py-3"><span class="badge bg-green-100 text-green-800">Technik</span></td><td class="px-6 py-3"><span class="badge bg-green-100 text-green-800">Aktywny</span></td><td class="px-6 py-3 text-right"><i class="fas fa-edit text-blue-600 cursor-pointer"></i></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- STAWKI VAT -->
+                <div id="section-vat" class="hidden p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6"><i class="fas fa-percent mr-2"></i>Stawki VAT</h2>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="border-2 border-gray-200 p-4 rounded-lg">
+                            <p class="text-2xl font-bold">0%</p>
+                            <p class="text-sm text-gray-600 mt-1">Zwolnione z VAT</p>
+                            <button class="mt-3 text-blue-600 text-sm mr-3"><i class="fas fa-edit mr-1"></i>Edytuj</button>
+                        </div>
+                        <div class="border-2 border-gray-200 p-4 rounded-lg">
+                            <p class="text-2xl font-bold">5%</p>
+                            <p class="text-sm text-gray-600 mt-1">Artykuły spożywcze</p>
+                            <button class="mt-3 text-blue-600 text-sm mr-3"><i class="fas fa-edit mr-1"></i>Edytuj</button>
+                        </div>
+                        <div class="border-2 border-gray-200 p-4 rounded-lg">
+                            <p class="text-2xl font-bold">8%</p>
+                            <p class="text-sm text-gray-600 mt-1">Energia, paliwa</p>
+                            <button class="mt-3 text-blue-600 text-sm mr-3"><i class="fas fa-edit mr-1"></i>Edytuj</button>
+                        </div>
+                        <div class="border-2 border-gray-200 p-4 rounded-lg">
+                            <p class="text-2xl font-bold">23%</p>
+                            <p class="text-sm text-gray-600 mt-1">Standardowy</p>
+                            <button class="mt-3 text-blue-600 text-sm mr-3"><i class="fas fa-edit mr-1"></i>Edytuj</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- DETAIL PANEL (RIGHT SIDE) -->
+        <div id="detailPanel" class="w-1/2 bg-white shadow-2xl flex flex-col hidden border-l border-gray-200" style="display: none;">
+            <!-- Header -->
+            <div class="h-16 border-b border-gray-200 flex items-center justify-between px-6 bg-gray-50">
+                <div>
+                    <span class="text-xs font-mono text-gray-500" id="panelId">#-</span>
+                    <h2 class="text-lg font-bold text-gray-800" id="panelTitle">-</h2>
+                </div>
+                <button onclick="app.closeDetail()" class="text-gray-400 hover:text-gray-600 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+
+            <!-- Body -->
+            <div class="flex-1 overflow-y-auto scrollbar-custom p-6 bg-gray-50">
+                <div class="grid grid-cols-3 gap-6">
+                    <!-- LEFT COLUMN (2/3) -->
+                    <div class="col-span-2 space-y-6">
+                        <!-- DESCRIPTION -->
+                        <div class="bg-white p-4 rounded-lg border border-gray-200">
+                            <div class="flex items-center gap-3 mb-3">
+                                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold" id="initials">-</div>
+                                <div>
+                                    <p class="text-sm font-bold" id="panelCustomer">-</p>
+                                    <p class="text-xs text-gray-400" id="panelDate">-</p>
+                                </div>
+                            </div>
+                            <p class="text-gray-700 text-sm leading-relaxed" id="panelDescription">-</p>
+                            <div class="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600 space-y-1">
+                                <p><strong>Urządzenie:</strong> <span id="panelDevice">-</span></p>
+                                <p><strong>Nr seryjny:</strong> <span id="panelSerial">-</span></p>
+                                <p><strong>Tel:</strong> <span id="panelPhone">-</span></p>
+                            </div>
+                        </div>
+
+                        <!-- COMMENTS -->
+                        <div id="commentsContainer" class="space-y-4"></div>
+
+                        <!-- ADD COMMENT -->
+                        <div class="bg-white p-4 rounded-lg border border-gray-200">
+                            <label class="text-xs text-gray-500 font-semibold block mb-2">DODAJ KOMENTARZ</label>
+                            <textarea id="commentText" placeholder="Napisz komentarz..." class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" rows="3"></textarea>
+                            <div class="flex items-center justify-between mt-3">
+                                <div class="flex gap-4 text-sm">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" id="commentInternal" name="commentType" value="internal" checked class="w-4 h-4">
+                                        <span class="text-gray-600 text-xs"><i class="fas fa-lock mr-1"></i>Wewnętrzny</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="radio" id="commentExternal" name="commentType" value="external" class="w-4 h-4">
+                                        <span class="text-green-600 text-xs font-semibold"><i class="fas fa-envelope mr-1"></i>Wysłać klientowi</span>
+                                    </label>
+                                </div>
+                                <button onclick="app.addComment()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium"><i class="fas fa-paper-plane mr-2"></i>Wyślij</button>
+                            </div>
+                        </div>
+
+                        <!-- PHOTOS -->
+                        <div class="bg-white p-4 rounded-lg border border-gray-200">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-semibold text-gray-800"><i class="fas fa-images mr-2"></i>Zdjęcia</h3>
+                                <button onclick="app.addPhoto()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-medium"><i class="fas fa-plus mr-1"></i>Dodaj</button>
+                            </div>
+                            <div id="photosGallery" class="grid grid-cols-3 gap-2"></div>
+                        </div>
+
+                        <!-- COSTS -->
+                        <div class="bg-white p-4 rounded-lg border border-gray-200">
+                            <div class="flex justify-between items-center mb-4">
+                                <h3 class="font-semibold text-gray-800"><i class="fas fa-calculator mr-2"></i>Koszty</h3>
+                                <button onclick="app.sendQuote()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-xs font-medium"><i class="fas fa-paper-plane mr-1"></i>Wyślij kosztorys</button>
+                            </div>
+                            <div id="costsTable" class="mb-3"></div>
+                            <button onclick="app.toggleCostForm()" class="text-blue-600 text-xs font-medium"><i class="fas fa-plus mr-1"></i>Dodaj pozycję</button>
+                            <div id="costForm" class="hidden mt-3 p-3 bg-gray-50 rounded border border-gray-200">
+                                <div class="grid grid-cols-5 gap-2 mb-2">
+                                    <input type="text" id="costDesc" placeholder="Opis" class="col-span-2 px-2 py-1 border border-gray-300 rounded text-xs">
+                                    <input type="number" id="costQty" placeholder="Ilość" value="1" min="1" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                    <input type="number" id="costPrice" placeholder="Cena" min="0" class="px-2 py-1 border border-gray-300 rounded text-xs">
+                                    <select id="costVat" class="px-2 py-1 border border-gray-300 rounded text-xs"><option>0%</option><option>5%</option><option selected>23%</option></select>
+                                </div>
+                                <button onclick="app.saveCost()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium">Dodaj</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN (1/3) -->
+                    <div class="col-span-1">
+                        <div class="sticky top-0 space-y-4">
+                            <!-- MANAGEMENT -->
+                            <div class="bg-white p-4 rounded-lg border border-gray-200">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-3">ZARZĄDZANIE</h3>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Status</label>
+                                        <select id="statusSelect" onchange="app.updateStatus()" class="w-full px-2 py-2 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="NEW">NEW</option>
+                                            <option value="IN_PROGRESS">IN_PROGRESS</option>
+                                            <option value="WAITING_FOR_CUSTOMER">WAITING_FOR_CUSTOMER</option>
+                                            <option value="CLOSED">CLOSED</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Priorytet</label>
+                                        <select id="prioritySelect" onchange="app.updatePriority()" class="w-full px-2 py-2 border border-gray-300 rounded text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option value="LOW">LOW</option>
+                                            <option value="NORMAL">NORMAL</option>
+                                            <option value="HIGH">HIGH</option>
+                                            <option value="URGENT">URGENT</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Agent</label>
+                                        <select id="agentSelect" onchange="app.updateAgent()" class="w-full px-2 py-2 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                            <option>Anna Nowak</option>
+                                            <option>Piotr Sikora</option>
+                                            <option>Agnieszka Żak</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- INFO -->
+                            <div class="bg-white p-4 rounded-lg border border-gray-200">
+                                <h3 class="text-xs font-bold text-gray-400 uppercase mb-3">INFORMACJE</h3>
+                                <div class="space-y-2 text-xs">
+                                    <div><p class="text-gray-500">Urządzenie</p><p class="font-semibold" id="infoDevice">-</p></div>
+                                    <div><p class="text-gray-500">Nr seryjny</p><p class="font-mono font-semibold" id="infoSerial">-</p></div>
+                                    <div><p class="text-gray-500">Szacunk. koszt</p><p class="text-lg font-bold text-blue-600" id="totalCost">0.00 PLN</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW TICKET MODAL -->
+    <div id="newTicketModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-xl w-full max-w-2xl">
+            <div class="flex justify-between items-center p-6 border-b border-gray-200">
+                <h2 class="text-xl font-bold"><i class="fas fa-ticket mr-2"></i>Nowe Zgłoszenie</h2>
+                <button onclick="app.closeNewTicketModal()" class="text-gray-400 hover:text-gray-600 text-2xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="text" id="newTitle" placeholder="Temat" class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <select id="newDevice" class="px-4 py-2 border border-gray-300 rounded-lg text-sm"><option>MacBook Pro</option><option>iPhone</option><option>iPad</option></select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <input type="text" id="newCustomer" placeholder="Imię i nazwisko" class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <input type="tel" id="newPhone" placeholder="Telefon" class="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <input type="text" id="newSerial" placeholder="Nr seryjny" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <textarea id="newDescription" placeholder="Opis problemu" class="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm resize-none" rows="4"></textarea>
+                
+                <!-- ZDJĘCIA W MODALU -->
+                <div class="border-t border-gray-200 pt-4 mt-4">
+                    <label class="text-xs text-gray-500 font-semibold block mb-3"><i class="fas fa-images mr-2"></i>ZDJĘCIA (opcjonalnie)</label>
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" id="newPhotoName" placeholder="Nazwa zdjęcia" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                        <button type="button" onclick="app.addPhotoToModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm font-medium"><i class="fas fa-plus mr-1"></i>Dodaj</button>
+                    </div>
+                    <div id="newPhotosList" class="grid grid-cols-4 gap-2"></div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+                <button onclick="app.closeNewTicketModal()" class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Anuluj</button>
+                <button onclick="app.saveNewTicket()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg"><i class="fas fa-plus mr-2"></i>Dodaj</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const app = {
+            currentSection: 'dashboard',
+            currentTicket: null,
+            modalPhotos: [],
+            tickets: [
+                { id: 36, title: 'Nie działa internet', description: 'WiFi problem', status: 'IN_PROGRESS', priority: 'URGENT', device: 'MacBook Pro', customer: 'Jan Kowalski', phone: '123456789', serial: 'ABC123', agent: 'Anna Nowak', date: '2024-02-16 10:30', comments: [{ author: 'Anna', text: 'Zaczynam diagnostykę', type: 'internal', date: '10:30' }], costs: [{ desc: 'Diagnostyka', qty: 1, price: 100, vat: 23 }], photos: [] },
+                { id: 35, title: 'Wymiana myszki', description: 'Magic Mouse', status: 'NEW', priority: 'LOW', device: 'iMac', customer: 'Maria Lewandowska', phone: '987654321', serial: 'XYZ789', agent: 'Piotr Sikora', date: '2024-02-16 09:15', comments: [], costs: [], photos: [] },
+                { id: 34, title: 'Drukarka sieciowa', description: 'Problem z drukarką', status: 'WAITING_FOR_CUSTOMER', priority: 'HIGH', device: 'iMac', customer: 'Tomasz Wiśniewski', phone: '555666777', serial: 'DEF456', agent: 'Anna Nowak', date: '2024-02-16 08:45', comments: [], costs: [], photos: [] },
+            ],
+
+            init() {
+                this.renderTickets();
+                this.updateStats();
+                document.getElementById('searchInput')?.addEventListener('input', () => this.renderTickets());
+                document.getElementById('filterStatus')?.addEventListener('change', () => this.renderTickets());
+            },
+
+            switchSection(section) {
+                this.currentSection = section;
+                document.querySelectorAll('[id^="section-"]').forEach(el => el.classList.add('hidden'));
+                document.getElementById('section-' + section).classList.remove('hidden');
+                document.querySelectorAll('.menu-item').forEach(btn => btn.classList.remove('bg-blue-600', 'text-white'));
+                document.querySelector(`[data-section="${section}"]`).classList.add('bg-blue-600', 'text-white');
+            },
+
+            renderTickets() {
+                const search = document.getElementById('searchInput')?.value.toLowerCase() || '';
+                const status = document.getElementById('filterStatus')?.value || '';
+                let filtered = this.tickets.filter(t => 
+                    (!search || t.id.toString().includes(search) || t.title.toLowerCase().includes(search) || t.customer.toLowerCase().includes(search)) &&
+                    (!status || t.status === status)
+                );
+                
+                const tbody = document.getElementById('ticketsTableBody');
+                tbody.innerHTML = filtered.map(t => `
+                    <tr class="hover:bg-blue-50 cursor-pointer text-sm" onclick="app.openDetail(${t.id})">
+                        <td class="px-6 py-3 font-mono text-gray-500">#${String(t.id).padStart(2, '0')}</td>
+                        <td class="px-6 py-3 font-medium">${t.title}</td>
+                        <td class="px-6 py-3">${t.customer}</td>
+                        <td class="px-6 py-3 text-gray-600">${t.device}</td>
+                        <td class="px-6 py-3"><span class="badge ${this.getStatusClass(t.status)}">${t.status}</span></td>
+                        <td class="px-6 py-3"><span class="font-semibold ${this.getPriorityClass(t.priority)}">${t.priority}</span></td>
+                        <td class="px-6 py-3 text-gray-600">${t.agent}</td>
+                        <td class="px-6 py-3 text-right"><i class="fas fa-chevron-right text-gray-400"></i></td>
+                    </tr>
+                `).join('');
+            },
+
+            getStatusClass(status) {
+                const classes = {
+                    'NEW': 'bg-blue-100 text-blue-800',
+                    'IN_PROGRESS': 'bg-yellow-100 text-yellow-800',
+                    'WAITING_FOR_CUSTOMER': 'bg-purple-100 text-purple-800',
+                    'CLOSED': 'bg-green-100 text-green-800'
+                };
+                return classes[status] || 'bg-gray-100 text-gray-800';
+            },
+
+            getPriorityClass(priority) {
+                const classes = {
+                    'LOW': 'text-green-600',
+                    'NORMAL': 'text-blue-600',
+                    'HIGH': 'text-orange-600',
+                    'URGENT': 'text-red-600'
+                };
+                return classes[priority] || 'text-gray-600';
+            },
+
+            updateStats() {
+                document.getElementById('stat-new').textContent = this.tickets.filter(t => t.status === 'NEW').length;
+                document.getElementById('stat-urgent').textContent = this.tickets.filter(t => t.priority === 'URGENT').length;
+                document.getElementById('stat-progress').textContent = this.tickets.filter(t => t.status === 'IN_PROGRESS').length;
+                document.getElementById('stat-closed').textContent = this.tickets.filter(t => t.status === 'CLOSED').length;
+            },
+
+            openDetail(id) {
+                this.currentTicket = this.tickets.find(t => t.id === id);
+                if (!this.currentTicket) return;
+
+                const panel = document.getElementById('detailPanel');
+                panel.style.display = 'flex';
+
+                document.getElementById('panelId').textContent = `#${String(id).padStart(2, '0')}`;
+                document.getElementById('panelTitle').textContent = this.currentTicket.title;
+                document.getElementById('panelCustomer').textContent = this.currentTicket.customer;
+                document.getElementById('panelDate').textContent = `Zgłoszono: ${this.currentTicket.date}`;
+                document.getElementById('panelDescription').textContent = this.currentTicket.description;
+                document.getElementById('panelDevice').textContent = this.currentTicket.device;
+                document.getElementById('panelSerial').textContent = this.currentTicket.serial;
+                document.getElementById('panelPhone').textContent = this.currentTicket.phone;
+                document.getElementById('initials').textContent = this.currentTicket.customer.charAt(0);
+                document.getElementById('infoDevice').textContent = this.currentTicket.device;
+                document.getElementById('infoSerial').textContent = this.currentTicket.serial;
+
+                document.getElementById('statusSelect').value = this.currentTicket.status;
+                document.getElementById('prioritySelect').value = this.currentTicket.priority;
+                document.getElementById('agentSelect').value = this.currentTicket.agent;
+                document.querySelector('#commentInternal').checked = true;
+
+                this.renderComments();
+                this.renderCosts();
+                this.renderPhotos();
+            },
+
+            closeDetail() {
+                document.getElementById('detailPanel').style.display = 'none';
+                this.currentTicket = null;
+            },
+
+            renderComments() {
+                const container = document.getElementById('commentsContainer');
+                container.innerHTML = this.currentTicket.comments.map(c => {
+                    const isExternal = c.type === 'external';
+                    return `
+                    <div class="bg-white p-4 rounded-lg border ${isExternal ? 'border-green-200 bg-green-50' : 'border-gray-200'} transition hover:shadow-md">
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-full ${isExternal ? 'bg-green-500' : 'bg-yellow-500'} text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                ${isExternal ? '<i class="fas fa-envelope"></i>' : '<i class="fas fa-lock"></i>'}
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex justify-between items-start gap-2">
+                                    <span class="font-semibold text-sm">${c.author}</span>
+                                    <span class="text-xs ${isExternal ? 'text-green-600 font-bold' : 'text-gray-400'}">${c.date}</span>
+                                </div>
+                                ${isExternal ? '<p class="text-green-700 text-xs font-semibold mb-2"><i class="fas fa-check-circle mr-1"></i>📧 Wysłano do klienta</p>' : '<p class="text-yellow-700 text-xs mb-2"><i class="fas fa-lock mr-1"></i>🔒 Notatka wewnętrzna (tylko dla zespołu)</p>'}
+                                <p class="text-sm ${isExternal ? 'text-gray-800' : 'text-gray-700'} mt-1">${c.text}</p>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+            },
+
+            addComment() {
+                const text = document.getElementById('commentText').value;
+                const type = document.querySelector('input[name="commentType"]:checked').value;
+                if (!text.trim()) return alert('Wpisz tekst komentarza!');
+
+                const comment = {
+                    author: 'Anna Nowak',
+                    text: text,
+                    type: type,
+                    date: new Date().toLocaleTimeString('pl', { hour: '2-digit', minute: '2-digit' })
+                };
+
+                this.currentTicket.comments.push(comment);
+                document.getElementById('commentText').value = '';
+                document.querySelector('#commentInternal').checked = true;
+                this.renderComments();
+
+                if (type === 'external') {
+                    alert(`📧 Wiadomość wysłana do klienta ${this.currentTicket.customer}!\n\nTekst: "${text}"`);
+                }
+            },
+
+            renderPhotos() {
+                const gallery = document.getElementById('photosGallery');
+                if (this.currentTicket.photos.length === 0) {
+                    gallery.innerHTML = '<div class="col-span-3 py-4 text-center border-2 border-dashed border-gray-300 rounded text-gray-500 text-sm"><i class="fas fa-image text-lg mb-1"></i><p>Brak zdjęć</p></div>';
+                    return;
+                }
+                gallery.innerHTML = this.currentTicket.photos.map((p, i) => `
+                    <div class="aspect-square bg-gradient-to-br from-gray-200 to-gray-300 rounded flex items-center justify-center border-2 border-gray-300 text-gray-600 text-xs text-center group relative hover:shadow-lg transition">
+                        ${p}
+                        <button onclick="app.deletePhoto(${i})" class="absolute top-1 right-1 bg-red-600 text-white w-5 h-5 rounded op opacity-0 group-hover:opacity-100 transition text-xs flex items-center justify-center"><i class="fas fa-trash text-xs"></i></button>
+                    </div>
+                `).join('');
+            },
+
+            addPhoto() {
+                const name = prompt('Nazwa zdjęcia:');
+                if (name) {
+                    this.currentTicket.photos.push(name);
+                    this.renderPhotos();
+                }
+            },
+
+            deletePhoto(idx) {
+                this.currentTicket.photos.splice(idx, 1);
+                this.renderPhotos();
+            },
+
+            renderCosts() {
+                const table = document.getElementById('costsTable');
+                if (!this.currentTicket.costs.length) {
+                    table.innerHTML = '<p class="text-sm text-gray-500">Brak pozycji</p>';
+                    document.getElementById('totalCost').textContent = '0.00 PLN';
+                    return;
+                }
+
+                let total = 0;
+                table.innerHTML = `<table class="w-full text-xs"><thead class="bg-gray-50 border-b"><tr><th class="text-left py-2">Opis</th><th class="text-right py-2">Ilość</th><th class="text-right py-2">Cena</th><th class="text-right py-2">VAT%</th><th class="text-right py-2">Razem</th><th></th></tr></thead><tbody>
+                    ${this.currentTicket.costs.map((c, i) => {
+                        const sum = c.price * c.qty * (1 + c.vat / 100);
+                        total += sum;
+                        return `<tr class="border-b"><td>${c.desc}</td><td class="text-right">${c.qty}</td><td class="text-right">${c.price}</td><td class="text-right">${c.vat}</td><td class="text-right font-semibold">${sum.toFixed(2)}</td><td class="text-right"><button onclick="app.deleteCost(${i})" class="text-red-600 text-xs"><i class="fas fa-trash"></i></button></td></tr>`;
+                    }).join('')}
+                    <tr class="bg-blue-50 font-semibold border-t-2"><td colspan="4" class="py-2 text-right">RAZEM:</td><td class="text-right">${total.toFixed(2)} PLN</td><td></td></tr>
+                </tbody></table>`;
+                document.getElementById('totalCost').textContent = total.toFixed(2) + ' PLN';
+            },
+
+            toggleCostForm() {
+                document.getElementById('costForm').classList.toggle('hidden');
+            },
+
+            saveCost() {
+                const desc = document.getElementById('costDesc').value;
+                const qty = parseInt(document.getElementById('costQty').value) || 1;
+                const price = parseFloat(document.getElementById('costPrice').value) || 0;
+                const vat = parseInt(document.getElementById('costVat').value) || 23;
+
+                if (!desc || price <= 0) return alert('Wpisz dane!');
+
+                this.currentTicket.costs.push({ desc, qty, price, vat });
+                document.getElementById('costDesc').value = '';
+                document.getElementById('costQty').value = '1';
+                document.getElementById('costPrice').value = '';
+                this.toggleCostForm();
+                this.renderCosts();
+            },
+
+            deleteCost(idx) {
+                this.currentTicket.costs.splice(idx, 1);
+                this.renderCosts();
+            },
+
+            sendQuote() {
+                const total = this.currentTicket.costs.reduce((s, c) => s + c.price * c.qty * (1 + c.vat / 100), 0);
+                alert(`📧 Kosztorys wysłany do ${this.currentTicket.customer}\nSuma: ${total.toFixed(2)} PLN`);
+            },
+
+            updateStatus() {
+                this.currentTicket.status = document.getElementById('statusSelect').value;
+                this.renderTickets();
+            },
+
+            updatePriority() {
+                this.currentTicket.priority = document.getElementById('prioritySelect').value;
+                this.renderTickets();
+            },
+
+            updateAgent() {
+                this.currentTicket.agent = document.getElementById('agentSelect').value;
+                this.renderTickets();
+            },
+
+            openNewTicketModal() {
+                document.getElementById('newTicketModal').classList.remove('hidden');
+                this.modalPhotos = [];
+                this.renderModalPhotos();
+            },
+
+            closeNewTicketModal() {
+                document.getElementById('newTicketModal').classList.add('hidden');
+            },
+
+            modalPhotos: [],
+
+            addPhotoToModal() {
+                const name = document.getElementById('newPhotoName').value.trim();
+                if (!name) return alert('Wpisz nazwę zdjęcia!');
+                this.modalPhotos.push(name);
+                document.getElementById('newPhotoName').value = '';
+                this.renderModalPhotos();
+            },
+
+            renderModalPhotos() {
+                const list = document.getElementById('newPhotosList');
+                list.innerHTML = this.modalPhotos.map((p, i) => `
+                    <div class="aspect-square bg-gradient-to-br from-blue-200 to-blue-300 rounded flex items-center justify-center text-gray-700 text-xs text-center p-1 border-2 border-blue-400 group relative hover:shadow-lg transition">
+                        ${p}
+                        <button type="button" onclick="app.removePhotoFromModal(${i})" class="absolute top-0 right-0 bg-red-600 text-white w-5 h-5 rounded-full opacity-0 group-hover:opacity-100 transition text-xs flex items-center justify-center"><i class="fas fa-times"></i></button>
+                    </div>
+                `).join('');
+            },
+
+            removePhotoFromModal(idx) {
+                this.modalPhotos.splice(idx, 1);
+                this.renderModalPhotos();
+            },
+
+            saveNewTicket() {
+                const title = document.getElementById('newTitle').value;
+                const device = document.getElementById('newDevice').value;
+                const customer = document.getElementById('newCustomer').value;
+                const phone = document.getElementById('newPhone').value;
+                const serial = document.getElementById('newSerial').value;
+                const description = document.getElementById('newDescription').value;
+
+                if (!title || !customer || !phone) return alert('Uzupełnij wymagane pola!');
+
+                const newTicket = {
+                    id: Math.max(...this.tickets.map(t => t.id), 0) + 1,
+                    title, device, customer, phone, serial, description,
+                    status: 'NEW', priority: 'NORMAL', agent: 'Nieprzypisany',
+                    date: new Date().toLocaleString('pl'),
+                    comments: [], costs: [], photos: [...this.modalPhotos]
+                };
+
+                this.tickets.unshift(newTicket);
+                this.renderTickets();
+                this.updateStats();
+                this.closeNewTicketModal();
+                document.getElementById('newTitle').value = '';
+                document.getElementById('newCustomer').value = '';
+                document.getElementById('newPhone').value = '';
+                document.getElementById('newSerial').value = '';
+                document.getElementById('newDescription').value = '';
+                document.getElementById('newPhotoName').value = '';
+                this.modalPhotos = [];
+                this.renderModalPhotos();
+            }
+        };
+
+        app.init();
+    </script>
+</body>
+</html>

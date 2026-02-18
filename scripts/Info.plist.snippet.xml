@@ -1,0 +1,7 @@
+<key>NSLocalNetworkUsageDescription</key>
+<string>Ta aplikacja wymaga dostępu do lokalnej sieci Wi-Fi, aby połączyć się z serwerem ticketowym.</string>
+<key>NSBonjourServices</key>
+<array>
+  <string>_http._tcp</string>
+  <string>_tickets._tcp</string>
+</array>

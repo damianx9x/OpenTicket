@@ -1,0 +1,98 @@
+{
+  "name": "Apple Service Ticketing System",
+  "version": "1.0.0",
+  "build": 16,
+  "releaseDate": "2026-02-16",
+  "status": "production",
+  "description": "Complete ticketing system for Apple Service with WebUI, macOS, and iOS apps",
+  "license": "Proprietary © 2026 Apple Service",
+  "author": {
+    "organization": "Apple Service",
+    "email": "contact@applservice.local",
+    "country": "Poland",
+    "city": "Gdańsk"
+  },
+  "distribution": {
+    "webui": {
+      "format": "HTML5",
+      "file": "index.html",
+      "size": "46 KB",
+      "checksum": "sha256-auto",
+      "platforms": ["Windows", "macOS", "Linux", "iOS", "Android"],
+      "requirements": {
+        "browser": "Chrome 90+, Safari 14+, Firefox 88+, Edge 90+",
+        "internet": "optional",
+        "offline": true
+      }
+    },
+    "macos": {
+      "format": "DMG",
+      "file": "ticket-system-installer.dmg",
+      "path": "../MacOS/ticket-system-installer.dmg",
+      "size": "167 KB",
+      "checksum": "sha256-auto",
+      "requirements": {
+        "os": "macOS 10.14+",
+        "processor": "Intel x86_64 or Apple Silicon",
+        "ram": "512 MB",
+        "disk": "150 MB"
+      }
+    },
+    "ios": {
+      "format": "Source Code",
+      "path": "../ios/",
+      "type": "SwiftUI",
+      "requirements": {
+        "xcode": "14.0+",
+        "swift": "5.7+",
+        "ios": "15.0+",
+        "device": "iPhone 12+, iPad Air 4+"
+      }
+    }
+  },
+  "features": [
+    "Complete CRUD for tickets",
+    "Real-time status updates",
+    "Public comments and internal notes",
+    "Cost item calculation with VAT",
+    "Attachment management",
+    "Statistics and reporting",
+    "User management with roles",
+    "Email integration",
+    "Push notifications",
+    "Full offline support (WebUI)",
+    "Dark mode ready",
+    "Responsive design",
+    "GDPR compliant"
+  ],
+  "security": {
+    "gdpr": true,
+    "dataEncryption": "localStorage for WebUI",
+    "apiAuthentication": "token-based",
+    "sslRequired": true,
+    "biometricSupport": true
+  },
+  "changelog": {
+    "v1.0.0": {
+      "date": "2026-02-16",
+      "status": "release",
+      "highlights": [
+        "Initial production release",
+        "All core features implemented",
+        "Performance optimized",
+        "Mobile responsive",
+        "Fully offline capable (WebUI)"
+      ],
+      "bugFixes": [],
+      "knownIssues": []
+    }
+  },
+  "support": {
+    "email": "support@applservice.local",
+    "documentation": {
+      "installation": "INSTALLATION.md",
+      "readme": "README.md",
+      "license": "LICENSE.md"
+    }
+  }
+}

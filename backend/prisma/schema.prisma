@@ -1,0 +1,244 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Supports both PostgreSQL and SQLite via DATABASE_URL
+  // Desktop (SQLite): file:./data/app.db
+  // Web (Postgres): postgresql://user:pass@host/db
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  REPORTER
+  VIEWER
+}
+
+enum TicketStatus {
+  NEW
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+  ARCHIVED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TicketChannel {
+  APP
+  WEB_FORM
+  EMAIL
+  DROP_OFF
+}
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  name        String?
+  role        Role      @default(REPORTER)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  disabledAt  DateTime? @map("disabled_at")
+
+  ticketsOwned    Ticket[]              @relation("TicketOwner")
+  ticketsAssigned Ticket[]              @relation("TicketAssignee")
+  statusChanges   TicketStatusHistory[]
+  comments        Comment[]
+  attachments     Attachment[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+
+  @@map("users")
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  nip       String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tickets Ticket[]
+
+  @@map("organizations")
+}
+
+model Ticket {
+  id              String         @id @default(uuid())
+  number          BigInt         @unique @default(autoincrement())
+  title           String
+  description     String
+  status          TicketStatus   @default(NEW)
+  priority        TicketPriority @default(NORMAL)
+  channel         TicketChannel  @default(WEB_FORM)
+
+  ownerUserId     String         @map("owner_user_id")
+  owner           User           @relation("TicketOwner", fields: [ownerUserId], references: [id])
+
+  assignedAgentId String?        @map("assigned_agent_id")
+  assignedAgent   User?          @relation("TicketAssignee", fields: [assignedAgentId], references: [id])
+
+  organizationId  String?        @map("organization_id")
+  organization    Organization?  @relation(fields: [organizationId], references: [id])
+
+  publicToken     String?        @unique @map("public_token")
+
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  closedAt        DateTime?      @map("closed_at")
+
+  statusHistory TicketStatusHistory[]
+  comments      Comment[]
+  attachments   Attachment[]
+  costItems     CostItem[]
+  notifications Notification[]
+
+  @@index([status, priority, updatedAt])
+  @@map("tickets")
+}
+
+model TicketStatusHistory {
+  id         String       @id @default(uuid())
+  ticketId   String       @map("ticket_id")
+  ticket     Ticket       @relation(fields: [ticketId], references: [id])
+
+  fromStatus TicketStatus @map("from_status")
+  toStatus   TicketStatus @map("to_status")
+
+  changedBy  String       @map("changed_by")
+  user       User         @relation(fields: [changedBy], references: [id])
+
+  changedAt  DateTime     @default(now()) @map("changed_at")
+
+  @@map("ticket_status_history")
+}
+
+model Comment {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  ticket       Ticket   @relation(fields: [ticketId], references: [id])
+
+  authorUserId String   @map("author_user_id")
+  author       User     @relation(fields: [authorUserId], references: [id])
+
+  body         String
+  isInternal   Boolean  @default(false) @map("is_internal")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId, createdAt])
+  @@map("comments")
+}
+
+model Attachment {
+  id              String   @id @default(uuid())
+  ticketId        String   @map("ticket_id")
+  ticket          Ticket   @relation(fields: [ticketId], references: [id])
+
+  uploadedBy      String?  @map("uploaded_by")
+  uploader        User?    @relation(fields: [uploadedBy], references: [id])
+
+  filename        String
+  mimeType        String   @map("mime_type")
+  byteSize        BigInt   @map("byte_size")
+  storageProvider String   @map("storage_provider")
+  bucket          String
+  objectKey       String   @map("object_key")
+  sha256          String?
+
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId, createdAt])
+  @@map("attachments")
+}
+
+model VatRate {
+  code     String  @id
+  percent  Decimal @map("percent")
+  isExempt Boolean @default(false) @map("is_exempt")
+  name     String
+
+  costItems CostItem[]
+
+  @@map("vat_rates")
+}
+
+model CostItem {
+  id         String   @id @default(uuid())
+  ticketId   String   @map("ticket_id")
+  ticket     Ticket   @relation(fields: [ticketId], references: [id])
+
+  name       String
+  qty        Decimal  @map("qty")
+  unitNet    Decimal  @map("unit_net")
+
+  vatCode    String   @map("vat_code")
+  vatRate    VatRate  @relation(fields: [vatCode], references: [code])
+
+  netTotal   Decimal  @map("net_total")
+  vatTotal   Decimal  @map("vat_total")
+  grossTotal Decimal  @map("gross_total")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("cost_items")
+}
+
+model AutomationRule {
+  id         String   @id @default(uuid())
+  name       String
+  enabled    Boolean  @default(true)
+  trigger    String
+  conditions Json     @map("conditions")
+  actions    Json     @map("actions")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("automation_rules")
+}
+
+model Notification {
+  id        String    @id @default(uuid())
+  type      String
+  channel   String
+
+  ticketId  String?   @map("ticket_id")
+  ticket    Ticket?   @relation(fields: [ticketId], references: [id])
+
+  userId    String?   @map("user_id")
+  user      User?     @relation(fields: [userId], references: [id])
+
+  payload   Json      @map("payload")
+  status    String
+  error     String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  sentAt    DateTime? @map("sent_at")
+
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?  @map("actor_user_id")
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  metadata    Json?    @map("metadata")
+  ip          String?  @map("ip")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}

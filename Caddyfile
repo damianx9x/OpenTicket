@@ -1,0 +1,7 @@
+localhost {
+	# Proxy API requests to the backend service
+	reverse_proxy /api/* backend:3000
+
+	# Proxy all other requests to the frontend service
+	reverse_proxy /* frontend:3001
+}

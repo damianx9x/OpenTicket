@@ -1,0 +1,629 @@
+openapi: 3.1.0
+info:
+  title: Ticket System API
+  version: '1.0.0'
+  description: |
+    REST API v1 for ticketing system. Authenticated endpoints use Bearer JWT (OIDC). Public portal endpoints use a `public_token` path parameter.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+paths:
+  /api/v1/me:
+    get:
+      summary: Current authenticated user
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/v1/tickets:
+    post:
+      summary: Create a ticket
+      tags: [Tickets]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketCreate'
+      responses:
+        '201':
+          description: Created ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+
+    get:
+      summary: List tickets
+      tags: [Tickets]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        '200':
+          description: Ticket list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Ticket'
+                  meta:
+                    type: object
+
+  /api/v1/tickets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Get ticket by id
+      tags: [Tickets]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+
+    patch:
+      summary: Update ticket (status, priority, assigned_agent_id)
+      tags: [Tickets]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                priority:
+                  type: string
+                assigned_agent_id:
+                  type: string
+      responses:
+        '200':
+          description: Updated ticket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+
+  /api/v1/tickets/{id}/comments:
+    post:
+      summary: Add comment to ticket
+      tags: [Comments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreate'
+      responses:
+        '201':
+          description: Created comment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+
+  /api/v1/tickets/{id}/attachments/presign:
+    post:
+      summary: Request presigned upload URL for attachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                filename:
+                  type: string
+                mimeType:
+                  type: string
+                byteSize:
+                  type: integer
+      responses:
+        '200':
+          description: Presigned upload data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl:
+                    type: string
+                  objectKey:
+                    type: string
+
+  /api/v1/tickets/{id}/attachments/{attachmentId}/download:
+    get:
+      summary: Get presigned download URL for attachment
+      tags: [Attachments]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Presigned download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  downloadUrl:
+                    type: string
+
+  /api/v1/tickets/{id}/generate-qr:
+    post:
+      summary: Generate QR token and image for ticket
+      tags: [QR]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: QR token and svg image (data URL)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  svg:
+                    type: string
+
+  /api/v1/tickets/qr-scan:
+    post:
+      summary: Scan a QR token and perform an action for the ticket (used by technicians)
+      tags: [QR]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qr_token:
+                  type: string
+                action:
+                  type: string
+                technicianId:
+                  type: string
+      responses:
+        '200':
+          description: Result of QR scan action
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  ticketId:
+                    type: string
+                  action:
+                    type: string
+                  performedBy:
+                    type: string
+                  timestamp:
+                    type: string
+
+  /api/v1/public/tickets/{public_token}:
+    get:
+      summary: Public portal — get ticket timeline/summary by public token
+      tags: [Public]
+      parameters:
+        - name: public_token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public ticket view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketPublic'
+
+  /api/v1/public/tickets/{public_token}/timeline:
+    get:
+      summary: Public portal — ticket timeline
+      tags: [Public]
+      parameters:
+        - name: public_token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      type: object
+
+  /api/v1/tickets/{id}/cost-items:
+    post:
+      summary: Create cost item for ticket
+      tags: [Costs]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CostItemCreate'
+      responses:
+        '201':
+          description: Created cost item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CostItem'
+
+    get:
+      summary: List cost items for ticket
+      tags: [Costs]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cost items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CostItem'
+
+  /api/v1/vat-rates:
+    get:
+      summary: Get VAT rates
+      tags: [Costs]
+      responses:
+        '200':
+          description: VAT rates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VatRate'
+
+  /api/v1/automations/run-ticket/{id}:
+    post:
+      summary: Run automation rules for a ticket (manual)
+      tags: [Automation]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Automation run started
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/v1/automations/rules:
+    get:
+      summary: List automation rules (read-only in MVP)
+      tags: [Automation]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AutomationRule'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    TicketCreate:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, NORMAL, HIGH, URGENT]
+        organizationId:
+          type: string
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [NEW, IN_PROGRESS, WAITING_FOR_CUSTOMER, RESOLVED, CLOSED, ARCHIVED]
+        priority:
+          type: string
+        channel:
+          type: string
+        owner_user_id:
+          type: string
+        assigned_agent_id:
+          type: string
+        organization_id:
+          type: string
+        public_token:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TicketPublic:
+      type: object
+      properties:
+        id:
+          type: string
+        number:
+          type: integer
+        title:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        timeline:
+          type: array
+          items:
+            type: object
+
+    CommentCreate:
+      type: object
+      required: [body]
+      properties:
+        body:
+          type: string
+        isInternal:
+          type: boolean
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        author_user_id:
+          type: string
+        body:
+          type: string
+        is_internal:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        filename:
+          type: string
+        mime_type:
+          type: string
+        byte_size:
+          type: integer
+        storage_provider:
+          type: string
+        bucket:
+          type: string
+        object_key:
+          type: string
+        sha256:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    VatRate:
+      type: object
+      properties:
+        code:
+          type: string
+        percent:
+          type: number
+        is_exempt:
+          type: boolean
+        name:
+          type: string
+
+    CostItemCreate:
+      type: object
+      required: [name, qty, unit_net, vat_code]
+      properties:
+        name:
+          type: string
+        qty:
+          type: number
+        unit_net:
+          type: number
+        vat_code:
+          type: string
+
+    CostItem:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        name:
+          type: string
+        qty:
+          type: number
+        unit_net:
+          type: number
+        vat_code:
+          type: string
+        net_total:
+          type: number
+        vat_total:
+          type: number
+        gross_total:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+    AutomationRule:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        trigger:
+          type: string
+        conditions:
+          type: object
+        actions:
+          type: object

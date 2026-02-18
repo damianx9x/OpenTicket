@@ -1,0 +1,92 @@
+# Dependencies
+node_modules/
+*/node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+*/dist/
+*/build/
+*/out/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Prisma
+.prisma/
+generated/
+
+# Build artifacts
+*.dmg
+*.exe
+*.msi
+*.app/
+dist-electron/
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Windows
+*.lnk
+
+# Temporary files
+*.tmp
+*.bak
+
+# Package managers
+pnpm-lock.yaml
+npm-lock.yaml
+yarn.lock
+
+# Electron
+release/
+electron-builder.env
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Docker
+docker-compose.override.yml
+
+# Python
+env/
+venv/
+__pycache__/
+*.pyc
+
+# Runtime
+.git/
