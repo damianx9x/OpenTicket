@@ -125,13 +125,16 @@ if [[ -n "$ZIP_SRC" ]]; then
   cp "$ZIP_SRC" "$ZIP_OUT"
 fi
 
-shasum -a 256 "$PKG_OUT" > "$MOJ_DIR/OpenTicket-Installer.pkg.sha256"
-if [[ -f "$DMG_OUT" ]]; then
-  shasum -a 256 "$DMG_OUT" > "$MOJ_DIR/OpenTicket-Installer.dmg.sha256"
-fi
-if [[ -f "$ZIP_OUT" ]]; then
-  shasum -a 256 "$ZIP_OUT" > "$MOJ_DIR/OpenTicket-Installer.zip.sha256"
-fi
+(
+  cd "$MOJ_DIR"
+  shasum -a 256 "$(basename "$PKG_OUT")" > "OpenTicket-Installer.pkg.sha256"
+  if [[ -f "$DMG_OUT" ]]; then
+    shasum -a 256 "$(basename "$DMG_OUT")" > "OpenTicket-Installer.dmg.sha256"
+  fi
+  if [[ -f "$ZIP_OUT" ]]; then
+    shasum -a 256 "$(basename "$ZIP_OUT")" > "OpenTicket-Installer.zip.sha256"
+  fi
+)
 
 if [[ -x "$README_LINK_UPDATER" ]]; then
   PKG_NAME="$(basename "$PKG_OUT")" "$README_LINK_UPDATER"
