@@ -183,31 +183,17 @@ fi
 
 echo "[Moj/testy] Start backend (tryb jak po instalacji, single-port)"
 cd "$ROOT_DIR"
-if command -v setsid >/dev/null 2>&1; then
-  nohup setsid env \
-    TICKET_SYSTEM_CONFIG_DIR="$CONFIG_DIR" \
-    TICKET_SYSTEM_DATA_DIR="$DATA_DIR" \
-    APP_ENV="DEV_LOCAL" \
-    TICKET_SYSTEM_ALLOW_DEV_RESET="1" \
-    TICKET_SYSTEM_FORCE_SQLITE_FALLBACK="${TICKET_SYSTEM_FORCE_SQLITE_FALLBACK:-1}" \
-    TICKET_SYSTEM_AUTO_MIGRATE="${TICKET_SYSTEM_AUTO_MIGRATE:-1}" \
-    PORT="$PORT" \
-    BIND_HOST="127.0.0.1" \
-    NODE_ENV="production" \
-    node backend/dist/main.js >"$LOG_DIR/backend.log" 2>&1 < /dev/null &
-else
-  nohup env \
-    TICKET_SYSTEM_CONFIG_DIR="$CONFIG_DIR" \
-    TICKET_SYSTEM_DATA_DIR="$DATA_DIR" \
-    APP_ENV="DEV_LOCAL" \
-    TICKET_SYSTEM_ALLOW_DEV_RESET="1" \
-    TICKET_SYSTEM_FORCE_SQLITE_FALLBACK="${TICKET_SYSTEM_FORCE_SQLITE_FALLBACK:-1}" \
-    TICKET_SYSTEM_AUTO_MIGRATE="${TICKET_SYSTEM_AUTO_MIGRATE:-1}" \
-    PORT="$PORT" \
-    BIND_HOST="127.0.0.1" \
-    NODE_ENV="production" \
-    node backend/dist/main.js >"$LOG_DIR/backend.log" 2>&1 < /dev/null &
-fi
+nohup env \
+  TICKET_SYSTEM_CONFIG_DIR="$CONFIG_DIR" \
+  TICKET_SYSTEM_DATA_DIR="$DATA_DIR" \
+  APP_ENV="DEV_LOCAL" \
+  TICKET_SYSTEM_ALLOW_DEV_RESET="1" \
+  TICKET_SYSTEM_FORCE_SQLITE_FALLBACK="${TICKET_SYSTEM_FORCE_SQLITE_FALLBACK:-1}" \
+  TICKET_SYSTEM_AUTO_MIGRATE="${TICKET_SYSTEM_AUTO_MIGRATE:-1}" \
+  PORT="$PORT" \
+  BIND_HOST="127.0.0.1" \
+  NODE_ENV="production" \
+  node backend/dist/main.js >"$LOG_DIR/backend.log" 2>&1 < /dev/null &
 
 BACKEND_PID="$!"
 disown "$BACKEND_PID" 2>/dev/null || true

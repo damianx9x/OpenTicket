@@ -72,6 +72,9 @@ Setup:
 Dashboard:
 ![Dashboard](docs/screenshots/v0.3/dashboard-chromium.png)
 
+Popup zgłoszenia:
+![Ticket Modal](docs/screenshots/v0.3/ticket-modal-chromium.png)
+
 Statystyki:
 ![Statystyki](docs/screenshots/v0.3/statistics-chromium.png)
 
@@ -128,6 +131,8 @@ cd <repo-root>
 ./Moj/testy/client-only-smoke.sh
 ./Moj/testy/ui-random-10.sh
 ./Moj/testy/ui-random-10.sh --all-browsers
+./Moj/testy/modal-popup-smoke.sh
+./Moj/testy/capture-release-screenshots.sh
 ./Moj/testy/diagnose.sh
 ./Moj/testy/stop.sh
 APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
@@ -203,6 +208,21 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (modal zgłoszenia + 3x praktyczny retest UI)
+- Szczegóły zgłoszenia przeniesione do nowoczesnego popupu (overlay + animacje, `Esc`, klik poza okno).
+- Dodano kontrolę niezapisanych zmian przy zamknięciu/przełączaniu zgłoszenia:
+  - pytanie o zapis,
+  - scenariusze: `zapisz`, `odrzuć`, `anuluj`.
+- Dodano podgląd obrazów załączników bez wychodzenia z popupu.
+- Dodano automatyczny test E2E popupu:
+  - `Moj/testy/modal-popup-smoke.sh` (`save/discard/cancel`) = PASS.
+- Dodano automatyczny generator screenshotów release:
+  - `Moj/testy/capture-release-screenshots.sh`.
+- Retest praktyczny 3x:
+  - `./Moj/testy/ui-random-10.sh --all-browsers` uruchomione 3 razy = PASS (Chromium + WebKit),
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/auth-smoke.sh` = PASS.
+
 ### 2026-02-21 (bezpieczne aktualizacje + backup przed update)
 - Dodano mechanizm aktualizacji desktop (Electron) oparty o GitHub Releases:
   - check update / download / install z poziomu zakładki `Serwer`,

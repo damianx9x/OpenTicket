@@ -19,6 +19,7 @@ Zrzuty ekranu do README i release notes są trzymane wersjami:
 - `setup-step1-chromium.png`
 - `setup-step1-webkit.png`
 - `dashboard-chromium.png`
+- `ticket-modal-chromium.png`
 - `statistics-chromium.png`
 - `users-chromium.png`
 - `settings-chromium.png`

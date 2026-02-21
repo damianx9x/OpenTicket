@@ -62,6 +62,33 @@ Raporty trafiają do:
 ```
 Przy błędzie skrypt zapisuje też screenshot `...-FAIL-*.png`.
 
+## Test modala zgłoszenia (save/discard/cancel)
+```bash
+./Moj/testy/modal-popup-smoke.sh
+```
+Zakres:
+- otwarcie popupu szczegółów zgłoszenia,
+- zamknięcie przez klik poza popup,
+- pytanie o zapis zmian,
+- scenariusze `save`, `discard`, `cancel`.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/modal-popup-smoke-*.json
+```
+
+## Aktualizacja screenshotów release (demo 200)
+```bash
+./Moj/testy/capture-release-screenshots.sh
+```
+Aktualizuje:
+- `docs/screenshots/v0.3/dashboard-chromium.png`
+- `docs/screenshots/v0.3/ticket-modal-chromium.png`
+- `docs/screenshots/v0.3/statistics-chromium.png`
+- `docs/screenshots/v0.3/users-chromium.png`
+- `docs/screenshots/v0.3/settings-chromium.png`
+- `docs/screenshots/v0.3/server-chromium.png`
+
 ## Stop
 ```bash
 ./Moj/testy/stop.sh

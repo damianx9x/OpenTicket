@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Deterministyczny start jak u klienta
+"$ROOT_DIR/Moj/testy/start.sh" --fresh --no-open
+
+node "$ROOT_DIR/Moj/testy/modal-popup-smoke.mjs"

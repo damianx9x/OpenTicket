@@ -14,6 +14,7 @@ import {
   Flame,
   Folder,
   Headphones,
+  Image as ImageIcon,
   LogOut,
   Mail,
   Plus,
@@ -24,6 +25,7 @@ import {
   Smartphone,
   Ticket as TicketIcon,
   Users,
+  X,
 } from 'lucide-react';
 import { getMe, getStoredToken, getStoredUser, logout, type AuthUser } from '@/lib/auth-client';
 import { applyRuntimeApiBaseFromSetupStatus, buildApiUrl, checkSetupStatus } from '@/lib/setup-client';
@@ -117,6 +119,19 @@ const emptyTicketForm: CreateTicketInput = {
   serialNumber: '',
 };
 
+const emptyCostForm = {
+  name: '',
+  qty: '1',
+  unitNet: '0',
+  vatCode: '23',
+};
+
+const emptyReminderForm = {
+  title: '',
+  note: '',
+  dueAt: '',
+};
+
 const STATUS_META: Record<TicketStatus, { className: string }> = {
   NEW: { className: 'bg-blue-100 text-blue-700' },
   IN_PROGRESS: { className: 'bg-amber-100 text-amber-700' },
@@ -203,9 +218,16 @@ export default function DashboardPage() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(getStoredUser());
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [showTicketModal, setShowTicketModal] = useState(false);
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [costItems, setCostItems] = useState<CostItem[]>([]);
   const [attachments, setAttachments] = useState<TicketAttachment[]>([]);
+  const [attachmentPreview, setAttachmentPreview] = useState<{
+    attachmentId: string;
+    filename: string;
+    url: string;
+  } | null>(null);
+  const [previewingAttachmentId, setPreviewingAttachmentId] = useState<string | null>(null);
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [openingAttachmentId, setOpeningAttachmentId] = useState<string | null>(null);
   const [costSummary, setCostSummary] = useState<CostSummary>({
@@ -269,11 +291,7 @@ export default function DashboardPage() {
   const [ticketReminders, setTicketReminders] = useState<ReminderItem[]>([]);
   const [globalReminders, setGlobalReminders] = useState<ReminderItem[]>([]);
   const [showReminderPanel, setShowReminderPanel] = useState(false);
-  const [newReminder, setNewReminder] = useState({
-    title: '',
-    note: '',
-    dueAt: '',
-  });
+  const [newReminder, setNewReminder] = useState(emptyReminderForm);
   const [reminderSubmitting, setReminderSubmitting] = useState(false);
   const [assignableAgents, setAssignableAgents] = useState<AppUser[]>([]);
   const [assignmentDraft, setAssignmentDraft] = useState('');
@@ -307,12 +325,7 @@ export default function DashboardPage() {
   const [ticketFiles, setTicketFiles] = useState<File[]>([]);
   const [commentBody, setCommentBody] = useState('');
   const [commentInternal, setCommentInternal] = useState(false);
-  const [costForm, setCostForm] = useState({
-    name: '',
-    qty: '1',
-    unitNet: '0',
-    vatCode: '23',
-  });
+  const [costForm, setCostForm] = useState(emptyCostForm);
 
   const [filters, setFilters] = useState({
     search: '',
@@ -333,6 +346,16 @@ export default function DashboardPage() {
     () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
     [tickets, selectedTicketId],
   );
+  const assignmentDirty = selectedTicket ? assignmentDraft !== (selectedTicket.assignedAgentId || '') : false;
+  const commentDirty = commentBody.trim().length > 0 || commentInternal;
+  const costDraftTouched =
+    costForm.name.trim().length > 0 ||
+    costForm.qty.trim() !== emptyCostForm.qty ||
+    costForm.unitNet.trim() !== emptyCostForm.unitNet ||
+    costForm.vatCode !== emptyCostForm.vatCode;
+  const reminderDraftTouched =
+    newReminder.title.trim().length > 0 || newReminder.note.trim().length > 0 || newReminder.dueAt.trim().length > 0;
+  const hasTicketDraftChanges = assignmentDirty || commentDirty || costDraftTouched || reminderDraftTouched;
 
   const statusLabels = STATUS_LABELS[uiLanguage];
   const priorityLabels = PRIORITY_LABELS[uiLanguage];
@@ -459,6 +482,190 @@ export default function DashboardPage() {
     window.setTimeout(() => {
       setNotice((prev) => (prev?.text === next.text ? null : prev));
     }, 4000);
+  };
+
+  const clearAttachmentPreview = () => {
+    setAttachmentPreview((prev) => {
+      if (prev?.url) {
+        window.URL.revokeObjectURL(prev.url);
+      }
+      return null;
+    });
+  };
+
+  const resetTicketDraftInputs = () => {
+    setCommentBody('');
+    setCommentInternal(false);
+    setCostForm(emptyCostForm);
+    setNewReminder(emptyReminderForm);
+    clearAttachmentPreview();
+  };
+
+  const saveTicketDraftChanges = async (ticketId: string): Promise<boolean> => {
+    const appliedChanges: string[] = [];
+
+    try {
+      if (assignmentDirty) {
+        await updateTicket(ticketId, {
+          assignedAgentId: assignmentDraft || null,
+        });
+        appliedChanges.push(isPolish ? 'przypisanie technika' : 'technician assignment');
+      }
+
+      if (commentBody.trim().length > 0) {
+        await addComment(ticketId, {
+          body: commentBody.trim(),
+          isInternal: commentInternal,
+          author: 'WebUI Agent',
+        });
+        setCommentBody('');
+        setCommentInternal(false);
+        appliedChanges.push(isPolish ? 'komentarz' : 'comment');
+      }
+
+      if (costDraftTouched) {
+        const qty = Number(costForm.qty);
+        const unitNet = Number(costForm.unitNet);
+        if (
+          costForm.name.trim().length === 0 ||
+          !Number.isFinite(qty) ||
+          qty <= 0 ||
+          !Number.isFinite(unitNet) ||
+          unitNet < 0
+        ) {
+          notify({
+            type: 'error',
+            text: isPolish
+              ? 'Nie można zapisać kosztu: uzupełnij poprawnie nazwę, ilość i cenę netto.'
+              : 'Cannot save cost item: provide valid name, quantity and net price.',
+          });
+          return false;
+        }
+
+        await addCostItem(ticketId, {
+          name: costForm.name.trim(),
+          qty,
+          unitNet,
+          vatCode: costForm.vatCode,
+        });
+        setCostForm(emptyCostForm);
+        appliedChanges.push(isPolish ? 'koszt' : 'cost item');
+      }
+
+      if (reminderDraftTouched) {
+        if (newReminder.title.trim().length < 2 || !newReminder.dueAt) {
+          notify({
+            type: 'error',
+            text: isPolish
+              ? 'Nie można zapisać przypomnienia: uzupełnij tytuł i termin.'
+              : 'Cannot save reminder: title and due date are required.',
+          });
+          return false;
+        }
+
+        await createReminder({
+          ticketId,
+          title: newReminder.title.trim(),
+          note: newReminder.note.trim() || undefined,
+          dueAt: newReminder.dueAt,
+        });
+        setNewReminder(emptyReminderForm);
+        appliedChanges.push(isPolish ? 'przypomnienie' : 'reminder');
+      }
+
+      if (appliedChanges.length > 0) {
+        await Promise.all([loadTicketsData(), loadTicketDetails(ticketId), loadGlobalReminders()]);
+        notify({
+          type: 'success',
+          text: isPolish
+            ? `Zapisano zmiany: ${appliedChanges.join(', ')}.`
+            : `Saved changes: ${appliedChanges.join(', ')}.`,
+        });
+      }
+
+      return true;
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: isPolish
+          ? `Nie udało się zapisać zmian: ${error instanceof Error ? error.message : 'nieznany błąd'}`
+          : `Failed to save changes: ${error instanceof Error ? error.message : 'unknown error'}`,
+      });
+      return false;
+    }
+  };
+
+  const handleRequestCloseTicketModal = async () => {
+    if (!showTicketModal) {
+      return;
+    }
+
+    if (!selectedTicketId || !hasTicketDraftChanges) {
+      setShowTicketModal(false);
+      clearAttachmentPreview();
+      return;
+    }
+
+    const shouldSave = window.confirm(
+      isPolish
+        ? 'Wykryto niezapisane zmiany. Czy zapisać je przed zamknięciem okna?'
+        : 'You have unsaved changes. Save them before closing this window?',
+    );
+
+    if (shouldSave) {
+      const saved = await saveTicketDraftChanges(selectedTicketId);
+      if (!saved) {
+        return;
+      }
+      setShowTicketModal(false);
+      clearAttachmentPreview();
+      return;
+    }
+
+    const shouldDiscard = window.confirm(
+      isPolish
+        ? 'Odrzucić niezapisane zmiany i zamknąć okno zgłoszenia?'
+        : 'Discard unsaved changes and close the ticket window?',
+    );
+    if (!shouldDiscard) {
+      return;
+    }
+
+    setAssignmentDraft(selectedTicket?.assignedAgentId || '');
+    resetTicketDraftInputs();
+    setShowTicketModal(false);
+  };
+
+  const handleOpenTicketDetails = async (ticketId: string) => {
+    if (showTicketModal && selectedTicketId && selectedTicketId !== ticketId && hasTicketDraftChanges) {
+      const shouldSaveBeforeSwitch = window.confirm(
+        isPolish
+          ? 'Masz niezapisane zmiany. Zapisać je przed przejściem do innego zgłoszenia?'
+          : 'You have unsaved changes. Save them before switching to another ticket?',
+      );
+
+      if (shouldSaveBeforeSwitch) {
+        const saved = await saveTicketDraftChanges(selectedTicketId);
+        if (!saved) {
+          return;
+        }
+      } else {
+        const shouldDiscard = window.confirm(
+          isPolish
+            ? 'Odrzucić niezapisane zmiany i przejść do innego zgłoszenia?'
+            : 'Discard unsaved changes and switch to another ticket?',
+        );
+        if (!shouldDiscard) {
+          return;
+        }
+        setAssignmentDraft(selectedTicket?.assignedAgentId || '');
+        resetTicketDraftInputs();
+      }
+    }
+
+    clearAttachmentPreview();
+    setSelectedTicketId(ticketId);
+    setShowTicketModal(true);
   };
 
   const savePrefs = async (next: DashboardPreferences) => {
@@ -679,7 +886,7 @@ export default function DashboardPage() {
       if (response.items.length === 0) {
         setSelectedTicketId(null);
       } else if (selectedTicketId && !response.items.some((ticket) => ticket.id === selectedTicketId)) {
-        setSelectedTicketId(response.items[0].id);
+        setSelectedTicketId(null);
       }
     } catch (error) {
       notify({
@@ -784,9 +991,41 @@ export default function DashboardPage() {
     } else {
       setCustomerHistory([]);
       setAssignmentDraft('');
+      setShowTicketModal(false);
+      clearAttachmentPreview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTicketId]);
+
+  useEffect(() => {
+    if (!showTicketModal) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        void handleRequestCloseTicketModal();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showTicketModal]);
+
+  useEffect(() => {
+    return () => {
+      if (attachmentPreview?.url) {
+        window.URL.revokeObjectURL(attachmentPreview.url);
+      }
+    };
+  }, [attachmentPreview]);
 
   useEffect(() => {
     if (!isAdmin && (activeNav === 'vat' || activeNav === 'server')) {
@@ -926,6 +1165,7 @@ export default function DashboardPage() {
       setShowCreateModal(false);
       await loadTicketsData();
       setSelectedTicketId(created.id);
+      setShowTicketModal(true);
       notify({ type: 'success', text: `Utworzono ticket #${created.number}.` });
     } catch (error) {
       notify({
@@ -996,7 +1236,7 @@ export default function DashboardPage() {
         vatCode: costForm.vatCode,
       });
 
-      setCostForm({ name: '', qty: '1', unitNet: '0', vatCode: '23' });
+      setCostForm(emptyCostForm);
       await loadTicketDetails(selectedTicketId);
       notify({ type: 'success', text: 'Pozycja kosztowa została dodana.' });
     } catch (error) {
@@ -1384,6 +1624,39 @@ export default function DashboardPage() {
     }
   };
 
+  const handlePreviewAttachment = async (attachment: TicketAttachment) => {
+    setPreviewingAttachmentId(attachment.id);
+    try {
+      const token = getStoredToken();
+      const response = await fetch(getAttachmentFileUrl(attachment.id), {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const previewUrl = window.URL.createObjectURL(blob);
+      setAttachmentPreview((prev) => {
+        if (prev?.url) {
+          window.URL.revokeObjectURL(prev.url);
+        }
+        return {
+          attachmentId: attachment.id,
+          filename: attachment.filename,
+          url: previewUrl,
+        };
+      });
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: `Nie udało się przygotować podglądu: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    } finally {
+      setPreviewingAttachmentId(null);
+    }
+  };
+
   const handleDeleteAttachment = async (attachment: TicketAttachment) => {
     if (!selectedTicketId) {
       return;
@@ -1396,6 +1669,9 @@ export default function DashboardPage() {
     try {
       await deleteAttachment(attachment.id);
       await loadTicketDetails(selectedTicketId);
+      if (attachmentPreview?.attachmentId === attachment.id) {
+        clearAttachmentPreview();
+      }
       notify({ type: 'success', text: 'Załącznik został usunięty.' });
     } catch (error) {
       notify({
@@ -1424,7 +1700,7 @@ export default function DashboardPage() {
         note: newReminder.note.trim() || undefined,
         dueAt: newReminder.dueAt,
       });
-      setNewReminder({ title: '', note: '', dueAt: '' });
+      setNewReminder(emptyReminderForm);
       await Promise.all([loadTicketReminders(selectedTicketId), loadGlobalReminders()]);
       notify({ type: 'success', text: 'Przypomnienie zostało dodane.' });
     } catch (error) {
@@ -1844,7 +2120,7 @@ export default function DashboardPage() {
                               onClick={() => {
                                 if (item.ticketId) {
                                   setActiveNav('tickets');
-                                  setSelectedTicketId(item.ticketId);
+                                  void handleOpenTicketDetails(item.ticketId);
                                 }
                                 setShowReminderPanel(false);
                               }}
@@ -2096,7 +2372,7 @@ export default function DashboardPage() {
                             return (
                               <tr
                                 key={ticket.id}
-                                onClick={() => setSelectedTicketId(ticket.id)}
+                                onClick={() => void handleOpenTicketDetails(ticket.id)}
                                 className={`cursor-pointer transition hover:bg-blue-50 ${
                                   selectedTicketId === ticket.id ? 'bg-blue-50/70' : 'bg-white'
                                 }`}
@@ -2138,15 +2414,56 @@ export default function DashboardPage() {
                   )}
                 </section>
 
-                {selectedTicket && (
-                  <section className="ticket-surface mt-5 rounded-xl border border-slate-100 p-5">
-                    <div className="space-y-4">
+                {selectedTicket && showTicketModal && (
+                  <div
+                    className="modal-overlay fixed inset-0 z-50 flex items-start justify-center bg-slate-950/60 px-3 py-5 backdrop-blur-sm md:p-8"
+                    onClick={() => void handleRequestCloseTicketModal()}
+                  >
+                    <section
+                      className="ticket-surface modal-panel flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-100"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                            {isPolish ? 'Szczegóły zgłoszenia' : 'Ticket details'}
+                          </p>
+                          <h3 className="mt-1 text-lg font-bold text-slate-900">
+                            #{selectedTicket.number} - {selectedTicket.title}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hasTicketDraftChanges && (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                              {isPolish ? 'Niezapisane zmiany' : 'Unsaved changes'}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void handleRequestCloseTicketModal()}
+                            className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                            {isPolish ? 'Zamknij' : 'Close'}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="overflow-y-auto px-5 py-5">
+                        <div className="space-y-4">
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <h3 className="text-base font-semibold text-slate-900">
                             #{selectedTicket.number} - {selectedTicket.title}
                           </h3>
-                          <div className="text-xs text-slate-500">Utworzono: {formatDate(selectedTicket.createdAt)}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_META[selectedTicket.status].className}`}>
+                              {statusLabels[selectedTicket.status]}
+                            </span>
+                            <span className={`rounded-full border border-slate-200 px-3 py-1 text-[11px] ${PRIORITY_META[selectedTicket.priority].className}`}>
+                              {priorityLabels[selectedTicket.priority]}
+                            </span>
+                            <span className="text-xs text-slate-500">Utworzono: {formatDate(selectedTicket.createdAt)}</span>
+                          </div>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{selectedTicket.description}</p>
                       </div>
@@ -2194,7 +2511,7 @@ export default function DashboardPage() {
                                 <button
                                   key={item.id}
                                   type="button"
-                                  onClick={() => setSelectedTicketId(item.id)}
+                                  onClick={() => void handleOpenTicketDetails(item.id)}
                                   className="flex w-full items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1 text-left hover:bg-slate-100"
                                 >
                                   <span>
@@ -2356,6 +2673,28 @@ export default function DashboardPage() {
                                 />
                               </label>
                             </div>
+                            {attachmentPreview && (
+                              <div className="rounded-xl border border-slate-200 bg-slate-900/95 p-3">
+                                <div className="mb-2 flex items-center justify-between text-[11px] text-slate-200">
+                                  <span className="inline-flex items-center gap-1">
+                                    <ImageIcon className="h-3.5 w-3.5" />
+                                    {attachmentPreview.filename}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => clearAttachmentPreview()}
+                                    className="rounded border border-slate-500 px-2 py-0.5 text-slate-200 hover:bg-slate-700"
+                                  >
+                                    {isPolish ? 'Zamknij podgląd' : 'Close preview'}
+                                  </button>
+                                </div>
+                                <img
+                                  src={attachmentPreview.url}
+                                  alt={attachmentPreview.filename}
+                                  className="max-h-64 w-full rounded-lg border border-slate-600 object-contain"
+                                />
+                              </div>
+                            )}
                             <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
                               {attachments.length === 0 ? (
                                 <p className="text-xs text-slate-500">Brak załączników.</p>
@@ -2372,6 +2711,16 @@ export default function DashboardPage() {
                                       </p>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1">
+                                      {attachment.mimeType.startsWith('image/') && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handlePreviewAttachment(attachment)}
+                                          disabled={previewingAttachmentId === attachment.id}
+                                          className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                                        >
+                                          {previewingAttachmentId === attachment.id ? '...' : isPolish ? 'Podgląd' : 'Preview'}
+                                        </button>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={() => void handleOpenAttachment(attachment)}
@@ -2464,8 +2813,10 @@ export default function DashboardPage() {
                         </div>
                         </>
                       )}
-                    </div>
-                  </section>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
                 )}
               </>
             )}
