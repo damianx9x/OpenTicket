@@ -3,7 +3,7 @@
 <!-- INSTALLER_LINK:START -->
 ## Installer (PKG)
 - Latest: [OpenTicket-Installer.pkg](https://github.com/damianx9x/projekt-systemu-ticketowego/releases/latest/download/OpenTicket-Installer.pkg)
-- Release v0.3.0: [OpenTicket-Installer.pkg](https://github.com/damianx9x/projekt-systemu-ticketowego/releases/download/v0.3.0/OpenTicket-Installer.pkg)
+- Release v0.3.1: [OpenTicket-Installer.pkg](https://github.com/damianx9x/projekt-systemu-ticketowego/releases/download/v0.3.1/OpenTicket-Installer.pkg)
 <!-- INSTALLER_LINK:END -->
 
 ## GitHub Release Standard
@@ -203,6 +203,15 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (hotfix backup export v0.3.1)
+- Naprawiono błąd eksportu backupu:
+  - eksport używa aktywnie używanej ścieżki runtime DB (zamiast wyłącznie starego `dataPath` z configu),
+  - poprawiony import backupu przy reinstalacji i zmianie lokalizacji danych,
+  - zabezpieczone nadpisywanie configu po imporcie (utrzymanie poprawnych lokalnych ścieżek).
+- Opublikowano nowy instalator:
+  - release: `v0.3.1`,
+  - artefakty: `.pkg`, `.dmg`, `.zip`, `*.sha256`.
+
 ### 2026-02-21 (stabilność długoterminowa: silnik + baza)
 - Dodano cykliczny monitoring zdrowia backendu w desktop (`watchdog-health`):
   - jeśli proces żyje, ale healthcheck/DB przestają działać, desktop po 3 kolejnych błędach wykonuje auto-restart silnika,
