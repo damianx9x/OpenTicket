@@ -36,6 +36,7 @@ export interface TicketSummary {
   createdAt: string;
   updatedAt: string;
   owner?: TicketOwner;
+  assignedAgent?: TicketOwner | null;
 }
 
 export interface CreateTicketInput {
@@ -49,6 +50,15 @@ export interface CreateTicketInput {
   serialNumber?: string;
 }
 
+export interface UpdateTicketInput {
+  title?: string;
+  description?: string;
+  status?: TicketStatus;
+  priority?: TicketPriority;
+  assignedAgentId?: string | null;
+  assignedTo?: string;
+}
+
 export interface TicketQuery {
   page?: number;
   limit?: number;
@@ -57,6 +67,30 @@ export interface TicketQuery {
   search?: string;
   onlyMine?: boolean;
   minAgeDays?: number;
+}
+
+export interface CustomerHistoryItem {
+  id: string;
+  number: number;
+  title: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  createdAt: string;
+  updatedAt: string;
+  assignedAgentId?: string | null;
+  assignedAgent?: TicketOwner | null;
+}
+
+export interface CustomerHistoryResponse {
+  ownerUserId: string;
+  owner?: {
+    id: string;
+    name: string | null;
+    email: string;
+    phone?: string | null;
+  };
+  ticketCount: number;
+  items: CustomerHistoryItem[];
 }
 
 export interface CommentItem {
@@ -143,6 +177,18 @@ export async function createTicket(input: CreateTicketInput): Promise<TicketSumm
       priority: input.priority ?? 'NORMAL',
     }),
   });
+}
+
+export async function updateTicket(ticketId: string, input: UpdateTicketInput): Promise<TicketSummary> {
+  return requestData<TicketSummary>(`/api/v1/tickets/${ticketId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getCustomerHistory(ticketId: string, limit = 10): Promise<CustomerHistoryResponse> {
+  const normalizedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 50)) : 10;
+  return requestData<CustomerHistoryResponse>(`/api/v1/tickets/${ticketId}/customer-history?limit=${normalizedLimit}`);
 }
 
 export async function listComments(ticketId: string): Promise<CommentItem[]> {

@@ -928,6 +928,34 @@ app.on("ready", async () => {
       };
     });
 
+    ipcMain.handle("open-external-url", async (_event, payload: { url?: string }) => {
+      const raw = (payload?.url || "").trim();
+      if (!raw) {
+        return { success: false, message: "Brak adresu URL." };
+      }
+
+      let parsed: URL;
+      try {
+        parsed = new URL(raw);
+      } catch {
+        return { success: false, message: "Niepoprawny adres URL." };
+      }
+
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return { success: false, message: "Dozwolone są tylko adresy http/https." };
+      }
+
+      try {
+        await shell.openExternal(parsed.toString());
+      } catch (error: any) {
+        return {
+          success: false,
+          message: error?.message || "Nie udało się otworzyć adresu.",
+        };
+      }
+      return { success: true, message: `Otwarto: ${parsed.toString()}` };
+    });
+
     ipcMain.handle("engine-diagnose", async () => {
       return writeEngineDiagnosisReport();
     });

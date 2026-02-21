@@ -34,6 +34,7 @@ declare global {
       message: string;
       reportPath: string;
     }>;
+    openExternalUrl: (url: string) => Promise<{ success: boolean; message: string }>;
     onBackendCrashed: (callback: () => void) => () => void;
     onBackendWatchdog: (
       callback: (payload: { success: boolean; message: string; status?: EngineStatus }) => void,

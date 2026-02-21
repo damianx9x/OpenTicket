@@ -78,6 +78,10 @@ const api = {
     return ipcRenderer.invoke("engine-diagnose");
   },
 
+  openExternalUrl: async (url: string): Promise<{ success: boolean; message: string }> => {
+    return ipcRenderer.invoke("open-external-url", { url });
+  },
+
   // Renderer notifications
   onBackendCrashed: (callback: () => void): (() => void) => {
     const listener = () => callback();

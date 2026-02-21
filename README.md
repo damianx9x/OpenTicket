@@ -203,6 +203,50 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (hotfix setup/login + stabilność WebKit testów)
+- Naprawiono krytyczny błąd po setupie (`P2021`, brak tabel po `setup/init` bez restartu):
+  - `SetupService` wymusza refresh połączeń runtime Prisma przed resetem pliku sqlite i po zakończeniu setupu,
+  - eliminuje przypadki `Internal server error` przy pierwszym logowaniu po konfiguracji.
+- Potwierdzone funkcje operacyjne z ostatniego zakresu:
+  - auto-tworzenie/powiązanie klienta przy przyjęciu zgłoszenia + historia klienta,
+  - auto-przypisanie zgłoszenia do technika przyjmującego + ręczna zmiana przypisania,
+  - dzwonek przypomnień z badge i szybkim przejściem do ticketu,
+  - przycisk `WebUI` + alias `ticketmaster.localhost`,
+  - przycisk `Wczytaj bazę demo (200 zgłoszeń)` dla admina.
+- Poprawiono stabilność testów E2E:
+  - `Moj/testy/ui-random-10.mjs` używa jednoznacznych selektorów menu sidebar (brak fałszywych FAIL w WebKit).
+- Retest po zmianach:
+  - `./Moj/testy/smoke.sh --no-fresh` = PASS,
+  - `./Moj/testy/auth-smoke.sh --no-fresh` = PASS,
+  - `./Moj/testy/ui-random-10.sh --all-browsers` = PASS,
+  - test API (owner linkage + auto-assign + customer-history) = PASS,
+  - `POST /api/v1/demo/load` (200 rekordów) = PASS.
+
+### 2026-02-21 (flow zgłoszeń: klient+technik+przypomnienia)
+- Ticket intake:
+  - backend tworzy/powiązuje konto klienta (`REPORTER`) po e-mailu/telefonie, zamiast anonimowego wspólnego użytkownika,
+  - kolejne zgłoszenia tego samego klienta wiążą się z tym samym kontem (`ownerUserId`), co daje historię.
+- Przypisanie technika:
+  - nowe zgłoszenie utworzone przez `ADMIN/AGENT` automatycznie przypisuje się do przyjmującego technika,
+  - dodano ręczne przypisanie/odpięcie technika w dashboardzie (`Przypisanie technika` + zapis do backendu).
+- Historia klienta:
+  - nowy endpoint `GET /api/v1/tickets/:id/customer-history`,
+  - panel „Historia klienta” w szczegółach ticketu z przejściem do poprzednich zgłoszeń.
+- Przypomnienia UX:
+  - globalny dzwonek z badge (`!` przy zaległych),
+  - panel przypomnień z szybkim przejściem do ticketu.
+- WebUI i alias:
+  - nowy przycisk `WebUI` w headerze dashboardu,
+  - otwiera adres aliasowy `http://ticketmaster.localhost:<port>` (bez dodatkowej konfiguracji DNS),
+  - sekcja `Serwer` pokazuje aktywny URL WebUI i wyjaśnia różnicę `.localhost` vs `.local`.
+- Narzędzia admina:
+  - w zakładce `Serwer` (desktop) dodane szybkie akcje: restart silnika, szybka naprawa, otwarcie logów, raport diagnostyczny.
+- Retest po zmianach:
+  - `npm --prefix backend run build` = PASS,
+  - `npm --prefix frontend run build` = PASS,
+  - `npm --prefix desktop run build:electron` = PASS,
+  - testy Playwright (logowanie, przypisanie, historia klienta, dzwonek przypomnień, WebUI, demo button) = PASS.
+
 ### 2026-02-21 (hotfix backup export v0.3.1)
 - Naprawiono błąd eksportu backupu:
   - eksport używa aktywnie używanej ścieżki runtime DB (zamiast wyłącznie starego `dataPath` z configu),
@@ -507,6 +551,7 @@ APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
 3. Etap 6: podpisany QR + generator PDF naklejek + minimalny auth.
 
 ## Changelog
+- `2026-02-21`: hotfix setup/login po inicjalizacji (refresh połączeń Prisma; koniec błędów `P2021` po `setup/init`) + poprawka selektorów random UI testów dla WebKit.
 - `2026-02-21`: release `0.3.0` (backend/frontend/desktop), kompletny deinstalator w instalatorze `.pkg`, narzędzia ratunkowe na loginie desktop, poprawa deterministyczności `Moj/testy/ui-random-10` i `Moj/testy/start.sh`, pełny retest go/no-go.
 - `2026-02-20`: stabilizacja repo, naprawa backendu i narzędzi diagnostycznych (Etap 0-2), testy 5/5 dla Etap 1 i 2.
 - `2026-02-20`: domknięcie Etapu 3 (WebUI↔API) + folder `Moj` z oficjalnym installer/uninstaller.

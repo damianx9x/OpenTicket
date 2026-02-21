@@ -10,6 +10,7 @@ import {
   Clock3,
   DollarSign,
   Download,
+  ExternalLink,
   Flame,
   Folder,
   Headphones,
@@ -31,9 +32,11 @@ import {
   addCostItem,
   asNumber,
   createTicket,
+  getCustomerHistory,
   listComments,
   listCostItems,
   listTickets,
+  updateTicket,
   type CommentItem,
   type CostItem,
   type CostSummary,
@@ -262,12 +265,32 @@ export default function DashboardPage() {
   const [serverLoading, setServerLoading] = useState(false);
 
   const [ticketReminders, setTicketReminders] = useState<ReminderItem[]>([]);
+  const [globalReminders, setGlobalReminders] = useState<ReminderItem[]>([]);
+  const [showReminderPanel, setShowReminderPanel] = useState(false);
   const [newReminder, setNewReminder] = useState({
     title: '',
     note: '',
     dueAt: '',
   });
   const [reminderSubmitting, setReminderSubmitting] = useState(false);
+  const [assignableAgents, setAssignableAgents] = useState<AppUser[]>([]);
+  const [assignmentDraft, setAssignmentDraft] = useState('');
+  const [assigningTicket, setAssigningTicket] = useState(false);
+  const [customerHistory, setCustomerHistory] = useState<
+    Array<{
+      id: string;
+      number: number;
+      title: string;
+      status: TicketStatus;
+      priority: TicketPriority;
+      createdAt: string;
+    }>
+  >([]);
+  const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false);
+  const [serviceBusy, setServiceBusy] = useState<
+    'restart' | 'repair' | 'logs' | 'diagnostics' | null
+  >(null);
+  const [serviceInfo, setServiceInfo] = useState('');
 
   const [ticketForm, setTicketForm] = useState<CreateTicketInput>(emptyTicketForm);
   const [ticketFiles, setTicketFiles] = useState<File[]>([]);
@@ -400,6 +423,26 @@ export default function DashboardPage() {
     return order.map((key) => definitions[key]);
   }, [dashboardPrefs.widgetOrder, stats, uiLanguage]);
 
+  const pendingReminderCount = useMemo(
+    () => globalReminders.filter((item) => item.status === 'PENDING').length,
+    [globalReminders],
+  );
+  const overdueReminderCount = useMemo(
+    () =>
+      globalReminders.filter(
+        (item) => item.status === 'PENDING' && new Date(item.dueAt).getTime() <= Date.now(),
+      ).length,
+    [globalReminders],
+  );
+  const topReminderItems = useMemo(
+    () =>
+      [...globalReminders]
+        .filter((item) => item.status === 'PENDING')
+        .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+        .slice(0, 8),
+    [globalReminders],
+  );
+
   const notify = (next: Notice) => {
     setNotice(next);
     window.setTimeout(() => {
@@ -487,6 +530,19 @@ export default function DashboardPage() {
     }
   };
 
+  const loadAssignableAgents = async () => {
+    try {
+      const nextUsers = await listAppUsers(true);
+      const techs = nextUsers.filter((item) => {
+        const role = (item.role || '').toUpperCase();
+        return (role === 'ADMIN' || role === 'AGENT') && !item.disabledAt;
+      });
+      setAssignableAgents(techs);
+    } catch {
+      setAssignableAgents([]);
+    }
+  };
+
   const loadSelectedUserNotes = async (userId: string) => {
     try {
       const notes = await listUserNotes(userId);
@@ -549,6 +605,36 @@ export default function DashboardPage() {
         text: `Nie udało się pobrać przypomnień: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
       });
       setTicketReminders([]);
+    }
+  };
+
+  const loadGlobalReminders = async () => {
+    try {
+      const items = await listReminders({ includeDone: false });
+      setGlobalReminders(items);
+    } catch {
+      setGlobalReminders([]);
+    }
+  };
+
+  const loadCustomerHistoryForTicket = async (ticketId: string) => {
+    setCustomerHistoryLoading(true);
+    try {
+      const history = await getCustomerHistory(ticketId, 12);
+      setCustomerHistory(
+        history.items.map((item) => ({
+          id: item.id,
+          number: item.number,
+          title: item.title,
+          status: item.status,
+          priority: item.priority,
+          createdAt: item.createdAt,
+        })),
+      );
+    } catch {
+      setCustomerHistory([]);
+    } finally {
+      setCustomerHistoryLoading(false);
     }
   };
 
@@ -639,7 +725,7 @@ export default function DashboardPage() {
             prev.savedFilters,
         }));
 
-        await loadTicketsData();
+        await Promise.all([loadTicketsData(), loadAssignableAgents(), loadGlobalReminders()]);
       } catch (error) {
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('ts_auth_token');
@@ -669,6 +755,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (selectedTicketId) {
       loadTicketDetails(selectedTicketId);
+      void loadCustomerHistoryForTicket(selectedTicketId);
+    } else {
+      setCustomerHistory([]);
+      setAssignmentDraft('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTicketId]);
@@ -695,6 +785,10 @@ export default function DashboardPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNav, bootLoading, isAdmin]);
+
+  useEffect(() => {
+    setAssignmentDraft(selectedTicket?.assignedAgentId || '');
+  }, [selectedTicket?.id, selectedTicket?.assignedAgentId]);
 
   useEffect(() => {
     if (activeNav === 'users' && selectedUserId) {
@@ -734,6 +828,20 @@ export default function DashboardPage() {
     setTestEmailTo((prev) => prev || currentUser.email || '');
     setTestSmsTo((prev) => prev || currentUser.phone || '');
   }, [currentUser]);
+
+  useEffect(() => {
+    if (bootLoading) {
+      return;
+    }
+
+    void loadGlobalReminders();
+    const timer = window.setInterval(() => {
+      void loadGlobalReminders();
+    }, 45000);
+
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootLoading]);
 
   const handleCreateTicket = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -907,7 +1015,7 @@ export default function DashboardPage() {
     try {
       await createAppUser(newUser);
       setNewUser({ email: '', name: '', role: 'AGENT', phone: '', password: '' });
-      await loadUsers();
+      await Promise.all([loadUsers(), loadAssignableAgents()]);
       notify({ type: 'success', text: 'Użytkownik został dodany.' });
     } catch (error) {
       notify({
@@ -934,7 +1042,7 @@ export default function DashboardPage() {
         disabled: editingUser.disabled,
       });
       setEditingUser((prev) => (prev ? { ...prev, password: '' } : prev));
-      await loadUsers();
+      await Promise.all([loadUsers(), loadAssignableAgents()]);
       notify({ type: 'success', text: 'Dane użytkownika zostały zaktualizowane.' });
     } catch (error) {
       notify({
@@ -1270,7 +1378,7 @@ export default function DashboardPage() {
         dueAt: newReminder.dueAt,
       });
       setNewReminder({ title: '', note: '', dueAt: '' });
-      await loadTicketReminders(selectedTicketId);
+      await Promise.all([loadTicketReminders(selectedTicketId), loadGlobalReminders()]);
       notify({ type: 'success', text: 'Przypomnienie zostało dodane.' });
     } catch (error) {
       notify({
@@ -1341,7 +1449,7 @@ export default function DashboardPage() {
     try {
       await markReminderDone(reminder.id, done);
       if (selectedTicketId) {
-        await loadTicketReminders(selectedTicketId);
+        await Promise.all([loadTicketReminders(selectedTicketId), loadGlobalReminders()]);
       }
       notify({ type: 'success', text: done ? 'Przypomnienie oznaczone jako wykonane.' : 'Przypomnienie ponownie aktywne.' });
     } catch (error) {
@@ -1356,7 +1464,7 @@ export default function DashboardPage() {
     try {
       await deleteReminder(reminder.id);
       if (selectedTicketId) {
-        await loadTicketReminders(selectedTicketId);
+        await Promise.all([loadTicketReminders(selectedTicketId), loadGlobalReminders()]);
       }
       notify({ type: 'success', text: 'Przypomnienie zostało usunięte.' });
     } catch (error) {
@@ -1364,6 +1472,93 @@ export default function DashboardPage() {
         type: 'error',
         text: `Nie udało się usunąć przypomnienia: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
       });
+    }
+  };
+
+  const handleAssignSelectedTicket = async () => {
+    if (!selectedTicketId) {
+      notify({ type: 'error', text: 'Najpierw wybierz ticket.' });
+      return;
+    }
+
+    setAssigningTicket(true);
+    try {
+      await updateTicket(selectedTicketId, {
+        assignedAgentId: assignmentDraft || null,
+      });
+      await Promise.all([loadTicketsData(), loadTicketDetails(selectedTicketId)]);
+      notify({
+        type: 'success',
+        text: assignmentDraft ? 'Technik został przypisany do zgłoszenia.' : 'Przypisanie technika zostało usunięte.',
+      });
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: `Nie udało się zapisać przypisania: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    } finally {
+      setAssigningTicket(false);
+    }
+  };
+
+  const resolvePreferredWebUiUrl = (): string => {
+    if (serverInfo?.installationMode === 'client_only' && serverInfo?.remoteApiBaseUrl) {
+      return serverInfo.remoteApiBaseUrl;
+    }
+
+    try {
+      const docsUrl = new URL(buildApiUrl('/api/docs'));
+      const port = docsUrl.port || '3000';
+      return `${docsUrl.protocol}//ticketmaster.localhost:${port}`;
+    } catch {
+      if (typeof window !== 'undefined') {
+        return window.location.origin;
+      }
+      return 'http://127.0.0.1:3000';
+    }
+  };
+
+  const handleOpenWebUi = async () => {
+    const targetUrl = resolvePreferredWebUiUrl();
+    try {
+      const bridge = getElectron();
+      if (bridge?.openExternalUrl) {
+        await bridge.openExternalUrl(targetUrl);
+      } else if (typeof window !== 'undefined') {
+        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      }
+      notify({ type: 'success', text: `Otwarto WebUI: ${targetUrl}` });
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: `Nie udało się otworzyć WebUI: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    }
+  };
+
+  const runEngineAction = async (
+    action: 'restart' | 'repair' | 'logs' | 'diagnostics',
+    runner: (bridge: ElectronBridge) => Promise<any>,
+  ) => {
+    const bridge = getElectron();
+    if (!bridge) {
+      notify({ type: 'error', text: 'Akcja dostępna tylko w aplikacji desktop.' });
+      return;
+    }
+
+    setServiceBusy(action);
+    try {
+      const result = await runner(bridge);
+      const message = result?.message || 'Akcja wykonana.';
+      setServiceInfo(message);
+      await loadServerStatus();
+      notify({ type: 'success', text: message });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nieznany błąd.';
+      setServiceInfo(message);
+      notify({ type: 'error', text: message });
+    } finally {
+      setServiceBusy(null);
     }
   };
 
@@ -1453,24 +1648,95 @@ export default function DashboardPage() {
                   </option>
                 ))}
               </select>
-              {isAdmin && (
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveNav('vat');
-                    notify({
-                      type: 'success',
-                      text: isPolish
-                        ? 'Otworzono konfigurację przypomnień i powiadomień.'
-                        : 'Notification settings opened.',
-                    });
-                  }}
-                  className="rounded-md p-2 text-slate-400 transition hover:text-blue-600"
-                  title={isPolish ? 'Powiadomienia' : 'Notifications'}
+                  onClick={() => setShowReminderPanel((prev) => !prev)}
+                  className="relative rounded-md p-2 text-slate-400 transition hover:text-blue-600"
+                  title={isPolish ? 'Powiadomienia i przypomnienia' : 'Notifications and reminders'}
                 >
                   <Bell className="h-5 w-5" />
+                  {pendingReminderCount > 0 && (
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                      {overdueReminderCount > 0 ? '!' : pendingReminderCount > 9 ? '9+' : pendingReminderCount}
+                    </span>
+                  )}
                 </button>
-              )}
+                {showReminderPanel && (
+                  <div className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {isPolish ? 'Przypomnienia' : 'Reminders'}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowReminderPanel(false)}
+                        className="text-xs text-slate-500 hover:text-slate-700"
+                      >
+                        X
+                      </button>
+                    </div>
+                    {topReminderItems.length === 0 ? (
+                      <p className="text-xs text-slate-500">
+                        {isPolish ? 'Brak aktywnych przypomnień.' : 'No pending reminders.'}
+                      </p>
+                    ) : (
+                      <div className="max-h-64 space-y-2 overflow-y-auto">
+                        {topReminderItems.map((item) => {
+                          const ticket = tickets.find((entry) => entry.id === item.ticketId);
+                          const overdue = new Date(item.dueAt).getTime() <= Date.now();
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                if (item.ticketId) {
+                                  setActiveNav('tickets');
+                                  setSelectedTicketId(item.ticketId);
+                                }
+                                setShowReminderPanel(false);
+                              }}
+                              className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${
+                                overdue
+                                  ? 'border-red-200 bg-red-50 text-red-800'
+                                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                              }`}
+                            >
+                              <p className="font-semibold">{item.title}</p>
+                              <p className="mt-0.5 text-[11px]">
+                                {isPolish ? 'Termin' : 'Due'}: {formatDate(item.dueAt)}
+                              </p>
+                              {ticket && <p className="text-[11px]">#{ticket.number} - {ticket.title}</p>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveNav('vat');
+                          setShowReminderPanel(false);
+                        }}
+                        className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
+                      >
+                        {isPolish ? 'Konfiguracja powiadomień' : 'Notification settings'}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleOpenWebUi()}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                title={isPolish ? 'Otwórz WebUI w przeglądarce' : 'Open WebUI in browser'}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                WebUI
+              </button>
 
               {isElectron && (
                 <button
@@ -1702,7 +1968,9 @@ export default function DashboardPage() {
                                   {PRIORITY_LABELS[uiLanguage][ticket.priority]}
                                 </td>
                                 <td className="px-4 py-3 text-slate-500">
-                                  {ticket.assignedAgentId ? 'Przypisany' : 'Nieprzypisany'}
+                                  {ticket.assignedAgent
+                                    ? ticket.assignedAgent.name || ticket.assignedAgent.email
+                                    : 'Nieprzypisany'}
                                 </td>
                                 <td className="px-4 py-3 text-right">
                                   <span className="inline-flex items-center text-slate-400">
@@ -1729,6 +1997,63 @@ export default function DashboardPage() {
                           <div className="text-xs text-slate-500">Utworzono: {formatDate(selectedTicket.createdAt)}</div>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{selectedTicket.description}</p>
+                      </div>
+
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 p-4">
+                          <h4 className="text-sm font-semibold text-slate-900">Przypisanie technika</h4>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Nowe zgłoszenia przyjęte przez technika przypisują się automatycznie. Tutaj możesz to zmienić.
+                          </p>
+                          <div className="mt-3 flex flex-col gap-2 md:flex-row">
+                            <select
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                              value={assignmentDraft}
+                              onChange={(event) => setAssignmentDraft(event.target.value)}
+                              disabled={assigningTicket}
+                            >
+                              <option value="">Nieprzypisany</option>
+                              {assignableAgents.map((agent) => (
+                                <option key={agent.id} value={agent.id}>
+                                  {(agent.name || agent.email) + ` (${agent.role})`}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => void handleAssignSelectedTicket()}
+                              disabled={assigningTicket}
+                              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-300"
+                            >
+                              {assigningTicket ? 'Zapisywanie...' : 'Zapisz przypisanie'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-200 p-4">
+                          <h4 className="text-sm font-semibold text-slate-900">Historia klienta</h4>
+                          {customerHistoryLoading ? (
+                            <p className="mt-2 text-xs text-slate-500">Ładowanie historii klienta...</p>
+                          ) : customerHistory.length === 0 ? (
+                            <p className="mt-2 text-xs text-slate-500">Brak wcześniejszych zgłoszeń dla tego klienta.</p>
+                          ) : (
+                            <div className="mt-2 max-h-32 space-y-1 overflow-y-auto text-xs">
+                              {customerHistory.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => setSelectedTicketId(item.id)}
+                                  className="flex w-full items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1 text-left hover:bg-slate-100"
+                                >
+                                  <span>
+                                    #{item.number} - {item.title}
+                                  </span>
+                                  <span className="text-slate-500">{formatDate(item.createdAt)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {loadingDetails ? (
@@ -2637,6 +2962,47 @@ export default function DashboardPage() {
                       Odśwież
                     </button>
                   </div>
+                  {isElectron && (
+                    <div className="mb-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      <button
+                        type="button"
+                        onClick={() => void runEngineAction('restart', (bridge) => bridge.restartEngine())}
+                        disabled={serviceBusy !== null}
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {serviceBusy === 'restart' ? 'Restart...' : 'Restart silnika'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runEngineAction('repair', (bridge) => bridge.quickRepairEngine())}
+                        disabled={serviceBusy !== null}
+                        className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-60"
+                      >
+                        {serviceBusy === 'repair' ? 'Naprawiam...' : 'Szybka naprawa'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runEngineAction('logs', (bridge) => bridge.openLogsFolder())}
+                        disabled={serviceBusy !== null}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                      >
+                        {serviceBusy === 'logs' ? 'Otwieram...' : 'Otwórz logi'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runEngineAction('diagnostics', (bridge) => bridge.createEngineDiagnostics())}
+                        disabled={serviceBusy !== null}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                      >
+                        {serviceBusy === 'diagnostics' ? 'Tworzę raport...' : 'Raport diagnostyczny'}
+                      </button>
+                    </div>
+                  )}
+                  {serviceInfo && (
+                    <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+                      {serviceInfo}
+                    </div>
+                  )}
                   {serverLoading ? (
                     <p className="text-sm text-slate-500">Ładowanie diagnostyki serwera...</p>
                   ) : (
@@ -2668,6 +3034,20 @@ export default function DashboardPage() {
                         )}
                         <p>
                           <strong>Port:</strong> {serverInfo?.port || '-'}
+                        </p>
+                        <p>
+                          <strong>WebUI:</strong>{' '}
+                          <a
+                            className="text-blue-600 hover:underline"
+                            href={resolvePreferredWebUiUrl()}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {resolvePreferredWebUiUrl()}
+                          </a>
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Alias lokalny: <code>ticketmaster.localhost</code> (wariant <code>.local</code> wymaga mDNS / ręcznej konfiguracji DNS).
                         </p>
                       </div>
                       <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">

@@ -102,29 +102,32 @@ function randomInt(max) {
 }
 
 async function runRandomActions(page) {
+  const menuButton = (name) =>
+    page.locator('aside').first().getByRole('button', { name, exact: true });
+
   const actions = [
     async () => {
-      await page.getByRole('button', { name: 'Statystyki' }).click();
+      await menuButton('Statystyki').click();
       await page.waitForSelector('text=Zaawansowane statystyki');
       return 'open_statistics';
     },
     async () => {
-      await page.getByRole('button', { name: 'Użytkownicy' }).click();
+      await menuButton('Użytkownicy').click();
       await page.waitForSelector('text=Użytkownicy (widok kontaktów)');
       return 'open_users';
     },
     async () => {
-      await page.getByRole('button', { name: 'Konfiguracja' }).click();
+      await menuButton('Konfiguracja').click();
       await page.waitForSelector('text=Konfiguracja firmy i integracji');
       return 'open_config';
     },
     async () => {
-      await page.getByRole('button', { name: 'Zgłoszenia' }).click();
+      await menuButton('Zgłoszenia').click();
       await page.waitForSelector('text=Informacje');
       return 'open_tickets';
     },
     async () => {
-      await page.getByRole('button', { name: 'Zgłoszenia' }).click();
+      await menuButton('Zgłoszenia').click();
       await page.waitForSelector('text=Informacje');
       const createButton = page.getByRole('button', { name: 'Nowe Zgłoszenie' });
       await createButton.waitFor({ timeout: 10000 });
@@ -134,12 +137,12 @@ async function runRandomActions(page) {
       return 'open_close_new_ticket_modal';
     },
     async () => {
-      await page.getByRole('button', { name: 'Zgłoszenia' }).click();
+      await menuButton('Zgłoszenia').click();
       await page.locator('input[placeholder*=\"Szukaj po\"]').first().fill('test');
       return 'search_tickets';
     },
     async () => {
-      await page.getByRole('button', { name: 'Zgłoszenia' }).click();
+      await menuButton('Zgłoszenia').click();
       const selects = page.locator('select');
       const count = await selects.count();
       if (count > 0) {
@@ -148,12 +151,12 @@ async function runRandomActions(page) {
       return 'change_filter';
     },
     async () => {
-      await page.getByRole('button', { name: 'Zgłoszenia' }).click();
+      await menuButton('Zgłoszenia').click();
       await page.getByRole('button', { name: /Odśwież/i }).click();
       return 'refresh_tickets';
     },
     async () => {
-      await page.getByRole('button', { name: 'Konfiguracja' }).click();
+      await menuButton('Konfiguracja').click();
       await page.waitForSelector('text=Personalizacja technika (profil UI)');
       return 'open_ui_personalization';
     },

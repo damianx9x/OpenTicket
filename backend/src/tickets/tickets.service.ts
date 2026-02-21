@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
@@ -16,13 +16,15 @@ export class TicketsService {
   /**
    * Tworzy nowy ticket i automatycznie generuje publicToken do śledzenia statusu.
    */
-  async create(dto: CreateTicketDto) {
+  async create(dto: CreateTicketDto, currentUser?: AuthenticatedUser) {
     const publicToken = crypto.randomBytes(16).toString('hex');
     const ownerUserId = await this.resolveOwnerUserId(dto);
+    const assignedAgentId = await this.resolveAssignedAgentId(dto, currentUser);
     const ticket = await this.createWithNumberRetry({
       dto,
       ownerUserId,
       publicToken,
+      assignedAgentId,
     });
 
     this.logger.log(`Ticket created: ${ticket.id} (#${ticket.number})`);
@@ -152,6 +154,51 @@ export class TicketsService {
     return ticket;
   }
 
+  async getCustomerHistory(ticketId: string, limit = 10) {
+    const normalizedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 50)) : 10;
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        ownerUserId: true,
+        owner: { select: { id: true, name: true, email: true, phone: true } },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException(`Ticket ${ticketId} not found`);
+    }
+
+    const items = await this.prisma.ticket.findMany({
+      where: {
+        ownerUserId: ticket.ownerUserId,
+        id: { not: ticketId },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: normalizedLimit,
+      select: {
+        id: true,
+        number: true,
+        title: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        assignedAgentId: true,
+        assignedAgent: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    return {
+      owner: ticket.owner,
+      ownerUserId: ticket.ownerUserId,
+      ticketCount: items.length,
+      items,
+    };
+  }
+
   /**
    * Pobiera ticket po public_token (portal statusu — bez logowania).
    */
@@ -199,9 +246,16 @@ export class TicketsService {
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.priority !== undefined) data.priority = dto.priority as any;
 
-    if (dto.assignedAgentId !== undefined) {
-      data.assignedAgent = dto.assignedAgentId
-        ? { connect: { id: dto.assignedAgentId } }
+    const resolvedAssignedAgentId =
+      dto.assignedAgentId !== undefined
+        ? await this.resolveAssignedAgentReference(dto.assignedAgentId, true)
+        : dto.assignedTo !== undefined
+          ? await this.resolveAssignedAgentReference(dto.assignedTo, true)
+          : undefined;
+
+    if (resolvedAssignedAgentId !== undefined) {
+      data.assignedAgent = resolvedAssignedAgentId
+        ? { connect: { id: resolvedAssignedAgentId } }
         : { disconnect: true };
     }
 
@@ -261,6 +315,7 @@ export class TicketsService {
     dto: CreateTicketDto;
     ownerUserId: string;
     publicToken: string;
+    assignedAgentId: string | null;
   }) {
     const maxAttempts = 6;
 
@@ -278,8 +333,8 @@ export class TicketsService {
             publicToken: params.publicToken,
             owner: { connect: { id: params.ownerUserId } },
             ...(params.dto.organizationId ? { organization: { connect: { id: params.dto.organizationId } } } : {}),
-            ...(params.dto.assignedAgentId
-              ? { assignedAgent: { connect: { id: params.dto.assignedAgentId } } }
+            ...(params.assignedAgentId
+              ? { assignedAgent: { connect: { id: params.assignedAgentId } } }
               : {}),
           },
           include: {
@@ -316,19 +371,177 @@ export class TicketsService {
       }
     }
 
-    const email = (dto.customerEmail || 'reporter.local@openticket.local').trim().toLowerCase();
-    const existingByEmail = await this.prisma.user.findUnique({ where: { email } });
-    if (existingByEmail) {
-      return existingByEmail.id;
+    const normalizedEmail = this.normalizeEmail(dto.customerEmail);
+    const normalizedPhone = this.normalizePhone(dto.customerPhone);
+    const normalizedName = this.normalizeName(dto.customerName);
+
+    if (normalizedEmail) {
+      const existingByEmail = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+      if (existingByEmail) {
+        await this.enrichReporter(existingByEmail.id, normalizedName, normalizedPhone);
+        return existingByEmail.id;
+      }
     }
 
+    if (normalizedPhone) {
+      const existingByPhone = await this.prisma.user.findFirst({
+        where: {
+          role: 'REPORTER',
+          phone: normalizedPhone,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (existingByPhone) {
+        await this.enrichReporter(existingByPhone.id, normalizedName, normalizedPhone);
+        return existingByPhone.id;
+      }
+    }
+
+    if (normalizedName) {
+      const existingByName = await this.prisma.user.findFirst({
+        where: {
+          role: 'REPORTER',
+          name: normalizedName,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (existingByName) {
+        await this.enrichReporter(existingByName.id, normalizedName, normalizedPhone);
+        return existingByName.id;
+      }
+    }
+
+    const fallbackEmail = normalizedEmail ?? this.buildReporterAliasEmail(normalizedName, normalizedPhone);
     const created = await this.prisma.user.create({
       data: {
-        email,
-        name: dto.customerName || 'System Reporter',
+        email: fallbackEmail,
+        name: normalizedName || 'Klient',
+        phone: normalizedPhone || null,
         role: 'REPORTER',
       },
     });
     return created.id;
+  }
+
+  private async resolveAssignedAgentId(
+    dto: CreateTicketDto,
+    currentUser?: AuthenticatedUser,
+  ): Promise<string | null> {
+    const explicit =
+      dto.assignedAgentId !== undefined
+        ? await this.resolveAssignedAgentReference(dto.assignedAgentId, false)
+        : dto.assignedTo !== undefined
+          ? await this.resolveAssignedAgentReference(dto.assignedTo, false)
+          : undefined;
+
+    if (explicit !== undefined) {
+      return explicit;
+    }
+
+    const role = (currentUser?.role || '').toUpperCase();
+    if (currentUser?.id && (role === 'ADMIN' || role === 'AGENT')) {
+      return currentUser.id;
+    }
+
+    return null;
+  }
+
+  private async resolveAssignedAgentReference(
+    reference: string | null | undefined,
+    allowEmpty: boolean,
+  ): Promise<string | null | undefined> {
+    if (reference === undefined) {
+      return undefined;
+    }
+
+    const trimmed = (reference || '').trim();
+    if (trimmed.length === 0) {
+      return allowEmpty ? null : undefined;
+    }
+
+    const byId = await this.prisma.user.findUnique({
+      where: { id: trimmed },
+      select: { id: true, role: true, disabledAt: true },
+    });
+    if (byId) {
+      const role = byId.role.toUpperCase();
+      if (!['ADMIN', 'AGENT'].includes(role)) {
+        throw new BadRequestException('Wybrany użytkownik nie jest technikiem.');
+      }
+      if (byId.disabledAt) {
+        throw new BadRequestException('Wybrany technik jest zablokowany.');
+      }
+      return byId.id;
+    }
+
+    const byEmail = await this.prisma.user.findUnique({
+      where: { email: trimmed.toLowerCase() },
+      select: { id: true, role: true, disabledAt: true },
+    });
+    if (byEmail) {
+      const role = byEmail.role.toUpperCase();
+      if (!['ADMIN', 'AGENT'].includes(role)) {
+        throw new BadRequestException('Wybrany użytkownik nie jest technikiem.');
+      }
+      if (byEmail.disabledAt) {
+        throw new BadRequestException('Wybrany technik jest zablokowany.');
+      }
+      return byEmail.id;
+    }
+
+    throw new BadRequestException(`Nie znaleziono technika dla: ${trimmed}`);
+  }
+
+  private normalizeEmail(value?: string): string | null {
+    const normalized = (value || '').trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private normalizePhone(value?: string): string | null {
+    const normalized = (value || '').trim().replace(/\s+/g, '');
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private normalizeName(value?: string): string | null {
+    const normalized = (value || '').trim().replace(/\s+/g, ' ');
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private buildReporterAliasEmail(name: string | null, phone: string | null): string {
+    if (phone) {
+      const digits = phone.replace(/[^0-9+]/g, '');
+      if (digits.length >= 6) {
+        return `phone-${digits.replace(/^\+/, '00')}@customer.openticket.local`;
+      }
+    }
+
+    if (name) {
+      const slug = name
+        .normalize('NFKD')
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .slice(0, 42);
+      if (slug.length > 0) {
+        return `name-${slug}@customer.openticket.local`;
+      }
+    }
+
+    return `anonymous-${crypto.randomBytes(4).toString('hex')}@customer.openticket.local`;
+  }
+
+  private async enrichReporter(userId: string, name: string | null, phone: string | null): Promise<void> {
+    if (!name && !phone) {
+      return;
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(name ? { name } : {}),
+        ...(phone ? { phone } : {}),
+      },
+    });
   }
 }

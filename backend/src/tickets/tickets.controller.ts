@@ -34,8 +34,8 @@ export class TicketsController {
   @ApiOperation({ summary: 'Utwórz nowy ticket' })
   @ApiResponse({ status: 201, description: 'Ticket utworzony' })
   @ApiResponse({ status: 400, description: 'Błąd walidacji' })
-  async create(@Body() dto: CreateTicketDto) {
-    return this.ticketsService.create(dto);
+  async create(@Body() dto: CreateTicketDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.ticketsService.create(dto, user);
   }
 
   @Get()
@@ -54,6 +54,21 @@ export class TicketsController {
   @ApiResponse({ status: 404, description: 'Nie znaleziono ticketu' })
   async getByPublicToken(@Param('token') token: string) {
     return this.ticketsService.findByPublicToken(token);
+  }
+
+  @Get(':id/customer-history')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT', 'REPORTER', 'VIEWER')
+  @ApiOperation({ summary: 'Historia zgłoszeń klienta (dla właściciela ticketu)' })
+  @ApiParam({ name: 'id', description: 'UUID ticketu' })
+  @ApiResponse({ status: 200, description: 'Historia zgłoszeń klienta' })
+  @ApiResponse({ status: 404, description: 'Ticket nie znaleziony' })
+  async customerHistory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = Number(limit);
+    return this.ticketsService.getCustomerHistory(id, Number.isFinite(parsedLimit) ? parsedLimit : undefined);
   }
 
   @Get(':id')

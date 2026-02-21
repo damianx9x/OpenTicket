@@ -17,6 +17,7 @@ import * as crypto from 'crypto';
 import * as os from 'os';
 import { spawnSync } from 'child_process';
 import { hashPassword } from '../common/security/password';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface DataPathValidationResult {
   ok: boolean;
@@ -32,7 +33,10 @@ export interface DataPathValidationResult {
 export class SetupService {
   private readonly logger = new Logger(SetupService.name);
 
-  constructor(private configLoader: ConfigLoaderService) {}
+  constructor(
+    private readonly configLoader: ConfigLoaderService,
+    private readonly prismaService: PrismaService,
+  ) {}
 
   /**
    * Initialize the system with user-provided configuration
@@ -70,6 +74,11 @@ export class SetupService {
 
       process.env.DATABASE_URL = dbUrl;
       this.logger.log(`Database URL set to: ${dbUrl}`);
+
+      // If Prisma already opened sqlite connections (for example due to stale auth probe),
+      // replacing the sqlite file can leave runtime on deleted inode and cause P2021.
+      // We hard-disconnect before touching database file and reconnect lazily after setup.
+      await this.refreshRuntimePrisma('before sqlite reset');
 
       // Setup should always start from a clean sqlite file.
       // This avoids partial schema artifacts after interrupted setup attempts.
@@ -115,6 +124,7 @@ export class SetupService {
 
       await this.configLoader.saveConfig(config);
       this.logger.log('Configuration saved');
+      await this.refreshRuntimePrisma('after setup init');
 
       return {
         success: true,
@@ -168,6 +178,7 @@ export class SetupService {
 
     await this.configLoader.saveConfig(config);
     this.logger.log(`Client-only mode configured. Remote API base: ${remoteApiBaseUrl}`);
+    await this.refreshRuntimePrisma('after client-only setup');
 
     return {
       success: true,
@@ -1105,5 +1116,16 @@ export class SetupService {
 
   private clampInt(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Math.floor(value)));
+  }
+
+  private async refreshRuntimePrisma(stage: string): Promise<void> {
+    try {
+      await this.prismaService.$disconnect();
+      this.logger.log(`Runtime Prisma connections refreshed (${stage}).`);
+    } catch (error: any) {
+      this.logger.warn(
+        `Runtime Prisma disconnect skipped (${stage}): ${error?.message || String(error)}`,
+      );
+    }
   }
 }

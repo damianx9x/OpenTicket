@@ -18,7 +18,7 @@ type RateRule = {
 };
 
 function isLoopbackOrigin(origin: string): boolean {
-  return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(origin);
+  return /^https?:\/\/(([\w-]+\.)*localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
 }
 
 function isPrivateLanOrigin(origin: string): boolean {
