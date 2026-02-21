@@ -5,11 +5,19 @@ import { InitStep1 } from './steps/Step1-Location';
 import { InitStep2 } from './steps/Step2-Admin';
 import { InitStep3 } from './steps/Step3-Progress';
 import { InitStep4 } from './steps/Step4-QRCode';
-import { SetupRequest, SetupResponse } from '@/lib/setup-client';
+import {
+  applyRuntimeApiBaseFromSetupStatus,
+  initializeClientOnlyMode,
+  InstallationMode,
+  SetupRequest,
+  SetupResponse,
+} from '@/lib/setup-client';
 
 export interface SetupWizardState {
   currentStep: 1 | 2 | 3 | 4;
+  installationMode: InstallationMode;
   dataPath: string;
+  remoteApiBaseUrl: string;
   adminEmail: string;
   adminPassword: string;
   organizationName: string;
@@ -20,6 +28,7 @@ export interface SetupWizardState {
 
 interface SetupWizardProps {
   onComplete?: (result: SetupResponse) => void;
+  initialDataPath?: string;
 }
 
 /**
@@ -29,10 +38,12 @@ interface SetupWizardProps {
  * Step 3: Initialization progress
  * Step 4: QR code for iOS pairing
  */
-export default function SetupWizard({ onComplete }: SetupWizardProps) {
+export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupWizardProps) {
   const [state, setState] = useState<SetupWizardState>({
     currentStep: 1,
-    dataPath: '',
+    installationMode: 'server_client',
+    dataPath: initialDataPath,
+    remoteApiBaseUrl: '',
     adminEmail: '',
     adminPassword: '',
     organizationName: '',
@@ -41,11 +52,33 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     error: null,
   });
 
-  const handleStep1Continue = (dataPath: string) => {
+  useEffect(() => {
+    if (!initialDataPath) {
+      return;
+    }
+
+    setState((prev) => {
+      if (prev.dataPath) {
+        return prev;
+      }
+      return {
+        ...prev,
+        dataPath: initialDataPath,
+      };
+    });
+  }, [initialDataPath]);
+
+  const handleStep1Continue = (payload: {
+    installationMode: InstallationMode;
+    dataPath: string;
+    remoteApiBaseUrl?: string;
+  }) => {
     setState((prev) => ({
       ...prev,
-      dataPath,
-      currentStep: 2,
+      installationMode: payload.installationMode,
+      dataPath: payload.dataPath,
+      remoteApiBaseUrl: payload.remoteApiBaseUrl || '',
+      currentStep: payload.installationMode === 'client_only' ? 3 : 2,
       error: null,
     }));
   };
@@ -66,17 +99,28 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
     try {
       const { initializeSystem } = await import('@/lib/setup-client');
-
-      const request: SetupRequest = {
-        dataPath: state.dataPath,
-        adminEmail: state.adminEmail,
-        adminPassword: state.adminPassword,
-        organizationName: state.organizationName || undefined,
-      };
-
-      const result = await initializeSystem(request);
+      let result: SetupResponse;
+      if (state.installationMode === 'client_only') {
+        result = await initializeClientOnlyMode({
+          remoteApiBaseUrl: state.remoteApiBaseUrl,
+        });
+      } else {
+        const request: SetupRequest = {
+          dataPath: state.dataPath,
+          adminEmail: state.adminEmail,
+          adminPassword: state.adminPassword,
+          organizationName: state.organizationName || undefined,
+        };
+        result = await initializeSystem(request);
+      }
 
       if (result.success) {
+        applyRuntimeApiBaseFromSetupStatus({
+          isSetup: true,
+          setupMode: false,
+          installationMode: result.installationMode || state.installationMode,
+          remoteApiBaseUrl: result.remoteApiBaseUrl || state.remoteApiBaseUrl,
+        });
         setState((prev) => ({
           ...prev,
           setupResult: result,
@@ -100,10 +144,34 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     }
   };
 
+  const handleContinueToDashboard = async () => {
+    if (state.installationMode === 'client_only') {
+      window.location.href = '/login';
+      return;
+    }
+
+    // Best UX: auto-login with just-created admin and open dashboard directly.
+    // Fallback to login screen if automatic session creation fails.
+    try {
+      const { login } = await import('@/lib/auth-client');
+      await login(state.adminEmail, state.adminPassword);
+      window.location.href = '/dashboard';
+      return;
+    } catch (error) {
+      console.warn('Auto login after setup failed:', error);
+    }
+
+    const email = encodeURIComponent(state.adminEmail || '');
+    window.location.href = `/login${email ? `?email=${email}` : ''}`;
+  };
+
   const handleGoBack = () => {
     setState((prev) => ({
       ...prev,
-      currentStep: Math.max(1, prev.currentStep - 1) as 1 | 2 | 3 | 4,
+      currentStep:
+        prev.installationMode === 'client_only' && prev.currentStep === 3
+          ? 1
+          : (Math.max(1, prev.currentStep - 1) as 1 | 2 | 3 | 4),
       error: null,
     }));
   };
@@ -111,7 +179,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const resetWizard = () => {
     setState({
       currentStep: 1,
+      installationMode: 'server_client',
       dataPath: '',
+      remoteApiBaseUrl: '',
       adminEmail: '',
       adminPassword: '',
       organizationName: '',
@@ -121,13 +191,18 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     });
   };
 
+  const progressSteps = state.installationMode === 'client_only' ? [1, 3, 4] : [1, 2, 3, 4];
+  const visualStepIndex = progressSteps.findIndex((step) => step === state.currentStep);
+  const visualCurrentStep = visualStepIndex >= 0 ? visualStepIndex + 1 : 1;
+  const visualTotalSteps = progressSteps.length;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-2xl">
         {/* Progress Indicator */}
         <div className="mb-8">
           <div className="flex justify-between mb-2">
-            {[1, 2, 3, 4].map((step) => (
+            {progressSteps.map((step) => (
               <div
                 key={step}
                 className={`flex-1 h-2 mx-1 rounded-full transition-colors ${
@@ -137,7 +212,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             ))}
           </div>
           <p className="text-sm text-gray-600 text-center">
-            Step {state.currentStep} of 4
+            Step {visualCurrentStep} of {visualTotalSteps}
           </p>
         </div>
 
@@ -173,7 +248,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               onBack={handleGoBack}
               isLoading={state.isLoading}
               summary={{
+                installationMode: state.installationMode,
                 dataPath: state.dataPath,
+                remoteApiBaseUrl: state.remoteApiBaseUrl,
                 adminEmail: state.adminEmail,
                 organizationName: state.organizationName,
               }}
@@ -183,7 +260,10 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           {state.currentStep === 4 && state.setupResult && (
             <InitStep4
               result={state.setupResult}
+              installationMode={state.installationMode}
+              remoteApiBaseUrl={state.remoteApiBaseUrl}
               onNewSetup={resetWizard}
+              onContinueToDashboard={() => void handleContinueToDashboard()}
             />
           )}
         </div>

@@ -1,20 +1,33 @@
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsUUID, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsUUID, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateCommentDto {
   @ApiProperty({ description: 'UUID ticketu' })
+  @IsOptional()
   @IsUUID()
-  ticketId: string;
+  ticketId?: string;
 
-  @ApiProperty({ description: 'UUID autora komentarza' })
+  @ApiPropertyOptional({ description: 'UUID autora komentarza' })
+  @IsOptional()
   @IsUUID()
-  authorUserId: string;
+  authorUserId?: string;
 
-  @ApiProperty({ example: 'Sprawdziłem urządzenie — wymaga wymiany baterii.' })
+  @ApiPropertyOptional({ example: 'Sprawdziłem urządzenie — wymaga wymiany baterii.' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MinLength(1)
-  body: string;
+  body?: string;
+
+  @ApiPropertyOptional({ description: 'Legacy alias: autor tekstowy' })
+  @IsOptional()
+  @IsString()
+  author?: string;
+
+  @ApiPropertyOptional({ description: 'Legacy alias body' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  text?: string;
 
   @ApiPropertyOptional({ description: 'Czy komentarz jest wewnętrzny (niewidoczny dla klienta)', default: false })
   @IsOptional()

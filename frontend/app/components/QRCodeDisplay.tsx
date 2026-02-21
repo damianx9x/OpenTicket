@@ -24,7 +24,7 @@ export default function QRCodeDisplay({ data }: QRCodeDisplayProps) {
         const QRCode = (await import('qrcode')).default;
         const qrString = JSON.stringify(data);
         const svg = await QRCode.toString(qrString, {
-          type: 'image/svg+xml',
+          type: 'svg',
           width: 300,
           margin: 2,
           color: {

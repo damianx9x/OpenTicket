@@ -2,45 +2,78 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import Redis from 'ioredis';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
+import * as os from 'os';
+import { ConfigLoaderService } from '../config/config-loader.service';
+
+type CheckResult = {
+  ok: boolean;
+  reason?: string;
+  skipped?: boolean;
+};
 
 @Injectable()
 export class DiagnosticsService {
   private readonly logger = new Logger(DiagnosticsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly configLoader: ConfigLoaderService,
+  ) {}
 
-  async checkDatabase(): Promise<any> {
+  async checkDatabase(): Promise<CheckResult> {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       return { ok: true };
     } catch (err) {
       this.logger.error('DB check failed', err as any);
-      return { ok: false, reason: String(err) };
+      return { ok: false, reason: this.describeError(err) };
     }
   }
 
-  async checkRedis(): Promise<any> {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    const client = new Redis(redisUrl);
+  async checkRedis(): Promise<CheckResult> {
+    const redisUrl = (process.env.REDIS_URL || '').trim();
+    if (!redisUrl) {
+      return { ok: true, skipped: true, reason: 'redis-not-configured' };
+    }
+
+    const client = new Redis(redisUrl, {
+      lazyConnect: true,
+      connectTimeout: 1200,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      retryStrategy: () => null,
+    });
+    client.on('error', () => {
+      // Errors are handled by awaited connect/ping below.
+    });
+
     try {
+      await client.connect();
       const pong = await client.ping();
-      await client.quit();
+      await client.disconnect(false);
       return { ok: pong === 'PONG' };
     } catch (err) {
       this.logger.error('Redis check failed', err as any);
       try {
-        await client.quit();
+        await client.disconnect(false);
       } catch {}
-      return { ok: false, reason: String(err) };
+      return { ok: false, reason: this.describeError(err) };
     }
   }
 
-  async checkObjectStorage(): Promise<any> {
-    const endpoint = process.env.MINIO_ENDPOINT;
-    const accessKey = process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER;
-    const secret = process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD;
+  async checkObjectStorage(): Promise<CheckResult & { buckets?: string[] }> {
+    const cfg = this.configLoader.getConfigSync();
+    const storageMode = (cfg?.storageMode || 'local').toLowerCase();
+
+    if (storageMode !== 's3') {
+      return { ok: true, skipped: true, reason: `storage-mode-${storageMode}` };
+    }
+
+    const endpoint = (process.env.MINIO_ENDPOINT || cfg?.s3Endpoint || '').trim();
+    const accessKey = (process.env.MINIO_ACCESS_KEY || process.env.MINIO_ROOT_USER || cfg?.s3AccessKey || '').trim();
+    const secret = (process.env.MINIO_SECRET_KEY || process.env.MINIO_ROOT_PASSWORD || cfg?.s3SecretKey || '').trim();
     if (!endpoint || !accessKey || !secret) {
-      return { ok: false, reason: 'minio-env-missing' };
+      return { ok: false, reason: 's3-config-missing' };
     }
     try {
       const s3 = new S3Client({
@@ -53,7 +86,7 @@ export class DiagnosticsService {
       return { ok: true, buckets: (res.Buckets || []).map((b) => b.Name) };
     } catch (err) {
       this.logger.error('Object storage check failed', err as any);
-      return { ok: false, reason: String(err) };
+      return { ok: false, reason: this.describeError(err) };
     }
   }
 
@@ -85,5 +118,38 @@ export class DiagnosticsService {
       stats,
       timestamp: new Date().toISOString(),
     };
+  }
+
+  async buildSupportReport() {
+    const checks = await this.runAllChecks();
+    return {
+      checks,
+      runtime: {
+        node: process.version,
+        platform: process.platform,
+        arch: process.arch,
+        hostname: os.hostname(),
+        uptimeSec: Math.floor(process.uptime()),
+        memory: process.memoryUsage(),
+      },
+      config: {
+        env: process.env.NODE_ENV || 'development',
+        port: Number(process.env.PORT || 3000),
+        databaseUrlMasked: this.maskDatabaseUrl(process.env.DATABASE_URL || ''),
+      },
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  private maskDatabaseUrl(url: string): string {
+    if (!url) return '';
+    return url.replace(/:[^:@/]+@/, ':***@');
+  }
+
+  private describeError(err: unknown): string {
+    if (err instanceof Error && err.message) {
+      return err.message;
+    }
+    return String(err || 'unknown-error');
   }
 }

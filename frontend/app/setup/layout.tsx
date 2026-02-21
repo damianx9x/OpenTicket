@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Setup Wizard - Ticket System",
-  description: "Initialize your ticket system",
+  title: 'Setup Wizard - OpenTicket',
+  description: 'Initialize OpenTicket',
 };
 
 export default function SetupLayout({

@@ -83,10 +83,10 @@ class NetworkManager: ObservableObject {
                 throw NSError(domain: "API error", code: -1)
             }
             
-            let decoded = try JSONDecoder().decode(ApiResponse<TicketsResponse>.self, from: data)
+            let decoded = try JSONDecoder().decode(ApiResponse<[Ticket]>.self, from: data)
             
             DispatchQueue.main.async {
-                self.tickets = decoded.data?.items ?? []
+                self.tickets = decoded.data ?? []
                 self.isLoading = false
             }
         } catch {

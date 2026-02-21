@@ -9,10 +9,14 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiParam, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { AuthGuard } from '../common/auth/auth.guard';
+import { RolesGuard } from '../common/auth/roles.guard';
+import { Roles } from '../common/auth/roles.decorator';
 
 @ApiTags('Comments')
 @Controller('tickets/:ticketId/comments')
@@ -20,6 +24,8 @@ export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
 
   @Post()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT', 'REPORTER')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Dodaj komentarz do ticketu' })
   @ApiParam({ name: 'ticketId', description: 'UUID ticketu' })
@@ -34,6 +40,8 @@ export class CommentsController {
   }
 
   @Get()
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT', 'REPORTER', 'VIEWER')
   @ApiOperation({ summary: 'Lista komentarzy ticketu' })
   @ApiParam({ name: 'ticketId', description: 'UUID ticketu' })
   @ApiQuery({ name: 'includeInternal', required: false, type: Boolean })
@@ -47,6 +55,8 @@ export class CommentsController {
   }
 
   @Delete(':commentId')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT')
   @ApiOperation({ summary: 'Usuń komentarz' })
   @ApiParam({ name: 'ticketId', description: 'UUID ticketu' })
   @ApiParam({ name: 'commentId', description: 'UUID komentarza' })

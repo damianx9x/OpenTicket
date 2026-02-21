@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { IsString, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TicketPriorityDto } from './create-ticket.dto';
@@ -25,11 +26,13 @@ export class UpdateTicketDto {
 
   @ApiPropertyOptional({ enum: TicketStatusDto })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
   @IsEnum(TicketStatusDto)
   status?: TicketStatusDto;
 
   @ApiPropertyOptional({ enum: TicketPriorityDto })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
   @IsEnum(TicketPriorityDto)
   priority?: TicketPriorityDto;
 
@@ -37,4 +40,9 @@ export class UpdateTicketDto {
   @IsOptional()
   @IsUUID()
   assignedAgentId?: string;
+
+  @ApiPropertyOptional({ description: 'Legacy alias z wcześniejszego frontendu' })
+  @IsOptional()
+  @IsString()
+  assignedTo?: string;
 }

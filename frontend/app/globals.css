@@ -1,3 +1,51 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --ts-bg: #f3f5fa;
+    --ts-panel: #ffffff;
+    --ts-sidebar: #081a36;
+    --ts-sidebar-border: #142a52;
+    --ts-text: #0f172a;
+    --ts-muted: #64748b;
+    --ts-primary: #2463eb;
+  }
+
+  html,
+  body {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #eef4ff 0%, var(--ts-bg) 45%);
+    color: var(--ts-text);
+  }
+}
+
+@layer components {
+  .ticket-surface {
+    background: var(--ts-panel);
+    box-shadow: 0 12px 30px -20px rgba(15, 23, 42, 0.35);
+  }
+}
+
+@layer utilities {
+  .animate-enter {
+    animation: ts-fade-up 360ms ease-out both;
+  }
+}
+
+@keyframes ts-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

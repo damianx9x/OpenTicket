@@ -3,8 +3,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAttachmentDto {
   @ApiProperty({ description: 'UUID ticketu' })
+  @IsOptional()
   @IsUUID()
-  ticketId: string;
+  ticketId?: string;
 
   @ApiPropertyOptional({ description: 'UUID użytkownika uploadującego' })
   @IsOptional()

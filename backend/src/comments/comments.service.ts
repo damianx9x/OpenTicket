@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 
@@ -12,17 +12,28 @@ export class CommentsService {
    * Dodaje komentarz do ticketu.
    */
   async create(dto: CreateCommentDto) {
+    if (!dto.ticketId) {
+      throw new BadRequestException('ticketId is required');
+    }
+
     // Verify ticket exists
     const ticket = await this.prisma.ticket.findUnique({ where: { id: dto.ticketId } });
     if (!ticket) {
       throw new NotFoundException(`Ticket ${dto.ticketId} not found`);
     }
 
+    const body = dto.body ?? dto.text;
+    if (!body || body.trim().length === 0) {
+      throw new BadRequestException('Comment body is required');
+    }
+
+    const authorUserId = await this.resolveAuthorUserId(dto);
+
     const comment = await this.prisma.comment.create({
       data: {
         ticketId: dto.ticketId,
-        authorUserId: dto.authorUserId,
-        body: dto.body,
+        authorUserId,
+        body,
         isInternal: dto.isInternal ?? false,
       },
       include: {
@@ -64,5 +75,31 @@ export class CommentsService {
     await this.prisma.comment.delete({ where: { id: commentId } });
     this.logger.log(`Comment deleted: ${commentId}`);
     return { deleted: true };
+  }
+
+  private async resolveAuthorUserId(dto: CreateCommentDto): Promise<string> {
+    if (dto.authorUserId) {
+      const existing = await this.prisma.user.findUnique({ where: { id: dto.authorUserId } });
+      if (existing) {
+        return existing.id;
+      }
+    }
+
+    const name = dto.author?.trim() || 'System User';
+    const email = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '.') || 'system.user'}@openticket.local`;
+
+    const existingByEmail = await this.prisma.user.findUnique({ where: { email } });
+    if (existingByEmail) {
+      return existingByEmail.id;
+    }
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        name,
+        role: 'AGENT',
+      },
+    });
+    return user.id;
   }
 }

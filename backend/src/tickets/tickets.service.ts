@@ -3,8 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { QueryTicketsDto } from './dto/query-tickets.dto';
-import { Prisma, TicketStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
+import { AuthenticatedUser } from '../auth/auth.types';
 
 @Injectable()
 export class TicketsService {
@@ -17,57 +18,69 @@ export class TicketsService {
    */
   async create(dto: CreateTicketDto) {
     const publicToken = crypto.randomBytes(16).toString('hex');
-
-    const ticket = await this.prisma.ticket.create({
-      data: {
-        title: dto.title,
-        description: dto.description,
-        priority: dto.priority ?? 'NORMAL',
-        channel: dto.channel ?? 'WEB_FORM',
-        ownerUserId: dto.ownerUserId,
-        organizationId: dto.organizationId ?? null,
-        assignedAgentId: dto.assignedAgentId ?? null,
-        publicToken,
-      },
-      include: {
-        owner: { select: { id: true, name: true, email: true } },
-        assignedAgent: { select: { id: true, name: true, email: true } },
-        organization: { select: { id: true, name: true } },
-      },
+    const ownerUserId = await this.resolveOwnerUserId(dto);
+    const ticket = await this.createWithNumberRetry({
+      dto,
+      ownerUserId,
+      publicToken,
     });
 
-    this.logger.log(`Ticket created: ${ticket.id} (${ticket.number})`);
+    this.logger.log(`Ticket created: ${ticket.id} (#${ticket.number})`);
     return ticket;
   }
 
   /**
    * Lista ticketów z paginacją, filtrowaniem i sortowaniem.
    */
-  async findAll(query: QueryTicketsDto) {
+  async findAll(query: QueryTicketsDto, currentUser?: AuthenticatedUser) {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    // Build where clause
-    const where: Prisma.TicketWhereInput = {};
+    const andFilters: Prisma.TicketWhereInput[] = [];
 
     if (query.status) {
-      where.status = query.status as TicketStatus;
+      andFilters.push({ status: query.status as any });
     }
     if (query.priority) {
-      where.priority = query.priority as any;
+      andFilters.push({ priority: query.priority as any });
     }
     if (query.assignedAgentId) {
-      where.assignedAgentId = query.assignedAgentId;
+      andFilters.push({ assignedAgentId: query.assignedAgentId });
+    }
+    if (query.onlyMine && currentUser?.id) {
+      andFilters.push({
+        OR: [{ assignedAgentId: currentUser.id }, { ownerUserId: currentUser.id }],
+      });
+    }
+    if (query.minAgeDays && query.minAgeDays > 0) {
+      const threshold = new Date(Date.now() - query.minAgeDays * 24 * 60 * 60 * 1000);
+      andFilters.push({ createdAt: { lte: threshold } });
     }
     if (query.search) {
-      where.OR = [
-        { title: { contains: query.search, mode: 'insensitive' } },
-        { description: { contains: query.search, mode: 'insensitive' } },
-      ];
+      const normalized = query.search.trim();
+      if (normalized.length > 0) {
+        const searchOr: Prisma.TicketWhereInput[] = [
+          { title: { contains: normalized } },
+          { description: { contains: normalized } },
+          { owner: { name: { contains: normalized } } },
+          { owner: { email: { contains: normalized } } },
+          { assignedAgent: { name: { contains: normalized } } },
+          { assignedAgent: { email: { contains: normalized } } },
+          { comments: { some: { body: { contains: normalized } } } },
+        ];
+
+        const numericCandidate = Number(normalized.replace(/^#/, ''));
+        if (Number.isInteger(numericCandidate) && numericCandidate > 0) {
+          searchOr.push({ number: numericCandidate });
+        }
+
+        andFilters.push({ OR: searchOr });
+      }
     }
 
-    // Build orderBy
+    const where: Prisma.TicketWhereInput = andFilters.length > 0 ? { AND: andFilters } : {};
+
     const orderBy = this.parseSort(query.sort ?? 'createdAt_desc');
 
     const [data, total] = await this.prisma.$transaction([
@@ -185,11 +198,13 @@ export class TicketsService {
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.description !== undefined) data.description = dto.description;
     if (dto.priority !== undefined) data.priority = dto.priority as any;
+
     if (dto.assignedAgentId !== undefined) {
-      data.assignedAgent = { connect: { id: dto.assignedAgentId } };
+      data.assignedAgent = dto.assignedAgentId
+        ? { connect: { id: dto.assignedAgentId } }
+        : { disconnect: true };
     }
 
-    // Status change with history tracking
     if (dto.status !== undefined && dto.status !== existing.status) {
       data.status = dto.status as any;
 
@@ -197,13 +212,12 @@ export class TicketsService {
         data.closedAt = new Date();
       }
 
-      // Create status history entry
       if (changedByUserId) {
         await this.prisma.ticketStatusHistory.create({
           data: {
             ticketId: id,
             fromStatus: existing.status,
-            toStatus: dto.status as TicketStatus,
+            toStatus: dto.status,
             changedBy: changedByUserId,
           },
         });
@@ -223,9 +237,6 @@ export class TicketsService {
     return updated;
   }
 
-  /**
-   * Helper: parsuje string sortowania na Prisma orderBy.
-   */
   private parseSort(sort: string): Prisma.TicketOrderByWithRelationInput {
     const sortMap: Record<string, Prisma.TicketOrderByWithRelationInput> = {
       createdAt_asc: { createdAt: 'asc' },
@@ -236,5 +247,88 @@ export class TicketsService {
       priority_desc: { priority: 'desc' },
     };
     return sortMap[sort] ?? { createdAt: 'desc' };
+  }
+
+  private async nextTicketNumber(): Promise<number> {
+    const latest = await this.prisma.ticket.findFirst({
+      orderBy: { number: 'desc' },
+      select: { number: true },
+    });
+    return (latest?.number ?? 0) + 1;
+  }
+
+  private async createWithNumberRetry(params: {
+    dto: CreateTicketDto;
+    ownerUserId: string;
+    publicToken: string;
+  }) {
+    const maxAttempts = 6;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const number = await this.nextTicketNumber();
+
+      try {
+        return await this.prisma.ticket.create({
+          data: {
+            number,
+            title: params.dto.title,
+            description: params.dto.description,
+            priority: params.dto.priority ?? 'NORMAL',
+            channel: params.dto.channel ?? 'WEB_FORM',
+            publicToken: params.publicToken,
+            owner: { connect: { id: params.ownerUserId } },
+            ...(params.dto.organizationId ? { organization: { connect: { id: params.dto.organizationId } } } : {}),
+            ...(params.dto.assignedAgentId
+              ? { assignedAgent: { connect: { id: params.dto.assignedAgentId } } }
+              : {}),
+          },
+          include: {
+            owner: { select: { id: true, name: true, email: true } },
+            assignedAgent: { select: { id: true, name: true, email: true } },
+            organization: { select: { id: true, name: true } },
+          },
+        });
+      } catch (error: any) {
+        const target = Array.isArray(error?.meta?.target)
+          ? error.meta.target.join(',')
+          : String(error?.meta?.target || '');
+        const duplicateNumber = error?.code === 'P2002' && target.includes('number');
+
+        if (duplicateNumber && attempt < maxAttempts) {
+          this.logger.warn(
+            `Ticket number collision for #${number}. Retry ${attempt}/${maxAttempts - 1}`,
+          );
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new Error('Nie udało się wygenerować unikalnego numeru ticketu.');
+  }
+
+  private async resolveOwnerUserId(dto: CreateTicketDto): Promise<string> {
+    if (dto.ownerUserId) {
+      const existingOwner = await this.prisma.user.findUnique({ where: { id: dto.ownerUserId } });
+      if (existingOwner) {
+        return existingOwner.id;
+      }
+    }
+
+    const email = (dto.customerEmail || 'reporter.local@openticket.local').trim().toLowerCase();
+    const existingByEmail = await this.prisma.user.findUnique({ where: { email } });
+    if (existingByEmail) {
+      return existingByEmail.id;
+    }
+
+    const created = await this.prisma.user.create({
+      data: {
+        email,
+        name: dto.customerName || 'System Reporter',
+        role: 'REPORTER',
+      },
+    });
+    return created.id;
   }
 }

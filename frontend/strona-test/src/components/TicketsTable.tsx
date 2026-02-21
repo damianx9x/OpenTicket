@@ -73,7 +73,13 @@ export const TicketsTable: React.FC<TicketsTableProps> = ({ onSelectTicket, tick
             type="text"
             placeholder="Szukaj po tytule, ID lub kliencie..."
             value={searchTerm}
-        {loading && (
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
+      {loading && (
           <div className="text-center py-8 text-gray-500">
             <p>⏳ Ładuję tickety...</p>
           </div>

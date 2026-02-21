@@ -9,6 +9,7 @@ dist/
 build/
 out/
 .next/
+*.tsbuildinfo
 */dist/
 */build/
 */out/
@@ -25,6 +26,17 @@ out/
 .vscode/
 .idea/
 *.swp
+
+# Local installer artifacts
+Moj/TicketSystem-Installer.pkg
+Moj/TicketSystem-Installer.dmg
+Moj/TicketSystem-Installer.zip
+Moj/OpenTicket-Installer.pkg
+Moj/OpenTicket-Installer.dmg
+Moj/OpenTicket-Installer.zip
+Moj/*.sha256
+Moj/.DS_Store
+Moj/testy/runtime/
 *.swo
 *~
 
@@ -47,6 +59,10 @@ coverage/
 # Prisma
 .prisma/
 generated/
+backend/prisma/data/
+*.db
+*.db-shm
+*.db-wal
 
 # Build artifacts
 *.dmg
@@ -90,3 +106,10 @@ __pycache__/
 
 # Runtime
 .git/
+.runtime/
+.playwright-cli/
+output/
+output/playwright/
+
+# Compiled Releases and Final Builds
+final/

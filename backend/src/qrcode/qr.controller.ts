@@ -11,6 +11,11 @@ export class QrController {
     return this.qr.generateToken(id);
   }
 
+  @Post(':id/qr')
+  generateV2(@Param('id') id: string) {
+    return this.qr.generateToken(id);
+  }
+
   @Post('/qr-scan')
   async scan(@Body() body: { qr_token: string; action: string; technicianId?: string }) {
     const { qr_token, action, technicianId } = body as any;

@@ -110,7 +110,8 @@ function App() {
           isOpen={isDetailOpen}
           onClose={handleCloseDetail}
           onRefresh={refreshTickets}
-        
+        />
+      )}
 
       {/* New Ticket Modal */}
       <NewTicketModal
@@ -121,8 +122,7 @@ function App() {
           refreshTickets();
           alert(`✓ Zgłoszenie #${ticketId} utworzone!`);
         }}
-      />/>
-      )}
+      />
     </div>
   );
 }

@@ -23,11 +23,11 @@ Następne kroki:
 
 Diagnostics
 -----------
-- `GET /api/v1/diagnostics` — szybkie sprawdzenia zdrowia usług: PostgreSQL, Redis, MinIO (zwrotnie JSON z wynikami).
-- `GET /api/v1/diagnostics/metrics` — Prometheus metrics (domyślne NodeJS metrics via `prom-client`).
+- `GET /api/v1/diagnostics` — szybkie sprawdzenia zdrowia usług (wymaga tokenu `ADMIN`).
+- `GET /api/v1/diagnostics/metrics` — Prometheus metrics (wymaga tokenu `ADMIN`).
 - Request logging via `morgan` w trybie `combined` (łatwe przeglądanie żądań i odpowiedzi podczas debugowania).
 
-Wdrożenie: endpointy diagnostyczne są dostępne od razu po uruchomieniu backendu. Mogę dodać health checks dla workerów i trace-id do logów.
+Wdrożenie: endpointy diagnostyczne są dostępne po zalogowaniu kontem `ADMIN`.
 
 W tym szkielecie utworzono minimalny backend (Express) i prosty statyczny frontend.
 

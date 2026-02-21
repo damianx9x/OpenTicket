@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import { applyRuntimeApiBaseFromSetupStatus, checkSetupStatus } from '@/lib/setup-client';
+import { getStoredToken } from '@/lib/auth-client';
 
 /**
  * Home Page - Auto-redirect to setup or dashboard
@@ -10,20 +12,16 @@ export default function Home() {
     // Check system initialization status
     const checkAndRedirect = async () => {
       try {
-        const response = await fetch('/api/v1/setup/status', {
-          method: 'POST',
-        });
-        const status = await response.json();
+        const status = await checkSetupStatus();
+        applyRuntimeApiBaseFromSetupStatus(status);
         
         if (status.setupMode) {
-          // System needs setup
           window.location.href = '/setup';
         } else {
-          // System is configured, go to dashboard
-          window.location.href = '/dashboard';
+          const token = getStoredToken();
+          window.location.href = token ? '/dashboard' : '/login';
         }
       } catch (error) {
-        // Default to setup on error
         console.error('Failed to check status:', error);
         window.location.href = '/setup';
       }
@@ -39,7 +37,7 @@ export default function Home() {
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
         </div>
         <p className="mt-4 text-lg font-medium text-gray-700">
-          Loading Ticket System...
+          Loading OpenTicket...
         </p>
       </div>
     </div>

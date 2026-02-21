@@ -17,9 +17,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    this.logger.log('Connecting to database...');
-    await this.$connect();
-    this.logger.log('Database connected');
+    // Keep Prisma lazy-connected.
+    // Connecting eagerly in setup mode may lock sqlite during `prisma db push`,
+    // which leads to intermittent "Schema engine error" in setup step 3.
+    this.logger.log('Prisma client initialized (lazy connection mode)');
   }
 
   async onModuleDestroy() {

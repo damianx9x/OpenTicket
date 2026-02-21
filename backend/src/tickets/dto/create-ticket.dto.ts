@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import { IsString, IsNotEmpty, IsOptional, IsEnum, IsUUID, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -30,17 +31,20 @@ export class CreateTicketDto {
 
   @ApiPropertyOptional({ enum: TicketPriorityDto, default: 'NORMAL' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
   @IsEnum(TicketPriorityDto)
   priority?: TicketPriorityDto;
 
   @ApiPropertyOptional({ enum: TicketChannelDto, default: 'WEB_FORM' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.toUpperCase() : value))
   @IsEnum(TicketChannelDto)
   channel?: TicketChannelDto;
 
-  @ApiProperty({ description: 'UUID użytkownika zgłaszającego' })
+  @ApiPropertyOptional({ description: 'UUID użytkownika zgłaszającego' })
+  @IsOptional()
   @IsUUID()
-  ownerUserId: string;
+  ownerUserId?: string;
 
   @ApiPropertyOptional({ description: 'UUID organizacji' })
   @IsOptional()
@@ -51,4 +55,35 @@ export class CreateTicketDto {
   @IsOptional()
   @IsUUID()
   assignedAgentId?: string;
+
+  // Legacy / UI compatibility fields (currently optional, mapped server-side)
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  customerName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  customerEmail?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  customerPhone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  deviceType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  serialNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  assignedTo?: string;
 }

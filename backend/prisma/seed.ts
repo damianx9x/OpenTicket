@@ -1,4 +1,4 @@
-import { PrismaClient, TicketStatus, TicketPriority } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -46,20 +46,22 @@ async function main() {
   console.log('Seeding tickets...');
   const ticket1 = await prisma.ticket.create({
     data: {
+      number: Math.floor(Date.now() / 1000) + 1,
       title: 'Problem z drukarką',
       description: 'Drukarka w dziale księgowości nie drukuje. Świeci się czerwona lampka.',
-      status: TicketStatus.NEW,
-      priority: TicketPriority.HIGH,
+      status: 'NEW',
+      priority: 'HIGH',
       ownerUserId: user2.id,
     },
   });
 
   const ticket2 = await prisma.ticket.create({
     data: {
+      number: Math.floor(Date.now() / 1000) + 2,
       title: 'Nie działa internet',
       description: 'W całym biurze na 2. piętrze nie ma dostępu do internetu.',
-      status: TicketStatus.IN_PROGRESS,
-      priority: TicketPriority.URGENT,
+      status: 'IN_PROGRESS',
+      priority: 'URGENT',
       assignedAgentId: user1.id,
       ownerUserId: user2.id,
     },
@@ -67,10 +69,11 @@ async function main() {
 
   const ticket3 = await prisma.ticket.create({
     data: {
+      number: Math.floor(Date.now() / 1000) + 3,
       title: 'Wymiana myszki',
       description: 'Myszka w moim komputerze przestała działać, przycisk nie klika.',
-      status: TicketStatus.CLOSED,
-      priority: TicketPriority.LOW,
+      status: 'CLOSED',
+      priority: 'LOW',
       assignedAgentId: user2.id,
       closedAt: new Date(),
       ownerUserId: user2.id,

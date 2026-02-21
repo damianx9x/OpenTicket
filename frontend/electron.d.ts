@@ -1,14 +1,48 @@
 /// <reference types="electron" />
 
 declare global {
+  interface EngineStatus {
+    running: boolean;
+    starting: boolean;
+    port: number;
+    pid: number | null;
+    healthy: boolean;
+    setupReachable: boolean;
+    lastError: string | null;
+    lastExitCode: number | null;
+    lastExitSignal: string | null;
+    lastExitAt: string | null;
+    lastStartAt: string | null;
+    runner: string | null;
+    logFile: string | null;
+    checkedAt: string;
+    probeError: string | null;
+  }
+
+  interface ElectronBridge {
+    selectFolder: () => Promise<string | null>;
+    getLocalIp: () => Promise<string>;
+    getAppPath: () => Promise<string>;
+    resetSetup: () => Promise<{ success: boolean; message: string }>;
+    factoryReset: () => Promise<{ success: boolean; message: string; status: EngineStatus }>;
+    getEngineStatus: () => Promise<EngineStatus>;
+    restartEngine: () => Promise<{ success: boolean; message: string; status: EngineStatus }>;
+    quickRepairEngine: () => Promise<{ success: boolean; message: string; status: EngineStatus }>;
+    openLogsFolder: () => Promise<{ success: boolean; message: string; path: string }>;
+    createEngineDiagnostics: () => Promise<{
+      success: boolean;
+      message: string;
+      reportPath: string;
+    }>;
+    onBackendCrashed: (callback: () => void) => () => void;
+    onBackendWatchdog: (
+      callback: (payload: { success: boolean; message: string; status?: EngineStatus }) => void,
+    ) => () => void;
+  }
+
   interface Window {
-    electron: {
-      selectFolder: () => Promise<string | null>;
-      getLocalIp: () => Promise<string>;
-      getAppPath: () => Promise<string>;
-      resetSetup: () => Promise<{ success: boolean; message: string }>;
-      onBackendCrashed: (callback: () => void) => () => void;
-    };
+    electron: ElectronBridge;
+    electronAPI: ElectronBridge;
   }
 }
 

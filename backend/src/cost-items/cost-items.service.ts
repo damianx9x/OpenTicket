@@ -13,20 +13,35 @@ export class CostItemsService {
    * Dodaje pozycję kosztową do ticketu z automatyczną kalkulacją VAT.
    */
   async create(dto: CreateCostItemDto) {
+    if (!dto.ticketId) {
+      throw new BadRequestException('ticketId is required');
+    }
+
     // Verify ticket exists
     const ticket = await this.prisma.ticket.findUnique({ where: { id: dto.ticketId } });
     if (!ticket) {
       throw new NotFoundException(`Ticket ${dto.ticketId} not found`);
     }
 
-    // Verify VAT rate exists
-    const vatRate = await this.prisma.vatRate.findUnique({ where: { code: dto.vatCode } });
+    const normalized = {
+      name: dto.name ?? dto.description,
+      qty: dto.qty ?? dto.quantity,
+      unitNet: dto.unitNet ?? dto.unitPrice,
+      vatCode: dto.vatCode ?? (dto.vat !== undefined ? String(dto.vat) : undefined),
+    };
+
+    if (!normalized.name || normalized.qty === undefined || normalized.unitNet === undefined || !normalized.vatCode) {
+      throw new BadRequestException('Missing required fields for cost item: name/qty/unitNet/vatCode');
+    }
+
+    // Verify VAT rate exists (self-heal default rates for legacy installs)
+    const vatRate = await this.resolveVatRate(normalized.vatCode);
     if (!vatRate) {
-      throw new BadRequestException(`VAT rate code '${dto.vatCode}' not found. Use one of: 23, 8, 5, 0, ZW`);
+      throw new BadRequestException(`VAT rate code '${normalized.vatCode}' not found. Use one of: 23, 8, 5, 0, ZW`);
     }
 
     // Calculate totals
-    const netTotal = this.round2(dto.qty * dto.unitNet);
+    const netTotal = this.round2(normalized.qty * normalized.unitNet);
     let vatTotal: number;
 
     if (vatRate.isExempt) {
@@ -39,10 +54,10 @@ export class CostItemsService {
     const costItem = await this.prisma.costItem.create({
       data: {
         ticketId: dto.ticketId,
-        name: dto.name,
-        qty: new Decimal(dto.qty),
-        unitNet: new Decimal(dto.unitNet),
-        vatCode: dto.vatCode,
+        name: normalized.name,
+        qty: new Decimal(normalized.qty),
+        unitNet: new Decimal(normalized.unitNet),
+        vatCode: normalized.vatCode,
         netTotal: new Decimal(netTotal),
         vatTotal: new Decimal(vatTotal),
         grossTotal: new Decimal(grossTotal),
@@ -105,10 +120,43 @@ export class CostItemsService {
    * Pobiera dostępne stawki VAT.
    */
   async getVatRates() {
+    await this.ensureDefaultVatRates();
     return this.prisma.vatRate.findMany({ orderBy: { percent: 'desc' } });
   }
 
   private round2(value: number): number {
     return Math.round(value * 100) / 100;
+  }
+
+  private async resolveVatRate(code: string) {
+    const direct = await this.prisma.vatRate.findUnique({ where: { code } });
+    if (direct) {
+      return direct;
+    }
+
+    await this.ensureDefaultVatRates();
+    return this.prisma.vatRate.findUnique({ where: { code } });
+  }
+
+  private async ensureDefaultVatRates(): Promise<void> {
+    const defaults = [
+      { code: '23', percent: 23, isExempt: false, name: 'VAT 23%' },
+      { code: '8', percent: 8, isExempt: false, name: 'VAT 8%' },
+      { code: '5', percent: 5, isExempt: false, name: 'VAT 5%' },
+      { code: '0', percent: 0, isExempt: false, name: 'VAT 0%' },
+      { code: 'ZW', percent: 0, isExempt: true, name: 'ZW' },
+    ];
+
+    for (const rate of defaults) {
+      await this.prisma.vatRate.upsert({
+        where: { code: rate.code },
+        update: {
+          percent: rate.percent,
+          isExempt: rate.isExempt,
+          name: rate.name,
+        },
+        create: rate,
+      });
+    }
   }
 }

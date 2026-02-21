@@ -7,12 +7,10 @@ import { ConfigLoaderService } from '../config/config-loader.service';
 @Injectable()
 export class LocalStorageStrategy implements IStorageStrategy {
   private readonly logger = new Logger(LocalStorageStrategy.name);
-  private uploadsPath: string;
+  private uploadsPath = path.join(process.cwd(), 'uploads');
 
   constructor(private configLoader: ConfigLoaderService) {
-    const config = configLoader.getConfigSync();
-    this.uploadsPath = config?.uploadsPath || path.join(process.cwd(), 'uploads');
-    this.ensureDirectoryExists();
+    this.ensureReady();
   }
 
   private ensureDirectoryExists(): void {
@@ -22,11 +20,21 @@ export class LocalStorageStrategy implements IStorageStrategy {
     }
   }
 
+  private ensureReady(): void {
+    const config = this.configLoader.getConfigSync();
+    const targetPath = config?.uploadsPath || path.join(process.cwd(), 'uploads');
+    if (targetPath !== this.uploadsPath) {
+      this.uploadsPath = targetPath;
+    }
+    this.ensureDirectoryExists();
+  }
+
   async generateUploadUrl(params: {
     objectKey: string;
     mimeType: string;
     byteSize: number;
   }): Promise<StorageUploadUrlResponse> {
+    this.ensureReady();
     // For local storage, we don't generate presigned URLs
     // Instead, we return a direct upload endpoint
     // Frontend will POST to /api/v1/attachments/upload with the file
@@ -37,6 +45,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
   }
 
   async generateDownloadUrl(params: { objectKey: string }): Promise<StorageDownloadUrlResponse> {
+    this.ensureReady();
     // For local storage, return a direct download URL
     return {
       url: `/api/v1/attachments/download/${encodeURIComponent(params.objectKey)}`,
@@ -44,6 +53,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
   }
 
   async uploadFile(params: StorageUploadParams): Promise<{ objectKey: string; url: string }> {
+    this.ensureReady();
     const objectKey = `${params.ticketId}/${Date.now()}-${params.filename}`;
     const filePath = path.join(this.uploadsPath, objectKey);
 
@@ -64,6 +74,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
   }
 
   async deleteFile(params: { objectKey: string }): Promise<void> {
+    this.ensureReady();
     const filePath = path.join(this.uploadsPath, params.objectKey);
 
     if (fs.existsSync(filePath)) {
@@ -73,6 +84,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
   }
 
   async fileExists(params: { objectKey: string }): Promise<boolean> {
+    this.ensureReady();
     const filePath = path.join(this.uploadsPath, params.objectKey);
     return fs.existsSync(filePath);
   }
@@ -85,6 +97,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
    * Read file from disk (used by download endpoint)
    */
   async readFile(objectKey: string): Promise<Buffer> {
+    this.ensureReady();
     const filePath = path.join(this.uploadsPath, objectKey);
     
     if (!fs.existsSync(filePath)) {
@@ -98,6 +111,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
    * Get full file path (for local serving)
    */
   getFilePath(objectKey: string): string {
+    this.ensureReady();
     return path.join(this.uploadsPath, objectKey);
   }
 }

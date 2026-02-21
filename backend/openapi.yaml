@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
-  title: Ticket System API
+  title: OpenTicket API
   version: '1.0.0'
   description: |
-    REST API v1 for ticketing system. Authenticated endpoints use Bearer JWT (OIDC). Public portal endpoints use a `public_token` path parameter.
+    REST API v1 for OpenTicket. Authenticated endpoints use Bearer JWT (OIDC). Public portal endpoints use a `public_token` path parameter.
 
 servers:
   - url: http://localhost:3000

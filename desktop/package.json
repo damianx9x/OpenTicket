@@ -1,15 +1,15 @@
 {
-  "name": "ticket-system",
-  "version": "0.2.0",
-  "description": "Self-contained Ticket Management System for macOS",
+  "name": "openticket-desktop",
+  "version": "0.3.0",
+  "description": "OpenTicket - self-contained ticket management for macOS",
   "main": "dist/main.js",
   "homepage": "./",
   "private": true,
   "author": "Your Company",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"wait-on http://localhost:3000 && electron .\"",
-    "dev:backend": "cd ../backend && npm run start:dev",
-    "dev:frontend": "cd ../frontend && npm run dev",
+    "dev": "tsc && electron .",
+    "dev:backend": "cd ../backend && npm run dev",
+    "dev:frontend": "cd ../frontend && cross-env PORT=3001 npm run dev",
     "build": "npm run build:backend && npm run build:frontend && npm run build:electron",
     "build:backend": "cd ../backend && npm run build",
     "build:frontend": "cd ../frontend && npm run build",
@@ -29,25 +29,40 @@
   "devDependencies": {
     "@types/node": "^20.10.0",
     "concurrently": "^8.2.2",
+    "cross-env": "^10.1.0",
     "electron": "^27.0.0",
     "electron-builder": "^24.6.4",
     "typescript": "^5.3.3",
     "wait-on": "^7.0.1"
   },
   "build": {
-    "appId": "com.ticketsystem.app",
-    "productName": "Ticket System",
+    "appId": "com.openticket.app",
+    "productName": "OpenTicket",
     "directories": {
       "buildResources": "assets",
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "node_modules/**/*",
-      "../backend/dist/**/*",
-      "../backend/node_modules/**/*",
-      "../backend/prisma/**/*",
-      "../frontend/out/**/*"
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist",
+        "to": "backend/dist"
+      },
+      {
+        "from": "../backend/node_modules",
+        "to": "backend/node_modules"
+      },
+      {
+        "from": "../backend/prisma",
+        "to": "backend/prisma"
+      },
+      {
+        "from": "../frontend/out",
+        "to": "frontend/out"
+      }
     ],
     "mac": {
       "target": [

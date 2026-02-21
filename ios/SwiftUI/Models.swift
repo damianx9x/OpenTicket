@@ -32,8 +32,8 @@ struct Ticket: Identifiable, Codable {
         case description
         case status
         case priority
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
+        case createdAt
+        case updatedAt
         case assignee
     }
 }
@@ -43,13 +43,6 @@ struct ApiResponse<T: Codable>: Codable {
     let success: Bool
     let data: T?
     let error: String?
-}
-
-struct TicketsResponse: Codable {
-    let items: [Ticket]
-    let total: Int
-    let page: Int
-    let limit: Int
 }
 
 // MARK: - Connection Status

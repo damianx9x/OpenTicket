@@ -15,7 +15,8 @@
    cd ../backend
    npm run dev
 7. Sprawdź endpointy diagnostyczne:
-   curl http://localhost:3000/api/v1/diagnostics
+   TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login -H 'Content-Type: application/json' -d '{"email":"admin@local.test","password":"DevLocal123!"}' | node -e 'let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>{const x=JSON.parse(s);process.stdout.write((x.data&&x.data.token)||x.token||\"\")})')
+   curl http://localhost:3000/api/v1/diagnostics -H "Authorization: Bearer $TOKEN"
 8. Parowanie telefonu:
    Otwórz aplikację iOS, zeskanuj QR admina, wywołaj provisioning endpoint.
 9. Sprawdź dostępność serwera przez mDNS/Bonjour (tickets.local)
