@@ -94,7 +94,13 @@ export class DiagnosticsService {
     try {
       const [ticketCount, openTickets, userCount] = await this.prisma.$transaction([
         this.prisma.ticket.count(),
-        this.prisma.ticket.count({ where: { status: { in: ['NEW', 'IN_PROGRESS', 'WAITING_FOR_CUSTOMER'] } } }),
+        this.prisma.ticket.count({
+          where: {
+            status: {
+              notIn: ['CLOSED', 'ARCHIVED', 'RESOLVED'],
+            },
+          },
+        }),
         this.prisma.user.count(),
       ]);
       return { ticketCount, openTickets, userCount };

@@ -1,6 +1,13 @@
 import { requestData, requestEnvelope, type ApiMeta } from '@/lib/api-base';
 
 export type TicketStatus =
+  | 'RECEIVED'
+  | 'DIAGNOSIS'
+  | 'QUOTE_READY'
+  | 'PARTS_ORDERED'
+  | 'WAITING_FOR_APPROVAL'
+  | 'SENT_TO_CUSTOMER'
+  // Legacy statuses kept for backward compatibility with old datasets
   | 'NEW'
   | 'IN_PROGRESS'
   | 'WAITING_FOR_CUSTOMER'
@@ -37,6 +44,21 @@ export interface TicketSummary {
   updatedAt: string;
   owner?: TicketOwner;
   assignedAgent?: TicketOwner | null;
+}
+
+export interface TicketStatusHistoryEntry {
+  id: string;
+  fromStatus: string;
+  toStatus: string;
+  changedAt: string;
+  user?: {
+    id: string;
+    name?: string | null;
+  } | null;
+}
+
+export interface TicketDetail extends TicketSummary {
+  statusHistory: TicketStatusHistoryEntry[];
 }
 
 export interface CreateTicketInput {
@@ -189,6 +211,10 @@ export async function updateTicket(ticketId: string, input: UpdateTicketInput): 
 export async function getCustomerHistory(ticketId: string, limit = 10): Promise<CustomerHistoryResponse> {
   const normalizedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(Math.floor(limit), 50)) : 10;
   return requestData<CustomerHistoryResponse>(`/api/v1/tickets/${ticketId}/customer-history?limit=${normalizedLimit}`);
+}
+
+export async function getTicketDetails(ticketId: string): Promise<TicketDetail> {
+  return requestData<TicketDetail>(`/api/v1/tickets/${ticketId}`);
 }
 
 export async function listComments(ticketId: string): Promise<CommentItem[]> {

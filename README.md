@@ -208,6 +208,28 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (workflow etapów + reopen + statystyki z PDF)
+- Dodano nowy workflow zgłoszenia (popup ticketu):
+  - `PRZYJĘTE -> DIAGNOZA -> KOSZTORYS -> ZAMAWIANIE CZĘŚCI -> OCZEKUJE NA ZGODĘ -> WYSŁANE DO KLIENTA -> ZAMKNIĘTE`.
+- Dodano sterowanie etapem:
+  - rozwijane menu etapu,
+  - przycisk `Następny krok`,
+  - przycisk `Reopen (wznów zgłoszenie)` dla zgłoszeń zamkniętych.
+- Historia zmian etapów jest teraz widoczna bezpośrednio w popupie (`Historia etapów`) i zapisywana przez backend (`ticket_status_history`).
+- Przypisanie technika przeniesione do mniejszego, bocznego panelu nad historią etapów.
+- Statystyki rozbudowane o:
+  - filtry (od/do, status, priorytet, kanał, technik),
+  - wykresy słupkowe (status/priorytet/kanał),
+  - trend liniowy (nowe vs zamknięte),
+  - eksport raportu do PDF (drukowalny widok `window.print`).
+- Testy po wdrożeniu:
+  - `npm --prefix backend run build` = PASS,
+  - `npm --prefix frontend run build` = PASS,
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/modal-popup-smoke.sh` = PASS,
+  - `./Moj/testy/ui-random-10.sh` = PASS,
+  - `./Moj/testy/capture-release-screenshots.sh` = PASS.
+
 ### 2026-02-21 (modal zgłoszenia + 3x praktyczny retest UI)
 - Szczegóły zgłoszenia przeniesione do nowoczesnego popupu (overlay + animacje, `Esc`, klik poza okno).
 - Dodano kontrolę niezapisanych zmian przy zamknięciu/przełączaniu zgłoszenia:

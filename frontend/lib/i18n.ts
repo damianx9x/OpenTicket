@@ -8,6 +8,12 @@ export function normalizeLanguage(value: string | null | undefined): UILanguage 
 
 export const STATUS_LABELS: Record<UILanguage, Record<string, string>> = {
   pl: {
+    RECEIVED: 'PRZYJĘTE',
+    DIAGNOSIS: 'DIAGNOZA',
+    QUOTE_READY: 'KOSZTORYS',
+    PARTS_ORDERED: 'ZAMAWIANIE CZĘŚCI',
+    WAITING_FOR_APPROVAL: 'OCZEKUJE NA ZGODĘ',
+    SENT_TO_CUSTOMER: 'WYSŁANE DO KLIENTA',
     NEW: 'NOWE',
     IN_PROGRESS: 'W TOKU',
     WAITING_FOR_CUSTOMER: 'OCZEKUJE NA KLIENTA',
@@ -16,6 +22,12 @@ export const STATUS_LABELS: Record<UILanguage, Record<string, string>> = {
     ARCHIVED: 'ZARCHIWIZOWANE',
   },
   en: {
+    RECEIVED: 'RECEIVED',
+    DIAGNOSIS: 'DIAGNOSIS',
+    QUOTE_READY: 'QUOTE READY',
+    PARTS_ORDERED: 'PARTS ORDERED',
+    WAITING_FOR_APPROVAL: 'WAITING FOR APPROVAL',
+    SENT_TO_CUSTOMER: 'SENT TO CUSTOMER',
     NEW: 'NEW',
     IN_PROGRESS: 'IN PROGRESS',
     WAITING_FOR_CUSTOMER: 'WAITING FOR CUSTOMER',

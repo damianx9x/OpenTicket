@@ -4,6 +4,13 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { TicketPriorityDto } from './create-ticket.dto';
 
 export enum TicketStatusDto {
+  RECEIVED = 'RECEIVED',
+  DIAGNOSIS = 'DIAGNOSIS',
+  QUOTE_READY = 'QUOTE_READY',
+  PARTS_ORDERED = 'PARTS_ORDERED',
+  WAITING_FOR_APPROVAL = 'WAITING_FOR_APPROVAL',
+  SENT_TO_CUSTOMER = 'SENT_TO_CUSTOMER',
+  // Legacy statuses kept for backward compatibility with old datasets
   NEW = 'NEW',
   IN_PROGRESS = 'IN_PROGRESS',
   WAITING_FOR_CUSTOMER = 'WAITING_FOR_CUSTOMER',

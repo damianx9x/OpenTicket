@@ -61,7 +61,7 @@ export class StatisticsService {
         trendClosed[closedKey] = (trendClosed[closedKey] || 0) + 1;
       }
 
-      if (ticket.status === 'CLOSED' || ticket.status === 'RESOLVED') {
+      if (ticket.status === 'CLOSED' || ticket.status === 'RESOLVED' || ticket.status === 'ARCHIVED') {
         const endDate = ticket.closedAt || ticket.updatedAt;
         const hours = Math.max(0, (endDate.getTime() - ticket.createdAt.getTime()) / 3_600_000);
         resolvedDurationsSumHours += hours;

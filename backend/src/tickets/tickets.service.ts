@@ -27,6 +27,18 @@ export class TicketsService {
       assignedAgentId,
     });
 
+    const actorUserId = currentUser?.id || ownerUserId;
+    if (actorUserId) {
+      await this.prisma.ticketStatusHistory.create({
+        data: {
+          ticketId: ticket.id,
+          fromStatus: 'CREATED',
+          toStatus: ticket.status,
+          changedBy: actorUserId,
+        },
+      });
+    }
+
     this.logger.log(`Ticket created: ${ticket.id} (#${ticket.number})`);
     return ticket;
   }
@@ -260,10 +272,14 @@ export class TicketsService {
     }
 
     if (dto.status !== undefined && dto.status !== existing.status) {
+      const closingStatuses = new Set(['CLOSED', 'ARCHIVED', 'RESOLVED']);
       data.status = dto.status as any;
 
-      if (dto.status === 'CLOSED' || dto.status === 'RESOLVED') {
+      if (closingStatuses.has(dto.status)) {
         data.closedAt = new Date();
+      } else if (existing.closedAt) {
+        // Reopened / moved back to active workflow stage.
+        data.closedAt = null;
       }
 
       if (changedByUserId) {
@@ -324,12 +340,13 @@ export class TicketsService {
 
       try {
         return await this.prisma.ticket.create({
-          data: {
-            number,
-            title: params.dto.title,
-            description: params.dto.description,
-            priority: params.dto.priority ?? 'NORMAL',
-            channel: params.dto.channel ?? 'WEB_FORM',
+        data: {
+          number,
+          title: params.dto.title,
+          description: params.dto.description,
+          status: 'RECEIVED',
+          priority: params.dto.priority ?? 'NORMAL',
+          channel: params.dto.channel ?? 'WEB_FORM',
             publicToken: params.publicToken,
             owner: { connect: { id: params.ownerUserId } },
             ...(params.dto.organizationId ? { organization: { connect: { id: params.dto.organizationId } } } : {}),

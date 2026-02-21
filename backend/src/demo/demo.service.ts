@@ -42,11 +42,13 @@ export class DemoService {
 
     for (let index = 0; index < count; index += 1) {
       const status = this.pickWeighted([
-        { value: 'NEW', weight: 0.24 },
-        { value: 'IN_PROGRESS', weight: 0.29 },
-        { value: 'WAITING_FOR_CUSTOMER', weight: 0.16 },
-        { value: 'RESOLVED', weight: 0.13 },
-        { value: 'CLOSED', weight: 0.18 },
+        { value: 'RECEIVED', weight: 0.21 },
+        { value: 'DIAGNOSIS', weight: 0.24 },
+        { value: 'QUOTE_READY', weight: 0.12 },
+        { value: 'PARTS_ORDERED', weight: 0.11 },
+        { value: 'WAITING_FOR_APPROVAL', weight: 0.12 },
+        { value: 'SENT_TO_CUSTOMER', weight: 0.07 },
+        { value: 'CLOSED', weight: 0.13 },
       ]);
       const priority = this.pickWeighted([
         { value: 'LOW', weight: 0.18 },
@@ -63,12 +65,12 @@ export class DemoService {
 
       const owner = this.pickRandom(customers);
       const assignee =
-        status === 'NEW' && Math.random() < 0.45 ? null : this.pickRandom(technicians);
+        status === 'RECEIVED' && Math.random() < 0.45 ? null : this.pickRandom(technicians);
 
       const createdAt = this.randomPastDate(180);
       const updatedAt = this.randomDateBetween(createdAt, new Date());
       const closedAt =
-        status === 'CLOSED' || status === 'RESOLVED'
+        status === 'CLOSED' || status === 'ARCHIVED'
           ? this.randomDateBetween(updatedAt, new Date())
           : null;
 
@@ -118,7 +120,7 @@ export class DemoService {
         createdComments += commentRows.length;
       }
 
-      const shouldAddCosts = ['IN_PROGRESS', 'RESOLVED', 'CLOSED'].includes(status) && Math.random() < 0.66;
+      const shouldAddCosts = ['DIAGNOSIS', 'QUOTE_READY', 'PARTS_ORDERED', 'SENT_TO_CUSTOMER', 'CLOSED'].includes(status) && Math.random() < 0.66;
       if (shouldAddCosts) {
         const costRows = Array.from({ length: this.randomInt(1, 2) }).map(() => {
           const qty = Number((Math.random() * 2 + 1).toFixed(2));
@@ -156,11 +158,11 @@ export class DemoService {
         createdCosts += costRows.length;
       }
 
-      if (status !== 'NEW' && assignee) {
+      if (status !== 'RECEIVED' && assignee) {
         await this.prisma.ticketStatusHistory.create({
           data: {
             ticketId: ticket.id,
-            fromStatus: 'NEW',
+            fromStatus: 'RECEIVED',
             toStatus: status,
             changedBy: assignee.id,
             changedAt: this.randomDateBetween(ticket.createdAt, new Date()),
@@ -409,7 +411,10 @@ export class DemoService {
       'Skontaktowano się z klientem w sprawie odbioru.',
       'Uzupełniono dokumentację serwisową.',
     ];
-    const prefix = status === 'WAITING_FOR_CUSTOMER' ? 'Oczekiwanie na klienta.' : 'Aktualizacja serwisowa.';
+    const prefix =
+      status === 'WAITING_FOR_APPROVAL' || status === 'WAITING_FOR_CUSTOMER'
+        ? 'Oczekiwanie na klienta.'
+        : 'Aktualizacja serwisowa.';
     return `${prefix} ${base[index % base.length]}`;
   }
 
@@ -426,4 +431,3 @@ export class DemoService {
     }
   }
 }
-

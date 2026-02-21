@@ -34,10 +34,12 @@ import {
   addCostItem,
   asNumber,
   createTicket,
+  getTicketDetails,
   getCustomerHistory,
   listComments,
   listCostItems,
   listTickets,
+  type TicketStatusHistoryEntry,
   updateTicket,
   type CommentItem,
   type CostItem,
@@ -100,7 +102,23 @@ import {
 import { ApiRequestError } from '@/lib/api-base';
 
 const PRIORITIES: TicketPriority[] = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
-const STATUSES: TicketStatus[] = ['NEW', 'IN_PROGRESS', 'WAITING_FOR_CUSTOMER', 'RESOLVED', 'CLOSED', 'ARCHIVED'];
+const WORKFLOW_STATUSES: TicketStatus[] = [
+  'RECEIVED',
+  'DIAGNOSIS',
+  'QUOTE_READY',
+  'PARTS_ORDERED',
+  'WAITING_FOR_APPROVAL',
+  'SENT_TO_CUSTOMER',
+  'CLOSED',
+];
+const FILTER_STATUSES: TicketStatus[] = [
+  ...WORKFLOW_STATUSES,
+  'ARCHIVED',
+  'NEW',
+  'IN_PROGRESS',
+  'WAITING_FOR_CUSTOMER',
+  'RESOLVED',
+];
 const VAT_CODES = ['23', '8', '5', '0', 'ZW'];
 
 type Notice = {
@@ -133,6 +151,12 @@ const emptyReminderForm = {
 };
 
 const STATUS_META: Record<TicketStatus, { className: string }> = {
+  RECEIVED: { className: 'bg-blue-100 text-blue-700' },
+  DIAGNOSIS: { className: 'bg-amber-100 text-amber-700' },
+  QUOTE_READY: { className: 'bg-fuchsia-100 text-fuchsia-700' },
+  PARTS_ORDERED: { className: 'bg-cyan-100 text-cyan-700' },
+  WAITING_FOR_APPROVAL: { className: 'bg-violet-100 text-violet-700' },
+  SENT_TO_CUSTOMER: { className: 'bg-emerald-100 text-emerald-700' },
   NEW: { className: 'bg-blue-100 text-blue-700' },
   IN_PROGRESS: { className: 'bg-amber-100 text-amber-700' },
   WAITING_FOR_CUSTOMER: { className: 'bg-violet-100 text-violet-700' },
@@ -147,6 +171,37 @@ const PRIORITY_META: Record<TicketPriority, { className: string }> = {
   HIGH: { className: 'font-semibold text-orange-600' },
   URGENT: { className: 'font-bold text-red-600' },
 };
+
+const LEGACY_STATUS_TO_WORKFLOW: Partial<Record<TicketStatus, TicketStatus>> = {
+  NEW: 'RECEIVED',
+  IN_PROGRESS: 'DIAGNOSIS',
+  WAITING_FOR_CUSTOMER: 'WAITING_FOR_APPROVAL',
+  RESOLVED: 'SENT_TO_CUSTOMER',
+  ARCHIVED: 'CLOSED',
+};
+
+const ACTIVE_SERVICE_STATUSES = new Set<TicketStatus>([
+  'RECEIVED',
+  'DIAGNOSIS',
+  'QUOTE_READY',
+  'PARTS_ORDERED',
+  'WAITING_FOR_APPROVAL',
+  'SENT_TO_CUSTOMER',
+  'NEW',
+  'IN_PROGRESS',
+  'WAITING_FOR_CUSTOMER',
+]);
+
+const WAITING_FOR_CUSTOMER_STATUSES = new Set<TicketStatus>([
+  'WAITING_FOR_APPROVAL',
+  'WAITING_FOR_CUSTOMER',
+]);
+
+const CLOSED_STATUSES = new Set<TicketStatus>(['CLOSED', 'ARCHIVED']);
+
+function toWorkflowStatus(status: TicketStatus): TicketStatus {
+  return LEGACY_STATUS_TO_WORKFLOW[status] || status;
+}
 
 const NAV_ITEMS = [
   { id: 'tickets', labelPl: 'Zgłoszenia', labelEn: 'Tickets', icon: TicketIcon },
@@ -175,6 +230,15 @@ type DashboardPreferences = {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString('pl-PL');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function humanizeCheckReason(reason?: string): string {
@@ -290,12 +354,14 @@ export default function DashboardPage() {
 
   const [ticketReminders, setTicketReminders] = useState<ReminderItem[]>([]);
   const [globalReminders, setGlobalReminders] = useState<ReminderItem[]>([]);
+  const [ticketStatusHistory, setTicketStatusHistory] = useState<TicketStatusHistoryEntry[]>([]);
   const [showReminderPanel, setShowReminderPanel] = useState(false);
   const [newReminder, setNewReminder] = useState(emptyReminderForm);
   const [reminderSubmitting, setReminderSubmitting] = useState(false);
   const [assignableAgents, setAssignableAgents] = useState<AppUser[]>([]);
   const [assignmentDraft, setAssignmentDraft] = useState('');
   const [assigningTicket, setAssigningTicket] = useState(false);
+  const [updatingWorkflow, setUpdatingWorkflow] = useState(false);
   const [customerHistory, setCustomerHistory] = useState<
     Array<{
       id: string;
@@ -334,6 +400,14 @@ export default function DashboardPage() {
     onlyMine: false,
     minAgeDays: '',
   });
+  const [statisticsFilters, setStatisticsFilters] = useState({
+    from: '',
+    to: '',
+    assignedAgentId: '',
+    channel: '',
+    priority: '',
+    status: '',
+  });
 
   const getElectron = () =>
     typeof window !== 'undefined'
@@ -345,6 +419,22 @@ export default function DashboardPage() {
   const selectedTicket = useMemo(
     () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
     [tickets, selectedTicketId],
+  );
+  const currentWorkflowStatus = useMemo(
+    () => (selectedTicket ? toWorkflowStatus(selectedTicket.status) : null),
+    [selectedTicket],
+  );
+  const currentWorkflowIndex = useMemo(
+    () => (currentWorkflowStatus ? WORKFLOW_STATUSES.indexOf(currentWorkflowStatus) : -1),
+    [currentWorkflowStatus],
+  );
+  const nextWorkflowStatus = useMemo(() => {
+    if (currentWorkflowIndex < 0) return null;
+    return WORKFLOW_STATUSES[currentWorkflowIndex + 1] || null;
+  }, [currentWorkflowIndex]);
+  const canReopenTicket = useMemo(
+    () => Boolean(selectedTicket && CLOSED_STATUSES.has(selectedTicket.status)),
+    [selectedTicket],
   );
   const assignmentDirty = selectedTicket ? assignmentDraft !== (selectedTicket.assignedAgentId || '') : false;
   const commentDirty = commentBody.trim().length > 0 || commentInternal;
@@ -360,6 +450,8 @@ export default function DashboardPage() {
   const statusLabels = STATUS_LABELS[uiLanguage];
   const priorityLabels = PRIORITY_LABELS[uiLanguage];
   const roleLabels = ROLE_LABELS[uiLanguage];
+  const getStatusMeta = (status: string) =>
+    STATUS_META[status as TicketStatus] || { className: 'bg-slate-200 text-slate-600' };
   const isPolish = uiLanguage === 'pl';
   const normalizedCurrentRole = (currentUser?.role || '').toUpperCase();
   const isAdmin = normalizedCurrentRole === 'ADMIN';
@@ -393,11 +485,11 @@ export default function DashboardPage() {
 
   const stats = useMemo(() => {
     const today = new Date().toDateString();
-    const open = tickets.filter((ticket) => !['CLOSED', 'ARCHIVED'].includes(ticket.status)).length;
+    const open = tickets.filter((ticket) => !CLOSED_STATUSES.has(ticket.status)).length;
     const urgent = tickets.filter((ticket) => ticket.priority === 'URGENT').length;
-    const inProgress = tickets.filter((ticket) => ['IN_PROGRESS', 'WAITING_FOR_CUSTOMER'].includes(ticket.status)).length;
+    const inProgress = tickets.filter((ticket) => ACTIVE_SERVICE_STATUSES.has(ticket.status)).length;
     const closedToday = tickets.filter(
-      (ticket) => ticket.status === 'CLOSED' && new Date(ticket.updatedAt).toDateString() === today,
+      (ticket) => CLOSED_STATUSES.has(ticket.status) && new Date(ticket.updatedAt).toDateString() === today,
     ).length;
 
     return {
@@ -406,8 +498,8 @@ export default function DashboardPage() {
       inProgress,
       closedToday,
       total: tickets.length,
-      waitingForCustomer: tickets.filter((ticket) => ticket.status === 'WAITING_FOR_CUSTOMER').length,
-      closedAll: tickets.filter((ticket) => ticket.status === 'CLOSED').length,
+      waitingForCustomer: tickets.filter((ticket) => WAITING_FOR_CUSTOMER_STATUSES.has(ticket.status)).length,
+      closedAll: tickets.filter((ticket) => CLOSED_STATUSES.has(ticket.status)).length,
     };
   }, [tickets]);
 
@@ -476,6 +568,61 @@ export default function DashboardPage() {
         .slice(0, 8),
     [globalReminders],
   );
+  const statisticsTrend = useMemo(() => {
+    if (!statistics) {
+      return [] as Array<{ date: string; created: number; closed: number }>;
+    }
+
+    const keys = Array.from(
+      new Set([...Object.keys(statistics.trend.created), ...Object.keys(statistics.trend.closed)]),
+    ).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+    return keys.map((date) => ({
+      date,
+      created: statistics.trend.created[date] || 0,
+      closed: statistics.trend.closed[date] || 0,
+    }));
+  }, [statistics]);
+  const statisticsMaxima = useMemo(() => {
+    if (!statistics) {
+      return { byStatus: 1, byPriority: 1, byChannel: 1, trend: 1 };
+    }
+    return {
+      byStatus: Math.max(1, ...statistics.byStatus.map((row) => row.count)),
+      byPriority: Math.max(1, ...statistics.byPriority.map((row) => row.count)),
+      byChannel: Math.max(1, ...statistics.byChannel.map((row) => row.count)),
+      trend: Math.max(1, ...statisticsTrend.map((row) => Math.max(row.created, row.closed))),
+    };
+  }, [statistics, statisticsTrend]);
+  const statisticsTrendPath = useMemo(() => {
+    const width = 720;
+    const height = 180;
+    if (statisticsTrend.length === 0) {
+      return {
+        width,
+        height,
+        createdPath: '',
+        closedPath: '',
+      };
+    }
+
+    const xStep = statisticsTrend.length > 1 ? width / (statisticsTrend.length - 1) : width;
+    const toY = (value: number) => height - (value / statisticsMaxima.trend) * (height - 18) - 9;
+
+    const createdPath = statisticsTrend
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(index * xStep)} ${toY(point.created).toFixed(1)}`)
+      .join(' ');
+    const closedPath = statisticsTrend
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(index * xStep)} ${toY(point.closed).toFixed(1)}`)
+      .join(' ');
+
+    return {
+      width,
+      height,
+      createdPath,
+      closedPath,
+    };
+  }, [statisticsTrend, statisticsMaxima.trend]);
 
   const notify = (next: Notice) => {
     setNotice(next);
@@ -718,7 +865,14 @@ export default function DashboardPage() {
   const loadStatistics = async () => {
     setStatisticsLoading(true);
     try {
-      const next = await getStatisticsOverview();
+      const next = await getStatisticsOverview({
+        from: statisticsFilters.from || undefined,
+        to: statisticsFilters.to || undefined,
+        assignedAgentId: statisticsFilters.assignedAgentId || undefined,
+        channel: statisticsFilters.channel || undefined,
+        priority: statisticsFilters.priority || undefined,
+        status: statisticsFilters.status || undefined,
+      });
       setStatistics(next);
     } catch (error) {
       notify({
@@ -901,11 +1055,30 @@ export default function DashboardPage() {
   const loadTicketDetails = async (ticketId: string) => {
     setLoadingDetails(true);
     try {
-      const [nextComments, nextCosts, nextAttachments] = await Promise.all([
+      const [ticketDetails, nextComments, nextCosts, nextAttachments] = await Promise.all([
+        getTicketDetails(ticketId),
         listComments(ticketId),
         listCostItems(ticketId),
         listAttachments(ticketId),
       ]);
+      setTicketStatusHistory(ticketDetails.statusHistory || []);
+      setTickets((prev) =>
+        prev.map((item) =>
+          item.id === ticketId
+            ? {
+                ...item,
+                title: ticketDetails.title,
+                description: ticketDetails.description,
+                status: ticketDetails.status,
+                priority: ticketDetails.priority,
+                assignedAgentId: ticketDetails.assignedAgentId,
+                owner: ticketDetails.owner,
+                assignedAgent: ticketDetails.assignedAgent || null,
+                updatedAt: ticketDetails.updatedAt,
+              }
+            : item,
+        ),
+      );
       setComments(nextComments);
       setCostItems(nextCosts.items);
       setCostSummary(nextCosts.summary);
@@ -919,6 +1092,7 @@ export default function DashboardPage() {
       setComments([]);
       setCostItems([]);
       setAttachments([]);
+      setTicketStatusHistory([]);
       setTicketReminders([]);
       setCostSummary({ netTotal: 0, vatTotal: 0, grossTotal: 0, itemCount: 0 });
     } finally {
@@ -990,6 +1164,7 @@ export default function DashboardPage() {
       void loadCustomerHistoryForTicket(selectedTicketId);
     } else {
       setCustomerHistory([]);
+      setTicketStatusHistory([]);
       setAssignmentDraft('');
       setShowTicketModal(false);
       clearAttachmentPreview();
@@ -1798,6 +1973,152 @@ export default function DashboardPage() {
     }
   };
 
+  const applyTicketWorkflowStatus = async (nextStatus: TicketStatus, mode: 'manual' | 'next' | 'reopen') => {
+    if (!selectedTicketId || !selectedTicket) {
+      notify({ type: 'error', text: 'Najpierw wybierz ticket.' });
+      return;
+    }
+
+    if (selectedTicket.status === nextStatus) {
+      return;
+    }
+
+    setUpdatingWorkflow(true);
+    try {
+      await updateTicket(selectedTicketId, { status: nextStatus });
+      await Promise.all([loadTicketsData(), loadTicketDetails(selectedTicketId)]);
+      const actionLabel =
+        mode === 'reopen'
+          ? 'Zgłoszenie zostało wznowione.'
+          : mode === 'next'
+            ? 'Przejście do kolejnego etapu zapisane.'
+            : 'Etap zgłoszenia został zaktualizowany.';
+      notify({ type: 'success', text: actionLabel });
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: `Nie udało się zmienić etapu: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    } finally {
+      setUpdatingWorkflow(false);
+    }
+  };
+
+  const handleAdvanceWorkflow = async () => {
+    if (!nextWorkflowStatus) {
+      notify({ type: 'error', text: 'To zgłoszenie jest już na ostatnim etapie.' });
+      return;
+    }
+    await applyTicketWorkflowStatus(nextWorkflowStatus, 'next');
+  };
+
+  const handleReopenTicket = async () => {
+    if (!selectedTicket || !canReopenTicket) {
+      return;
+    }
+    const confirmed = window.confirm(
+      isPolish
+        ? 'Wznowić zgłoszenie i wrócić do etapu diagnozy?'
+        : 'Reopen this ticket and move it back to diagnosis?',
+    );
+    if (!confirmed) {
+      return;
+    }
+    await applyTicketWorkflowStatus('DIAGNOSIS', 'reopen');
+  };
+
+  const handleExportStatisticsPdf = () => {
+    if (!statistics) {
+      notify({ type: 'error', text: 'Najpierw załaduj statystyki.' });
+      return;
+    }
+
+    const rowsToHtml = (rows: Array<{ key: string; count: number }>, label: (key: string) => string) =>
+      rows
+        .map(
+          (row) =>
+            `<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeHtml(
+              label(row.key),
+            )}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right"><strong>${row.count}</strong></td></tr>`,
+        )
+        .join('');
+
+    const trendRows = statisticsTrend
+      .map(
+        (row) =>
+          `<tr><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0">${escapeHtml(
+            row.date,
+          )}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right">${row.created}</td><td style="padding:6px 8px;border-bottom:1px solid #e2e8f0;text-align:right">${row.closed}</td></tr>`,
+      )
+      .join('');
+
+    const win = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=900');
+    if (!win) {
+      notify({ type: 'error', text: 'Przeglądarka zablokowała okno eksportu PDF.' });
+      return;
+    }
+
+    const printedAt = formatDate(new Date().toISOString());
+    const html = `
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <title>OpenTicket - Raport statystyk</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#0f172a; margin:24px; }
+    h1,h2 { margin:0 0 10px; }
+    .meta { color:#475569; font-size:12px; margin-bottom:16px; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+    .card { border:1px solid #e2e8f0; border-radius:10px; padding:10px; background:#f8fafc; }
+    table { width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px; }
+    @media print { body { margin: 10mm; } }
+  </style>
+</head>
+<body>
+  <h1>OpenTicket - Raport statystyk</h1>
+  <div class="meta">Wygenerowano: ${escapeHtml(printedAt)}</div>
+  <div class="meta">Filtry: od=${escapeHtml(
+    statisticsFilters.from || '-',
+  )}, do=${escapeHtml(statisticsFilters.to || '-')}, status=${escapeHtml(
+    statisticsFilters.status || '-',
+  )}, priorytet=${escapeHtml(statisticsFilters.priority || '-')}, kanał=${escapeHtml(
+    statisticsFilters.channel || '-',
+  )}</div>
+
+  <div class="grid">
+    <div class="card"><strong>Łączna liczba zgłoszeń</strong><div style="font-size:22px;margin-top:6px;">${statistics.totalTickets}</div></div>
+    <div class="card"><strong>Śr. czas rozwiązania (h)</strong><div style="font-size:22px;margin-top:6px;">${
+      statistics.sla.averageResolutionHours ?? '-'
+    }</div></div>
+    <div class="card"><strong>Suma brutto kosztów</strong><div style="font-size:22px;margin-top:6px;">${asNumber(
+      statistics.costs.grossTotal,
+    ).toFixed(2)} PLN</div></div>
+  </div>
+
+  <h2>Statusy</h2>
+  <table><tbody>${rowsToHtml(statistics.byStatus, (key) => statusLabels[key] || key)}</tbody></table>
+  <h2>Priorytety</h2>
+  <table><tbody>${rowsToHtml(statistics.byPriority, (key) => priorityLabels[key] || key)}</tbody></table>
+  <h2>Kanały</h2>
+  <table><tbody>${rowsToHtml(statistics.byChannel, (key) => key)}</tbody></table>
+  <h2>Trend dzienny</h2>
+  <table>
+    <thead><tr><th style="text-align:left;padding:6px 8px;">Dzień</th><th style="text-align:right;padding:6px 8px;">Nowe</th><th style="text-align:right;padding:6px 8px;">Zamknięte</th></tr></thead>
+    <tbody>${trendRows}</tbody>
+  </table>
+</body>
+</html>`;
+
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    window.setTimeout(() => {
+      win.print();
+    }, 350);
+  };
+
   const handleAssignSelectedTicket = async () => {
     if (!selectedTicketId) {
       notify({ type: 'error', text: 'Najpierw wybierz ticket.' });
@@ -2313,7 +2634,7 @@ export default function DashboardPage() {
                         onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
                       >
                         <option value="">Wszystkie statusy</option>
-                        {STATUSES.map((status) => (
+                        {FILTER_STATUSES.map((status) => (
                           <option key={status} value={status}>
                             {STATUS_LABELS[uiLanguage][status]}
                           </option>
@@ -2366,7 +2687,7 @@ export default function DashboardPage() {
                           {tickets.map((ticket) => {
                             const ownerName = ticket.owner?.name || ticket.owner?.email || 'Nieznany klient';
                             const ownerInitial = ownerName[0]?.toUpperCase() || '?';
-                            const statusMeta = STATUS_META[ticket.status];
+                            const statusMeta = getStatusMeta(ticket.status);
                             const priorityMeta = PRIORITY_META[ticket.priority];
 
                             return (
@@ -2456,8 +2777,8 @@ export default function DashboardPage() {
                             #{selectedTicket.number} - {selectedTicket.title}
                           </h3>
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${STATUS_META[selectedTicket.status].className}`}>
-                              {statusLabels[selectedTicket.status]}
+                            <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${getStatusMeta(selectedTicket.status).className}`}>
+                              {statusLabels[selectedTicket.status] || selectedTicket.status}
                             </span>
                             <span className={`rounded-full border border-slate-200 px-3 py-1 text-[11px] ${PRIORITY_META[selectedTicket.priority].className}`}>
                               {priorityLabels[selectedTicket.priority]}
@@ -2466,39 +2787,55 @@ export default function DashboardPage() {
                           </div>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{selectedTicket.description}</p>
-                      </div>
 
-                      <div className="grid gap-4 xl:grid-cols-2">
-                        <div className="rounded-xl border border-slate-200 p-4">
-                          <h4 className="text-sm font-semibold text-slate-900">Przypisanie technika</h4>
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h4 className="text-sm font-semibold text-slate-900">Etap zgłoszenia</h4>
+                            <span className="text-xs text-slate-500">
+                              Krok {Math.max(currentWorkflowIndex + 1, 1)} / {WORKFLOW_STATUSES.length}
+                            </span>
+                          </div>
                           <p className="mt-1 text-xs text-slate-500">
-                            Nowe zgłoszenia przyjęte przez technika przypisują się automatycznie. Tutaj możesz to zmienić.
+                            Ścieżka: przyjęcie → diagnoza → kosztorys → zamawianie części → oczekiwanie na zgodę → wysłano do klienta → zamknięte.
                           </p>
-                          <div className="mt-3 flex flex-col gap-2 md:flex-row">
+                          <div className="mt-2 flex flex-col gap-2 md:flex-row">
                             <select
-                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                              value={assignmentDraft}
-                              onChange={(event) => setAssignmentDraft(event.target.value)}
-                              disabled={assigningTicket}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm md:max-w-sm"
+                              value={currentWorkflowStatus || selectedTicket.status}
+                              onChange={(event) =>
+                                void applyTicketWorkflowStatus(event.target.value as TicketStatus, 'manual')
+                              }
+                              disabled={updatingWorkflow}
                             >
-                              <option value="">Nieprzypisany</option>
-                              {assignableAgents.map((agent) => (
-                                <option key={agent.id} value={agent.id}>
-                                  {(agent.name || agent.email) + ` (${agent.role})`}
+                              {WORKFLOW_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {statusLabels[status] || status}
                                 </option>
                               ))}
                             </select>
                             <button
                               type="button"
-                              onClick={() => void handleAssignSelectedTicket()}
-                              disabled={assigningTicket}
-                              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:bg-blue-300"
+                              onClick={() => void handleAdvanceWorkflow()}
+                              disabled={updatingWorkflow || !nextWorkflowStatus}
+                              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
                             >
-                              {assigningTicket ? 'Zapisywanie...' : 'Zapisz przypisanie'}
+                              {updatingWorkflow ? 'Zapisywanie...' : 'Następny krok'}
                             </button>
+                            {canReopenTicket && (
+                              <button
+                                type="button"
+                                onClick={() => void handleReopenTicket()}
+                                disabled={updatingWorkflow}
+                                className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                              >
+                                Reopen (wznów zgłoszenie)
+                              </button>
+                            )}
                           </div>
                         </div>
+                      </div>
 
+                      <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
                         <div className="rounded-xl border border-slate-200 p-4">
                           <h4 className="text-sm font-semibold text-slate-900">Historia klienta</h4>
                           {customerHistoryLoading ? (
@@ -2506,7 +2843,7 @@ export default function DashboardPage() {
                           ) : customerHistory.length === 0 ? (
                             <p className="mt-2 text-xs text-slate-500">Brak wcześniejszych zgłoszeń dla tego klienta.</p>
                           ) : (
-                            <div className="mt-2 max-h-32 space-y-1 overflow-y-auto text-xs">
+                            <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-xs">
                               {customerHistory.map((item) => (
                                 <button
                                   key={item.id}
@@ -2522,6 +2859,59 @@ export default function DashboardPage() {
                               ))}
                             </div>
                           )}
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="rounded-xl border border-slate-200 p-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Technik prowadzący</h4>
+                            <div className="mt-2 flex flex-col gap-2">
+                              <select
+                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                value={assignmentDraft}
+                                onChange={(event) => setAssignmentDraft(event.target.value)}
+                                disabled={assigningTicket}
+                              >
+                                <option value="">Nieprzypisany</option>
+                                {assignableAgents.map((agent) => (
+                                  <option key={agent.id} value={agent.id}>
+                                    {(agent.name || agent.email) + ` (${agent.role})`}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => void handleAssignSelectedTicket()}
+                                disabled={assigningTicket}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                              >
+                                {assigningTicket ? 'Zapisywanie...' : 'Zapisz przypisanie'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl border border-slate-200 p-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Historia etapów</h4>
+                            {ticketStatusHistory.length === 0 ? (
+                              <p className="mt-2 text-xs text-slate-500">Brak historii zmian statusu.</p>
+                            ) : (
+                              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                                {ticketStatusHistory.map((entry) => (
+                                  <div key={entry.id} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs">
+                                    <p className="font-medium text-slate-700">
+                                      {entry.fromStatus === 'CREATED'
+                                        ? 'Utworzenie zgłoszenia'
+                                        : `${statusLabels[entry.fromStatus] || entry.fromStatus} → ${
+                                            statusLabels[entry.toStatus] || entry.toStatus
+                                          }`}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500">
+                                      {formatDate(entry.changedAt)} · {entry.user?.name || 'system'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -2823,16 +3213,116 @@ export default function DashboardPage() {
 
             {activeNav === 'statistics' && (
               <section className="ticket-surface rounded-xl border border-slate-100 p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-slate-900">Zaawansowane statystyki</h2>
-                  <button
-                    type="button"
-                    onClick={() => void loadStatistics()}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <h2 className="text-lg font-semibold text-slate-900">Zaawansowane statystyki i raportowanie</h2>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void loadStatistics()}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Odśwież
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportStatisticsPdf()}
+                      disabled={!statistics}
+                      className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                    >
+                      <Download className="h-4 w-4" />
+                      Raport PDF
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-6">
+                  <input
+                    type="date"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={statisticsFilters.from}
+                    onChange={(event) => setStatisticsFilters((prev) => ({ ...prev, from: event.target.value }))}
+                    placeholder="Od"
+                  />
+                  <input
+                    type="date"
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={statisticsFilters.to}
+                    onChange={(event) => setStatisticsFilters((prev) => ({ ...prev, to: event.target.value }))}
+                    placeholder="Do"
+                  />
+                  <select
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={statisticsFilters.status}
+                    onChange={(event) => setStatisticsFilters((prev) => ({ ...prev, status: event.target.value }))}
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    Odśwież
-                  </button>
+                    <option value="">{isPolish ? 'Status: wszystkie' : 'Status: all'}</option>
+                    {FILTER_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {statusLabels[status] || status}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={statisticsFilters.priority}
+                    onChange={(event) => setStatisticsFilters((prev) => ({ ...prev, priority: event.target.value }))}
+                  >
+                    <option value="">{isPolish ? 'Priorytet: wszystkie' : 'Priority: all'}</option>
+                    {PRIORITIES.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {priorityLabels[priority]}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={statisticsFilters.channel}
+                    onChange={(event) => setStatisticsFilters((prev) => ({ ...prev, channel: event.target.value }))}
+                  >
+                    <option value="">{isPolish ? 'Kanał: wszystkie' : 'Channel: all'}</option>
+                    <option value="WEB_FORM">WEB_FORM</option>
+                    <option value="APP">APP</option>
+                    <option value="EMAIL">EMAIL</option>
+                    <option value="DROP_OFF">DROP_OFF</option>
+                  </select>
+                  <select
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                    value={statisticsFilters.assignedAgentId}
+                    onChange={(event) => setStatisticsFilters((prev) => ({ ...prev, assignedAgentId: event.target.value }))}
+                  >
+                    <option value="">{isPolish ? 'Technik: wszyscy' : 'Technician: all'}</option>
+                    {assignableAgents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name || agent.email}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2 md:col-span-2 xl:col-span-6">
+                    <button
+                      type="button"
+                      onClick={() => void loadStatistics()}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      Zastosuj filtry
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStatisticsFilters({
+                          from: '',
+                          to: '',
+                          assignedAgentId: '',
+                          channel: '',
+                          priority: '',
+                          status: '',
+                        });
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                    >
+                      Wyczyść filtry
+                    </button>
+                  </div>
                 </div>
                 {statisticsLoading ? (
                   <p className="text-sm text-slate-500">Ładowanie statystyk...</p>
@@ -2855,38 +3345,91 @@ export default function DashboardPage() {
 
                     <div className="grid gap-4 lg:grid-cols-3">
                       <div className="rounded-lg border border-slate-200 p-3">
-                        <h3 className="mb-2 text-sm font-semibold text-slate-800">Statusy</h3>
-                        <ul className="space-y-1 text-sm text-slate-700">
+                        <h3 className="mb-2 text-sm font-semibold text-slate-800">Statusy (wykres słupkowy)</h3>
+                        <ul className="space-y-2 text-sm text-slate-700">
                           {statistics.byStatus.map((row) => (
-                            <li key={row.key} className="flex items-center justify-between">
-                              <span>{statusLabels[row.key] || row.key}</span>
-                              <strong>{row.count}</strong>
+                            <li key={row.key}>
+                              <div className="mb-1 flex items-center justify-between">
+                                <span>{statusLabels[row.key] || row.key}</span>
+                                <strong>{row.count}</strong>
+                              </div>
+                              <div className="h-2 rounded-full bg-slate-200">
+                                <div
+                                  className="h-2 rounded-full bg-blue-500"
+                                  style={{ width: `${(row.count / statisticsMaxima.byStatus) * 100}%` }}
+                                />
+                              </div>
                             </li>
                           ))}
                         </ul>
                       </div>
                       <div className="rounded-lg border border-slate-200 p-3">
-                        <h3 className="mb-2 text-sm font-semibold text-slate-800">Priorytety</h3>
-                        <ul className="space-y-1 text-sm text-slate-700">
+                        <h3 className="mb-2 text-sm font-semibold text-slate-800">Priorytety (wykres słupkowy)</h3>
+                        <ul className="space-y-2 text-sm text-slate-700">
                           {statistics.byPriority.map((row) => (
-                            <li key={row.key} className="flex items-center justify-between">
-                              <span>{priorityLabels[row.key] || row.key}</span>
-                              <strong>{row.count}</strong>
+                            <li key={row.key}>
+                              <div className="mb-1 flex items-center justify-between">
+                                <span>{priorityLabels[row.key] || row.key}</span>
+                                <strong>{row.count}</strong>
+                              </div>
+                              <div className="h-2 rounded-full bg-slate-200">
+                                <div
+                                  className="h-2 rounded-full bg-fuchsia-500"
+                                  style={{ width: `${(row.count / statisticsMaxima.byPriority) * 100}%` }}
+                                />
+                              </div>
                             </li>
                           ))}
                         </ul>
                       </div>
                       <div className="rounded-lg border border-slate-200 p-3">
-                        <h3 className="mb-2 text-sm font-semibold text-slate-800">Kanały</h3>
-                        <ul className="space-y-1 text-sm text-slate-700">
+                        <h3 className="mb-2 text-sm font-semibold text-slate-800">Kanały (wykres słupkowy)</h3>
+                        <ul className="space-y-2 text-sm text-slate-700">
                           {statistics.byChannel.map((row) => (
-                            <li key={row.key} className="flex items-center justify-between">
-                              <span>{row.key}</span>
-                              <strong>{row.count}</strong>
+                            <li key={row.key}>
+                              <div className="mb-1 flex items-center justify-between">
+                                <span>{row.key}</span>
+                                <strong>{row.count}</strong>
+                              </div>
+                              <div className="h-2 rounded-full bg-slate-200">
+                                <div
+                                  className="h-2 rounded-full bg-emerald-500"
+                                  style={{ width: `${(row.count / statisticsMaxima.byChannel) * 100}%` }}
+                                />
+                              </div>
                             </li>
                           ))}
                         </ul>
                       </div>
+                    </div>
+
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <h3 className="mb-2 text-sm font-semibold text-slate-800">Trend dzienny (nowe vs zamknięte)</h3>
+                      {statisticsTrend.length === 0 ? (
+                        <p className="text-xs text-slate-500">Brak danych trendu dla wybranych filtrów.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          <svg
+                            viewBox={`0 0 ${statisticsTrendPath.width} ${statisticsTrendPath.height}`}
+                            className="h-44 w-full rounded-lg border border-slate-200 bg-slate-50"
+                            role="img"
+                            aria-label="Trend nowych i zamkniętych zgłoszeń"
+                          >
+                            <path d={statisticsTrendPath.createdPath} fill="none" stroke="#2563eb" strokeWidth="3" />
+                            <path d={statisticsTrendPath.closedPath} fill="none" stroke="#16a34a" strokeWidth="3" />
+                          </svg>
+                          <div className="flex items-center gap-4 text-xs text-slate-600">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="inline-block h-2 w-4 rounded bg-blue-600" />
+                              Nowe zgłoszenia
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="inline-block h-2 w-4 rounded bg-green-600" />
+                              Zamknięte zgłoszenia
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -3132,7 +3675,7 @@ export default function DashboardPage() {
                               }
                             >
                               <option value="">Brak</option>
-                              {STATUSES.map((status) => (
+                              {FILTER_STATUSES.map((status) => (
                                 <option key={status} value={status}>
                                   {statusLabels[status]}
                                 </option>
