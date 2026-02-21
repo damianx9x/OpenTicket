@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOJ_DIR="$ROOT_DIR/Moj"
-RELEASE_DIR="$ROOT_DIR/desktop/release"
+RELEASE_DIR="${RELEASE_DIR:-$ROOT_DIR/desktop/release-user}"
 PKG_OUT="$MOJ_DIR/OpenTicket-Installer.pkg"
 DMG_OUT="$MOJ_DIR/OpenTicket-Installer.dmg"
 ZIP_OUT="$MOJ_DIR/OpenTicket-Installer.zip"
@@ -41,6 +41,8 @@ cd "$ROOT_DIR"
 
 log "Czyszczenie poprzednich artefaktów"
 rm -f "$PKG_OUT" "$DMG_OUT" "$ZIP_OUT" "$MOJ_DIR"/*.sha256
+rm -rf "$RELEASE_DIR"
+mkdir -p "$RELEASE_DIR"
 
 log "Budowa backend"
 npm --prefix backend run build
@@ -52,7 +54,10 @@ log "Budowa desktop main"
 npm --prefix desktop run build:electron
 
 log "Budowa artefaktów macOS (.dmg/.zip + .app)"
-npm --prefix desktop run dist:mac
+(
+  cd "$ROOT_DIR/desktop"
+  npx electron-builder --mac --publish never --config.directories.output="$RELEASE_DIR"
+)
 
 APP_BUNDLE="$(find_app_bundle || true)"
 if [[ -z "$APP_BUNDLE" ]]; then

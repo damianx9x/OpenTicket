@@ -2699,7 +2699,18 @@ export default function DashboardPage() {
                                 }`}
                               >
                                 <td className="px-4 py-3 text-slate-500">#{ticket.number}</td>
-                                <td className="px-4 py-3 font-medium text-slate-900">{ticket.title}</td>
+                                <td className="px-4 py-3 font-medium text-slate-900">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleOpenTicketDetails(ticket.id);
+                                    }}
+                                    className="rounded px-1 py-0.5 text-left transition hover:bg-blue-100 hover:text-blue-700"
+                                  >
+                                    {ticket.title}
+                                  </button>
+                                </td>
                                 <td className="px-4 py-3">
                                   <div className="flex items-center gap-2">
                                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
@@ -2710,7 +2721,7 @@ export default function DashboardPage() {
                                 </td>
                                 <td className="px-4 py-3">
                                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.className}`}>
-                                    {STATUS_LABELS[uiLanguage][ticket.status]}
+                                    {STATUS_LABELS[uiLanguage][ticket.status] || ticket.status}
                                   </span>
                                 </td>
                                 <td className={`px-4 py-3 text-xs ${priorityMeta.className}`}>
@@ -2722,9 +2733,17 @@ export default function DashboardPage() {
                                     : 'Nieprzypisany'}
                                 </td>
                                 <td className="px-4 py-3 text-right">
-                                  <span className="inline-flex items-center text-slate-400">
-                                    <ChevronRight className="h-4 w-4" />
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleOpenTicketDetails(ticket.id);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                                  >
+                                    <span>{isPolish ? 'Otwórz' : 'Open'}</span>
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                  </button>
                                 </td>
                               </tr>
                             );

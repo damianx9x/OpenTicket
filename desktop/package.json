@@ -1,6 +1,6 @@
 {
   "name": "openticket-desktop",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "OpenTicket - self-contained ticket management for macOS",
   "main": "dist/main.js",
   "homepage": "./",

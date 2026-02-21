@@ -3,7 +3,7 @@
 <!-- INSTALLER_LINK:START -->
 ## Installer (PKG)
 - Latest: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- Release v0.3.1: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.1/OpenTicket-Installer.pkg)
+- Release v0.3.2: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.2/OpenTicket-Installer.pkg)
 <!-- INSTALLER_LINK:END -->
 
 ## GitHub Release Standard
@@ -208,6 +208,22 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (hotfix kliknięcia zgłoszenia + instalator 0.3.2)
+- Naprawiono problem z otwieraniem szczegółów zgłoszenia po kliknięciu:
+  - dodano jawny przycisk `Otwórz` w tabeli,
+  - tytuł zgłoszenia jest osobnym klikalnym elementem (fallback dla środowisk, gdzie klik na cały `tr` bywa niestabilny).
+- Uodporniono build instalatora:
+  - `Moj/build-oficjalna-instalka.sh` buduje desktop do izolowanego outputu `desktop/release-user` (omija problem uprawnień po starych buildach root-owned).
+- Podbito wersję aplikacji do `0.3.2` (`backend`, `frontend`, `desktop`).
+- Przebudowano artefakty instalacyjne:
+  - `Moj/OpenTicket-Installer.pkg`,
+  - `Moj/OpenTicket-Installer.dmg`,
+  - `Moj/OpenTicket-Installer.zip`,
+  - sumy SHA256.
+- Testy po hotfixie:
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/modal-popup-smoke.sh` = PASS.
+
 ### 2026-02-21 (workflow etapów + reopen + statystyki z PDF)
 - Dodano nowy workflow zgłoszenia (popup ticketu):
   - `PRZYJĘTE -> DIAGNOZA -> KOSZTORYS -> ZAMAWIANIE CZĘŚCI -> OCZEKUJE NA ZGODĘ -> WYSŁANE DO KLIENTA -> ZAMKNIĘTE`.
