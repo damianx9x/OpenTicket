@@ -207,11 +207,29 @@ const NAV_ITEMS = [
   { id: 'tickets', labelPl: 'Zgłoszenia', labelEn: 'Tickets', icon: TicketIcon },
   { id: 'statistics', labelPl: 'Statystyki', labelEn: 'Statistics', icon: BarChart3 },
   { id: 'users', labelPl: 'Użytkownicy', labelEn: 'Users', icon: Users },
+  { id: 'profile', labelPl: 'Mój interfejs', labelEn: 'My UI', icon: Settings2 },
   { id: 'vat', labelPl: 'Konfiguracja', labelEn: 'Settings', icon: Settings2 },
   { id: 'server', labelPl: 'Serwer', labelEn: 'Server', icon: Server },
 ] as const;
 
 type NavItemId = (typeof NAV_ITEMS)[number]['id'];
+
+type DashboardWidgetKey = 'open' | 'urgent' | 'inProgress' | 'closedToday';
+type DashboardWidgetSize = 'sm' | 'md' | 'lg';
+type DashboardTheme = 'helpdesk-blue' | 'graphite-noir' | 'emerald-flow';
+
+const DASHBOARD_WIDGET_ORDER_DEFAULT: DashboardWidgetKey[] = ['open', 'urgent', 'inProgress', 'closedToday'];
+const DASHBOARD_WIDGET_SIZES_DEFAULT: Record<DashboardWidgetKey, DashboardWidgetSize> = {
+  open: 'md',
+  urgent: 'md',
+  inProgress: 'md',
+  closedToday: 'md',
+};
+const DASHBOARD_THEMES: Array<{ value: DashboardTheme; label: string }> = [
+  { value: 'helpdesk-blue', label: 'Helpdesk Blue' },
+  { value: 'graphite-noir', label: 'Graphite Noir' },
+  { value: 'emerald-flow', label: 'Emerald Flow' },
+];
 
 type SavedFilterPreset = {
   name: string;
@@ -223,9 +241,17 @@ type SavedFilterPreset = {
 };
 
 type DashboardPreferences = {
-  widgetOrder?: Array<'open' | 'urgent' | 'inProgress' | 'closedToday'>;
+  widgetOrder?: DashboardWidgetKey[];
+  widgetSizes?: Partial<Record<DashboardWidgetKey, DashboardWidgetSize>>;
   savedFilters?: SavedFilterPreset[];
   compactMode?: boolean;
+  theme?: DashboardTheme;
+  defaultFilters?: {
+    status?: string;
+    priority?: string;
+    onlyMine?: boolean;
+    minAgeDays?: number;
+  };
 };
 
 function formatDate(value: string): string {
@@ -308,10 +334,13 @@ export default function DashboardPage() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [dashboardPrefs, setDashboardPrefs] = useState<DashboardPreferences>({
-    widgetOrder: ['open', 'urgent', 'inProgress', 'closedToday'],
+    widgetOrder: DASHBOARD_WIDGET_ORDER_DEFAULT,
+    widgetSizes: DASHBOARD_WIDGET_SIZES_DEFAULT,
     savedFilters: [],
     compactMode: false,
+    theme: 'helpdesk-blue',
   });
+  const [draggingWidget, setDraggingWidget] = useState<DashboardWidgetKey | null>(null);
 
   const [statistics, setStatistics] = useState<StatisticsOverview | null>(null);
   const [statisticsLoading, setStatisticsLoading] = useState(false);
@@ -420,6 +449,10 @@ export default function DashboardPage() {
     () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
     [tickets, selectedTicketId],
   );
+  const imageAttachments = useMemo(
+    () => attachments.filter((attachment) => attachment.mimeType.startsWith('image/')),
+    [attachments],
+  );
   const currentWorkflowStatus = useMemo(
     () => (selectedTicket ? toWorkflowStatus(selectedTicket.status) : null),
     [selectedTicket],
@@ -475,6 +508,10 @@ export default function DashboardPage() {
           ? isPolish
             ? 'Użytkownicy'
             : 'Users'
+          : activeNav === 'profile'
+            ? isPolish
+              ? 'Mój interfejs'
+              : 'My UI'
           : activeNav === 'server'
             ? isPolish
               ? 'Status Serwera'
@@ -535,12 +572,7 @@ export default function DashboardPage() {
       },
     };
 
-    const fallbackOrder: Array<'open' | 'urgent' | 'inProgress' | 'closedToday'> = [
-      'open',
-      'urgent',
-      'inProgress',
-      'closedToday',
-    ];
+    const fallbackOrder: DashboardWidgetKey[] = DASHBOARD_WIDGET_ORDER_DEFAULT;
     const order =
       dashboardPrefs.widgetOrder && dashboardPrefs.widgetOrder.length === 4
         ? dashboardPrefs.widgetOrder
@@ -548,6 +580,13 @@ export default function DashboardPage() {
 
     return order.map((key) => definitions[key]);
   }, [dashboardPrefs.widgetOrder, stats, uiLanguage]);
+  const widgetSizes = useMemo(
+    () => ({
+      ...DASHBOARD_WIDGET_SIZES_DEFAULT,
+      ...(dashboardPrefs.widgetSizes || {}),
+    }),
+    [dashboardPrefs.widgetSizes],
+  );
 
   const pendingReminderCount = useMemo(
     () => globalReminders.filter((item) => item.status === 'PENDING').length,
@@ -1120,16 +1159,36 @@ export default function DashboardPage() {
         setCurrentUser(me);
 
         const prefs = await getMyPreferences();
+        const prefObject = prefs as DashboardPreferences;
         setDashboardPrefs((prev) => ({
           ...prev,
-          ...(prefs as DashboardPreferences),
+          ...prefObject,
           widgetOrder:
-            ((prefs as DashboardPreferences).widgetOrder as DashboardPreferences['widgetOrder']) ||
-            prev.widgetOrder,
+            (prefObject.widgetOrder as DashboardPreferences['widgetOrder']) || prev.widgetOrder,
+          widgetSizes:
+            (prefObject.widgetSizes as DashboardPreferences['widgetSizes']) || prev.widgetSizes,
           savedFilters:
-            ((prefs as DashboardPreferences).savedFilters as DashboardPreferences['savedFilters']) ||
-            prev.savedFilters,
+            (prefObject.savedFilters as DashboardPreferences['savedFilters']) || prev.savedFilters,
+          theme: prefObject.theme || prev.theme,
+          defaultFilters:
+            (prefObject.defaultFilters as DashboardPreferences['defaultFilters']) || prev.defaultFilters,
         }));
+
+        if (prefObject.defaultFilters) {
+          setFilters((prev) => ({
+            ...prev,
+            status: prefObject.defaultFilters?.status || prev.status,
+            priority: prefObject.defaultFilters?.priority || prev.priority,
+            onlyMine:
+              typeof prefObject.defaultFilters?.onlyMine === 'boolean'
+                ? prefObject.defaultFilters.onlyMine
+                : prev.onlyMine,
+            minAgeDays:
+              prefObject.defaultFilters?.minAgeDays && Number.isFinite(prefObject.defaultFilters.minAgeDays)
+                ? String(Math.max(1, Math.floor(prefObject.defaultFilters.minAgeDays)))
+                : prev.minAgeDays,
+          }));
+        }
 
         await Promise.all([loadTicketsData(), loadAssignableAgents(), loadGlobalReminders()]);
       } catch (error) {
@@ -1207,6 +1266,18 @@ export default function DashboardPage() {
       setActiveNav('tickets');
     }
   }, [activeNav, isAdmin]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    const theme = dashboardPrefs.theme || 'helpdesk-blue';
+    document.documentElement.setAttribute('data-ts-theme', theme);
+    document.body.classList.toggle('ts-compact', Boolean(dashboardPrefs.compactMode));
+    return () => {
+      document.body.classList.remove('ts-compact');
+    };
+  }, [dashboardPrefs.theme, dashboardPrefs.compactMode]);
 
   useEffect(() => {
     if (bootLoading) {
@@ -1455,17 +1526,79 @@ export default function DashboardPage() {
     window.location.href = '/login';
   };
 
-  const moveWidget = async (
-    widgetKey: 'open' | 'urgent' | 'inProgress' | 'closedToday',
-    direction: 'up' | 'down',
-  ) => {
-    const current = [...(dashboardPrefs.widgetOrder || ['open', 'urgent', 'inProgress', 'closedToday'])];
+  const moveWidget = async (widgetKey: DashboardWidgetKey, direction: 'up' | 'down') => {
+    const current = [...(dashboardPrefs.widgetOrder || DASHBOARD_WIDGET_ORDER_DEFAULT)];
     const index = current.indexOf(widgetKey);
     if (index === -1) return;
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= current.length) return;
     [current[index], current[targetIndex]] = [current[targetIndex], current[index]];
     await savePrefs({ ...dashboardPrefs, widgetOrder: current });
+  };
+
+  const reorderWidgets = async (sourceKey: DashboardWidgetKey, targetKey: DashboardWidgetKey) => {
+    if (sourceKey === targetKey) return;
+    const current = [...(dashboardPrefs.widgetOrder || DASHBOARD_WIDGET_ORDER_DEFAULT)];
+    const sourceIndex = current.indexOf(sourceKey);
+    const targetIndex = current.indexOf(targetKey);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+    current.splice(sourceIndex, 1);
+    current.splice(targetIndex, 0, sourceKey);
+    await savePrefs({ ...dashboardPrefs, widgetOrder: current });
+  };
+
+  const handleWidgetSizeStep = async (widgetKey: DashboardWidgetKey, direction: 'down' | 'up') => {
+    const sequence: DashboardWidgetSize[] = ['sm', 'md', 'lg'];
+    const currentSize = widgetSizes[widgetKey] || 'md';
+    const currentIndex = sequence.indexOf(currentSize);
+    const nextIndex = direction === 'up' ? Math.min(sequence.length - 1, currentIndex + 1) : Math.max(0, currentIndex - 1);
+    if (nextIndex === currentIndex) {
+      return;
+    }
+    await savePrefs({
+      ...dashboardPrefs,
+      widgetSizes: {
+        ...widgetSizes,
+        [widgetKey]: sequence[nextIndex],
+      },
+    });
+  };
+
+  const removeSavedFilter = async (name: string) => {
+    const next = (dashboardPrefs.savedFilters || []).filter((saved) => saved.name !== name);
+    await savePrefs({
+      ...dashboardPrefs,
+      savedFilters: next,
+    });
+  };
+
+  const saveDefaultFiltersFromCurrent = async () => {
+    const normalizedMinAge = Number(filters.minAgeDays);
+    await savePrefs({
+      ...dashboardPrefs,
+      defaultFilters: {
+        status: filters.status || undefined,
+        priority: filters.priority || undefined,
+        onlyMine: filters.onlyMine || undefined,
+        minAgeDays: Number.isFinite(normalizedMinAge) && normalizedMinAge > 0 ? Math.floor(normalizedMinAge) : undefined,
+      },
+    });
+    notify({
+      type: 'success',
+      text: isPolish ? 'Domyślne filtry użytkownika zapisane.' : 'Default user filters saved.',
+    });
+  };
+
+  const resetWidgetLayout = async () => {
+    await savePrefs({
+      ...dashboardPrefs,
+      widgetOrder: DASHBOARD_WIDGET_ORDER_DEFAULT,
+      widgetSizes: DASHBOARD_WIDGET_SIZES_DEFAULT,
+    });
+    notify({
+      type: 'success',
+      text: isPolish ? 'Układ dashboardu przywrócony do domyślnego.' : 'Dashboard layout reset to defaults.',
+    });
   };
 
   const handleCreateAppUser = async (event: React.FormEvent) => {
@@ -2525,16 +2658,62 @@ export default function DashboardPage() {
 
             {activeNav === 'tickets' && (
               <>
-                <section className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <section className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-6 xl:grid-cols-12">
                   {orderedWidgets.map((widget, idx) => {
                     const Icon = widget.icon;
+                    const widgetSize = widgetSizes[widget.key] || 'md';
+                    const spanClass =
+                      widgetSize === 'lg'
+                        ? 'md:col-span-6 xl:col-span-6'
+                        : widgetSize === 'sm'
+                          ? 'md:col-span-3 xl:col-span-2'
+                          : 'md:col-span-3 xl:col-span-3';
                     return (
                       <article
                         key={widget.key}
-                        className={`ticket-surface animate-enter rounded-xl border border-slate-100 p-5 ${
+                        draggable
+                        onDragStart={() => setDraggingWidget(widget.key)}
+                        onDragEnd={() => setDraggingWidget(null)}
+                        onDragOver={(event) => event.preventDefault()}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          if (draggingWidget) {
+                            void reorderWidgets(draggingWidget, widget.key);
+                            setDraggingWidget(null);
+                          }
+                        }}
+                        className={`ticket-surface animate-enter rounded-xl border border-slate-100 p-5 ${spanClass} ${
+                          draggingWidget === widget.key ? 'opacity-70 ring-2 ring-blue-200' : ''
+                        } ${
                           idx > 0 ? `[animation-delay:${idx * 60}ms]` : ''
                         }`}
                       >
+                        <div className="mb-2 flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                            {isPolish ? `Rozmiar: ${widgetSize.toUpperCase()}` : `Size: ${widgetSize.toUpperCase()}`}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => void handleWidgetSizeStep(widget.key, 'down')}
+                              className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-100"
+                              title={isPolish ? 'Zmniejsz widget' : 'Smaller widget'}
+                            >
+                              -
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleWidgetSizeStep(widget.key, 'up')}
+                              className="rounded border border-slate-300 bg-white px-2 py-0.5 hover:bg-slate-100"
+                              title={isPolish ? 'Powiększ widget' : 'Larger widget'}
+                            >
+                              +
+                            </button>
+                            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold">
+                              {isPolish ? 'Przeciągnij' : 'Drag'}
+                            </span>
+                          </div>
+                        </div>
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{widget.title}</p>
@@ -2855,34 +3034,17 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
-                        <div className="rounded-xl border border-slate-200 p-4">
-                          <h4 className="text-sm font-semibold text-slate-900">Historia klienta</h4>
-                          {customerHistoryLoading ? (
-                            <p className="mt-2 text-xs text-slate-500">Ładowanie historii klienta...</p>
-                          ) : customerHistory.length === 0 ? (
-                            <p className="mt-2 text-xs text-slate-500">Brak wcześniejszych zgłoszeń dla tego klienta.</p>
-                          ) : (
-                            <div className="mt-2 max-h-36 space-y-1 overflow-y-auto text-xs">
-                              {customerHistory.map((item) => (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  onClick={() => void handleOpenTicketDetails(item.id)}
-                                  className="flex w-full items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1 text-left hover:bg-slate-100"
-                                >
-                                  <span>
-                                    #{item.number} - {item.title}
-                                  </span>
-                                  <span className="text-slate-500">{formatDate(item.createdAt)}</span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-3">
+                        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                          <h4 className="text-sm font-semibold text-slate-900">{isPolish ? 'Opis usterki' : 'Issue description'}</h4>
+                          <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                            <p className="whitespace-pre-wrap text-sm text-slate-700">
+                              {selectedTicket.description?.trim() || (isPolish ? 'Brak opisu.' : 'No description.')}
+                            </p>
+                          </div>
                           <div className="rounded-xl border border-slate-200 p-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Technik prowadzący</h4>
+                            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                              {isPolish ? 'Technik prowadzący' : 'Assigned technician'}
+                            </h4>
                             <div className="mt-2 flex flex-col gap-2">
                               <select
                                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -2890,7 +3052,7 @@ export default function DashboardPage() {
                                 onChange={(event) => setAssignmentDraft(event.target.value)}
                                 disabled={assigningTicket}
                               >
-                                <option value="">Nieprzypisany</option>
+                                <option value="">{isPolish ? 'Nieprzypisany' : 'Unassigned'}</option>
                                 {assignableAgents.map((agent) => (
                                   <option key={agent.id} value={agent.id}>
                                     {(agent.name || agent.email) + ` (${agent.role})`}
@@ -2903,17 +3065,107 @@ export default function DashboardPage() {
                                 disabled={assigningTicket}
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"
                               >
-                                {assigningTicket ? 'Zapisywanie...' : 'Zapisz przypisanie'}
+                                {assigningTicket ? (isPolish ? 'Zapisywanie...' : 'Saving...') : isPolish ? 'Zapisz przypisanie' : 'Save assignment'}
                               </button>
                             </div>
                           </div>
+                        </div>
 
-                          <div className="rounded-xl border border-slate-200 p-3">
-                            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-700">Historia etapów</h4>
+                        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-900">{isPolish ? 'Zdjęcia' : 'Photos'}</h4>
+                            <span className="text-xs text-slate-500">
+                              {isPolish ? `Liczba: ${imageAttachments.length}` : `Count: ${imageAttachments.length}`}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {imageAttachments.length === 0 ? (
+                              <p className="col-span-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                                {isPolish ? 'Brak zdjęć w zgłoszeniu.' : 'No photos in this ticket.'}
+                              </p>
+                            ) : (
+                              imageAttachments.slice(0, 6).map((attachment) => (
+                                <button
+                                  key={attachment.id}
+                                  type="button"
+                                  className="group overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
+                                  onClick={() => void handlePreviewAttachment(attachment)}
+                                >
+                                  <img
+                                    src={buildApiUrl(`/tickets/${selectedTicket.id}/attachments/${attachment.id}/raw`)}
+                                    alt={attachment.filename}
+                                    className="h-20 w-full object-cover transition duration-200 group-hover:scale-[1.03]"
+                                    loading="lazy"
+                                  />
+                                </button>
+                              ))
+                            )}
+                          </div>
+                          <form className="space-y-2" onSubmit={handleAddComment}>
+                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                              {isPolish ? 'Dodaj komentarz' : 'Add comment'}
+                            </label>
+                            <textarea
+                              rows={3}
+                              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                              placeholder={isPolish ? 'Dodaj komentarz do zgłoszenia' : 'Add a ticket comment'}
+                              value={commentBody}
+                              onChange={(event) => setCommentBody(event.target.value)}
+                            />
+                            <label className="flex items-center gap-2 text-xs text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={commentInternal}
+                                onChange={(event) => setCommentInternal(event.target.checked)}
+                              />
+                              {isPolish ? 'Notatka wewnętrzna' : 'Internal note'}
+                            </label>
+                            <button
+                              type="submit"
+                              disabled={submittingComment}
+                              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:bg-blue-300"
+                            >
+                              {submittingComment ? (isPolish ? 'Dodawanie...' : 'Adding...') : isPolish ? 'Dodaj komentarz' : 'Add comment'}
+                            </button>
+                          </form>
+                        </div>
+                      </div>
+
+                      {loadingDetails ? (
+                        <p className="text-sm text-slate-500">Ładowanie komentarzy i kosztów...</p>
+                      ) : (
+                        <>
+                        <div className="grid gap-4 xl:grid-cols-3">
+                          <div className="rounded-xl border border-slate-200 p-4">
+                            <h4 className="text-sm font-semibold text-slate-900">Historia klienta</h4>
+                            {customerHistoryLoading ? (
+                              <p className="mt-2 text-xs text-slate-500">Ładowanie historii klienta...</p>
+                            ) : customerHistory.length === 0 ? (
+                              <p className="mt-2 text-xs text-slate-500">Brak wcześniejszych zgłoszeń dla tego klienta.</p>
+                            ) : (
+                              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs">
+                                {customerHistory.map((item) => (
+                                  <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => void handleOpenTicketDetails(item.id)}
+                                    className="flex w-full items-center justify-between rounded border border-slate-200 bg-slate-50 px-2 py-1 text-left hover:bg-slate-100"
+                                  >
+                                    <span>
+                                      #{item.number} - {item.title}
+                                    </span>
+                                    <span className="text-slate-500">{formatDate(item.createdAt)}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="rounded-xl border border-slate-200 p-4">
+                            <h4 className="text-sm font-semibold text-slate-900">Historia etapów</h4>
                             {ticketStatusHistory.length === 0 ? (
                               <p className="mt-2 text-xs text-slate-500">Brak historii zmian statusu.</p>
                             ) : (
-                              <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
                                 {ticketStatusHistory.map((entry) => (
                                   <div key={entry.id} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs">
                                     <p className="font-medium text-slate-700">
@@ -2931,17 +3183,9 @@ export default function DashboardPage() {
                               </div>
                             )}
                           </div>
-                        </div>
-                      </div>
-
-                      {loadingDetails ? (
-                        <p className="text-sm text-slate-500">Ładowanie komentarzy i kosztów...</p>
-                      ) : (
-                        <>
-                        <div className="grid gap-4 xl:grid-cols-2">
-                          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                          <div className="rounded-xl border border-slate-200 p-4">
                             <h4 className="text-sm font-semibold text-slate-900">Komentarze</h4>
-                            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
+                            <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
                               {comments.length === 0 ? (
                                 <p className="text-xs text-slate-500">Brak komentarzy.</p>
                               ) : (
@@ -2957,34 +3201,9 @@ export default function DashboardPage() {
                                 ))
                               )}
                             </div>
-
-                            <form className="space-y-2" onSubmit={handleAddComment}>
-                              <textarea
-                                rows={3}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                                placeholder="Dodaj komentarz"
-                                value={commentBody}
-                                onChange={(event) => setCommentBody(event.target.value)}
-                              />
-                              <label className="flex items-center gap-2 text-xs text-slate-700">
-                                <input
-                                  type="checkbox"
-                                  checked={commentInternal}
-                                  onChange={(event) => setCommentInternal(event.target.checked)}
-                                />
-                                Notatka wewnętrzna
-                              </label>
-                              <button
-                                type="submit"
-                                disabled={submittingComment}
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:bg-blue-300"
-                              >
-                                {submittingComment ? 'Dodawanie...' : 'Dodaj komentarz'}
-                              </button>
-                            </form>
                           </div>
-
-                          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                        </div>
+                        <div className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4">
                             <h4 className="text-sm font-semibold text-slate-900">Koszty</h4>
                             <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
                               {costItems.length === 0 ? (
@@ -3060,7 +3279,6 @@ export default function DashboardPage() {
                               </button>
                             </form>
                           </div>
-                        </div>
                         <div className="mt-4 grid gap-4 xl:grid-cols-2">
                           <div className="space-y-3 rounded-xl border border-slate-200 p-4">
                             <div className="flex items-center justify-between">
@@ -3631,6 +3849,237 @@ export default function DashboardPage() {
               </section>
             )}
 
+            {activeNav === 'profile' && (
+              <section className="space-y-4">
+                <div className="ticket-surface rounded-xl border border-slate-100 p-5">
+                  <h2 className="mb-2 text-lg font-semibold text-slate-900">
+                    {isPolish ? 'Mój profil interfejsu' : 'My interface profile'}
+                  </h2>
+                  <p className="mb-4 text-sm text-slate-600">
+                    {isPolish
+                      ? 'Te ustawienia zapisują się na Twoim koncie i działają tak samo w WebUI oraz aplikacji macOS.'
+                      : 'These preferences are stored on your account and work the same in WebUI and macOS app.'}
+                  </p>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        {isPolish ? 'Wygląd dashboardu' : 'Dashboard appearance'}
+                      </h3>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        {isPolish ? 'Motyw kolorystyczny' : 'Color theme'}
+                        <select
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={dashboardPrefs.theme || 'helpdesk-blue'}
+                          onChange={(event) =>
+                            void savePrefs({
+                              ...dashboardPrefs,
+                              theme: event.target.value as DashboardTheme,
+                            })
+                          }
+                        >
+                          {DASHBOARD_THEMES.map((themeOption) => (
+                            <option key={themeOption.value} value={themeOption.value}>
+                              {themeOption.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(dashboardPrefs.compactMode)}
+                          onChange={(event) =>
+                            void savePrefs({
+                              ...dashboardPrefs,
+                              compactMode: event.target.checked,
+                            })
+                          }
+                        />
+                        {isPolish ? 'Tryb kompaktowy (gęstszy układ)' : 'Compact mode (denser layout)'}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void resetWidgetLayout()}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        {isPolish ? 'Przywróć domyślny układ widgetów' : 'Reset widget layout to default'}
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <h3 className="text-sm font-semibold text-slate-800">
+                        {isPolish ? 'Domyślne filtry użytkownika' : 'Default user filters'}
+                      </h3>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.status}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
+                        >
+                          <option value="">{isPolish ? 'Status: wszystkie' : 'Status: all'}</option>
+                          {FILTER_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {statusLabels[status] || status}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.priority}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, priority: event.target.value }))}
+                        >
+                          <option value="">{isPolish ? 'Priorytet: wszystkie' : 'Priority: all'}</option>
+                          {PRIORITIES.map((priority) => (
+                            <option key={priority} value={priority}>
+                              {priorityLabels[priority]}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={filters.onlyMine}
+                            onChange={(event) => setFilters((prev) => ({ ...prev, onlyMine: event.target.checked }))}
+                          />
+                          {isPolish ? 'Tylko moje zgłoszenia' : 'Only my tickets'}
+                        </label>
+                        <input
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          type="number"
+                          min={1}
+                          max={3650}
+                          placeholder={isPolish ? '> X dni w serwisie' : '> X days in service'}
+                          value={filters.minAgeDays}
+                          onChange={(event) =>
+                            setFilters((prev) => ({ ...prev, minAgeDays: event.target.value.replace(/[^0-9]/g, '') }))
+                          }
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void saveDefaultFiltersFromCurrent()}
+                          className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        >
+                          {isPolish ? 'Zapisz jako domyślne' : 'Save as default'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              status: dashboardPrefs.defaultFilters?.status || '',
+                              priority: dashboardPrefs.defaultFilters?.priority || '',
+                              onlyMine: Boolean(dashboardPrefs.defaultFilters?.onlyMine),
+                              minAgeDays:
+                                dashboardPrefs.defaultFilters?.minAgeDays &&
+                                Number.isFinite(dashboardPrefs.defaultFilters.minAgeDays)
+                                  ? String(Math.floor(dashboardPrefs.defaultFilters.minAgeDays))
+                                  : '',
+                            }))
+                          }
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                        >
+                          {isPolish ? 'Wczytaj domyślne' : 'Load defaults'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="ticket-surface rounded-xl border border-slate-100 p-5">
+                  <h3 className="mb-3 text-lg font-semibold text-slate-900">
+                    {isPolish ? 'Zapisane presety filtrów' : 'Saved filter presets'}
+                  </h3>
+                  {(dashboardPrefs.savedFilters || []).length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                      {isPolish ? 'Brak zapisanych presetów. Zapisz filtr z widoku zgłoszeń.' : 'No saved presets yet.'}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {(dashboardPrefs.savedFilters || []).map((saved) => (
+                        <div
+                          key={saved.name}
+                          className="flex flex-col justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 md:flex-row md:items-center"
+                        >
+                          <div className="text-sm text-slate-700">
+                            <strong>{saved.name}</strong>
+                            <p className="text-xs text-slate-500">
+                              status={saved.status || '-'}, priorytet={saved.priority || '-'}, onlyMine=
+                              {saved.onlyMine ? '1' : '0'}, minAgeDays={saved.minAgeDays || 0}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => applySavedFilter(saved)}
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                            >
+                              {isPolish ? 'Zastosuj' : 'Apply'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void removeSavedFilter(saved.name)}
+                              className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            >
+                              {isPolish ? 'Usuń' : 'Delete'}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="ticket-surface rounded-xl border border-slate-100 p-5">
+                  <h3 className="mb-3 text-lg font-semibold text-slate-900">
+                    {isPolish ? 'Widgety dashboardu (drag + skalowanie)' : 'Dashboard widgets (drag + resize)'}
+                  </h3>
+                  <div className="space-y-2">
+                    {(dashboardPrefs.widgetOrder || DASHBOARD_WIDGET_ORDER_DEFAULT).map((key, index) => (
+                      <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                        <span className="text-sm text-slate-700">
+                          {index + 1}. {key} ({(widgetSizes[key] || 'md').toUpperCase()})
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => void moveWidget(key, 'up')}
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void moveWidget(key, 'down')}
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleWidgetSizeStep(key, 'down')}
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                          >
+                            -
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleWidgetSizeStep(key, 'up')}
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            )}
+
             {activeNav === 'vat' && isAdmin && (
               <section className="space-y-4">
                 <div className="ticket-surface rounded-xl border border-slate-100 p-5">
@@ -3984,30 +4433,90 @@ export default function DashboardPage() {
 
                 <div className="ticket-surface rounded-xl border border-slate-100 p-5">
                   <h2 className="mb-3 text-lg font-semibold text-slate-900">Personalizacja technika (profil UI)</h2>
-                  <div className="space-y-2">
-                    {(dashboardPrefs.widgetOrder || ['open', 'urgent', 'inProgress', 'closedToday']).map((key, index) => (
-                      <div key={key} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                        <span className="text-sm text-slate-700">
-                          {index + 1}. {key}
-                        </span>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => void moveWidget(key, 'up')}
-                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void moveWidget(key, 'down')}
-                            className="rounded border border-slate-300 bg-white px-2 py-1 text-xs hover:bg-slate-100"
-                          >
-                            ↓
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-sm text-slate-700">
+                        Każdy użytkownik ma własny profil UI (widgety, filtry, motyw). Możesz sprawdzić to z poziomu zakładki
+                        <strong> Mój interfejs</strong>.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setActiveNav('profile')}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        Otwórz „Mój interfejs”
+                      </button>
+                    </div>
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <h3 className="text-sm font-semibold text-slate-800">Globalne domyślne UI (dla nowych kont)</h3>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Domyślny priorytet filtra
+                        <select
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={settings?.uiDefaults.defaultPriorityFilter || ''}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    uiDefaults: {
+                                      ...prev.uiDefaults,
+                                      defaultPriorityFilter: event.target.value,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        >
+                          <option value="">Brak</option>
+                          {PRIORITIES.map((priority) => (
+                            <option key={priority} value={priority}>
+                              {priorityLabels[priority]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings?.uiDefaults.compactMode)}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    uiDefaults: {
+                                      ...prev.uiDefaults,
+                                      compactMode: event.target.checked,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                        Domyślnie tryb kompaktowy dla nowych użytkowników
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings?.reminders.enabled)}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    reminders: {
+                                      ...prev.reminders,
+                                      enabled: event.target.checked,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                        Włącz globalne przypomnienia
+                      </label>
+                    </div>
                   </div>
                 </div>
               </section>

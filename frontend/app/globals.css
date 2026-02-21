@@ -14,6 +14,36 @@
     --ts-primary: #2463eb;
   }
 
+  :root[data-ts-theme='helpdesk-blue'] {
+    --ts-bg: #f3f5fa;
+    --ts-panel: #ffffff;
+    --ts-sidebar: #081a36;
+    --ts-sidebar-border: #142a52;
+    --ts-text: #0f172a;
+    --ts-muted: #64748b;
+    --ts-primary: #2463eb;
+  }
+
+  :root[data-ts-theme='graphite-noir'] {
+    --ts-bg: #edf0f5;
+    --ts-panel: #ffffff;
+    --ts-sidebar: #111827;
+    --ts-sidebar-border: #1f2937;
+    --ts-text: #0f172a;
+    --ts-muted: #6b7280;
+    --ts-primary: #0f766e;
+  }
+
+  :root[data-ts-theme='emerald-flow'] {
+    --ts-bg: #eef7f4;
+    --ts-panel: #ffffff;
+    --ts-sidebar: #064e3b;
+    --ts-sidebar-border: #065f46;
+    --ts-text: #06261f;
+    --ts-muted: #3f6f60;
+    --ts-primary: #0f9f6e;
+  }
+
   html,
   body {
     min-height: 100%;
@@ -39,6 +69,17 @@
   .modal-panel {
     animation: ts-modal-up 220ms cubic-bezier(0.2, 0.65, 0.2, 1) both;
   }
+}
+
+body.ts-compact .ticket-surface {
+  box-shadow: 0 8px 20px -16px rgba(15, 23, 42, 0.35);
+}
+
+body.ts-compact input,
+body.ts-compact select,
+body.ts-compact textarea,
+body.ts-compact button {
+  font-size: 0.875rem;
 }
 
 @layer utilities {

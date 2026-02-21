@@ -77,6 +77,35 @@ Raport:
 ./Moj/testy/runtime/reports/modal-popup-smoke-*.json
 ```
 
+## Test profilu użytkownika (motyw + compact + trwałość ustawień)
+```bash
+./Moj/testy/profile-ui-smoke.sh
+```
+Zakres:
+- wejście do zakładki `Mój interfejs`,
+- zmiana motywu i compact mode,
+- reload dashboardu,
+- walidacja, że preferencje zostały zapisane na koncie.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/profile-ui-smoke-*.json
+```
+
+## Test eksportu backupu z UI
+```bash
+./Moj/testy/backup-ui-smoke.sh
+```
+Zakres:
+- przejście do `Konfiguracja -> Backup i odtwarzanie`,
+- klik `Eksportuj backup`,
+- walidacja ścieżki i obecności pliku `.tar.gz`.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/backup-ui-smoke-*.json
+```
+
 ## Aktualizacja screenshotów release (demo 200)
 ```bash
 ./Moj/testy/capture-release-screenshots.sh

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 README_PATH="${1:-$ROOT_DIR/README.md}"
 PKG_NAME="${PKG_NAME:-OpenTicket-Installer.pkg}"
+EXE_NAME="${EXE_NAME:-OpenTicket-Installer.exe}"
 
 if [[ ! -f "$README_PATH" ]]; then
   echo "[update-readme-installer-link] Brak pliku README: $README_PATH" >&2
@@ -27,17 +28,21 @@ elif [[ "$ORIGIN_URL" =~ ^https://github\.com/(.+)\.git$ ]]; then
 elif [[ "$ORIGIN_URL" =~ ^https://github\.com/(.+)$ ]]; then
   REPO_URL="https://github.com/${BASH_REMATCH[1]}"
 else
-  REPO_URL="https://github.com/damianx9x/projekt-systemu-ticketowego"
+  REPO_URL="https://github.com/damianx9x/OpenTicket"
 fi
 
-LATEST_URL="${REPO_URL}/releases/latest/download/${PKG_NAME}"
-VERSION_URL="${REPO_URL}/releases/download/v${VERSION}/${PKG_NAME}"
+PKG_LATEST_URL="${REPO_URL}/releases/latest/download/${PKG_NAME}"
+PKG_VERSION_URL="${REPO_URL}/releases/download/v${VERSION}/${PKG_NAME}"
+EXE_LATEST_URL="${REPO_URL}/releases/latest/download/${EXE_NAME}"
+EXE_VERSION_URL="${REPO_URL}/releases/download/v${VERSION}/${EXE_NAME}"
 
 BLOCK="$(cat <<EOF
 <!-- INSTALLER_LINK:START -->
-## Installer (PKG)
-- Latest: [${PKG_NAME}](${LATEST_URL})
-- Release v${VERSION}: [${PKG_NAME}](${VERSION_URL})
+## Installers (macOS + Windows)
+- macOS PKG (latest): [${PKG_NAME}](${PKG_LATEST_URL})
+- macOS PKG (v${VERSION}): [${PKG_NAME}](${PKG_VERSION_URL})
+- Windows EXE (latest): [${EXE_NAME}](${EXE_LATEST_URL})
+- Windows EXE (v${VERSION}): [${EXE_NAME}](${EXE_VERSION_URL})
 <!-- INSTALLER_LINK:END -->
 EOF
 )"

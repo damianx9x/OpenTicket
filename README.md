@@ -1,14 +1,16 @@
 # OpenTicket (Local macOS + WebUI + iOS)
 
 <!-- INSTALLER_LINK:START -->
-## Installer (PKG)
-- Latest: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- Release v0.3.2: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.2/OpenTicket-Installer.pkg)
+## Installers (macOS + Windows)
+- macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
+- macOS PKG (v0.3.2): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.2/OpenTicket-Installer.pkg)
+- Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
+- Windows EXE (v0.3.2): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.2/OpenTicket-Installer.exe)
 <!-- INSTALLER_LINK:END -->
 
 ## GitHub Release Standard
 - Każdy release ma tag semver (`v0.x.y`) i opis zmian w sekcji `Changelog`.
-- README musi zawierać aktualny link do `.pkg` w sekcji `Installer (PKG)`.
+- README musi zawierać aktualne linki do `.pkg` i `.exe` w sekcji `Installers (macOS + Windows)`.
 - Screenshoty UI dla release są w `docs/screenshots/v0.3/` i opisane w `docs/screenshots/README.md`.
 - Przed publikacją uruchamiane są testy: `smoke`, `auth-smoke`, `ui-random-10` (Chromium + WebKit), `diagnose`.
 
@@ -87,6 +89,12 @@ Konfiguracja:
 Status serwera:
 ![Status serwera](docs/screenshots/v0.3/server-chromium.png)
 
+Mój interfejs (user profile):
+![Mój interfejs](docs/screenshots/v0.3/profile-ui-chromium.png)
+
+Backup (sukces eksportu):
+![Backup export](docs/screenshots/v0.3/backup-export-success.png)
+
 ## Status repo i gałąź bazowa
 - Repo robocze: bieżący checkout (`develop`)
 - Źródło: [damianx9x/OpenTicket](https://github.com/damianx9x/OpenTicket)
@@ -132,6 +140,8 @@ cd <repo-root>
 ./Moj/testy/ui-random-10.sh
 ./Moj/testy/ui-random-10.sh --all-browsers
 ./Moj/testy/modal-popup-smoke.sh
+./Moj/testy/profile-ui-smoke.sh
+./Moj/testy/backup-ui-smoke.sh
 ./Moj/testy/capture-release-screenshots.sh
 ./Moj/testy/diagnose.sh
 ./Moj/testy/stop.sh
@@ -175,13 +185,17 @@ make smoke
 make stage3-test
 make desktop-dev
 make installer-official
+make installer-official-win
 make moj-testy-start
 make moj-testy-smoke
 make moj-testy-auth-smoke
 make moj-testy-diagnose
+make moj-testy-profile-ui-smoke
+make moj-testy-backup-ui-smoke
 make moj-testy-stop
 ```
 `make up` automatycznie wykrywa zajęte porty i przełącza się na wolne (zakres `+100`).
+Windows local build alternatywnie: `powershell -ExecutionPolicy Bypass -File .\\Moj\\build-oficjalna-instalka-win.ps1`.
 
 ## Architektura (skrót)
 - Backend: `backend/` (`/api/v1`, setup, tickets, diagnostics, QR)
@@ -208,6 +222,56 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (pełny debug + Windows installer + release automation)
+- Przeprowadzono pełny retest aplikacji po zmianach UI/logiki i instalatorów:
+  - `make test` = PASS,
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/modal-popup-smoke.sh` = PASS,
+  - `./Moj/testy/ui-random-10.sh` = PASS,
+  - `./Moj/testy/auth-smoke.sh` = PASS,
+  - `./Moj/testy/profile-ui-smoke.sh` = PASS,
+  - `./Moj/testy/backup-ui-smoke.sh` = PASS,
+  - `./Moj/testy/client-only-smoke.sh` = PASS.
+- Dodano oficjalny build instalatora Windows:
+  - `Moj/build-oficjalna-instalka-win.sh` (bash),
+  - `Moj/build-oficjalna-instalka-win.ps1` (PowerShell),
+  - artefakty: `Moj/OpenTicket-Installer.exe`, `Moj/OpenTicket-Portable.exe` + sumy SHA256.
+- Uspójniono publikację release:
+  - workflow GitHub publikuje instalatory macOS i Windows na tagach `v*`,
+  - README ma automatyczny blok linków do `.pkg` i `.exe`.
+- Dodano brakujące zasoby ikon aplikacji:
+  - `desktop/assets/icon.icns`,
+  - `desktop/assets/icon.ico`,
+  - `desktop/assets/icon.png`.
+- Usprawniono diagnostykę:
+  - `scripts/diagnose.sh` ma fallback do logów `Moj/testy/runtime/logs`,
+  - brakujące logi frontend/desktop są raportowane czytelnie jako `not found` (bez mylących stacktrace).
+
+### 2026-02-21 (backup export fix + profil użytkownika UI)
+- Naprawiono eksport backupu przy rozjazdach ścieżek po migracji/rebrandingu:
+  - backend backupu wykrywa teraz dodatkowe legacy ścieżki danych (`ticket-system`, `TicketSystem`, `openticket-desktop`),
+  - komunikat błędu dla `client_only` jest czytelny i prowadzi do backupu po stronie serwera,
+  - endpoint backupu zwraca teraz listę sprawdzonych ścieżek przy błędzie.
+- Dodano nową zakładkę użytkownika `Mój interfejs` (WebUI + macOS app):
+  - wybór motywu (`Helpdesk Blue`, `Graphite Noir`, `Emerald Flow`),
+  - tryb kompaktowy,
+  - domyślne filtry użytkownika (`status`, `priorytet`, `tylko moje`, `> X dni`),
+  - zarządzanie presetami filtrów (zastosuj/usuń).
+- Dashboard widgety dostały realne sterowanie:
+  - przeciąganie (drag & drop) do zmiany kolejności,
+  - skalowanie widgetów (`SM/MD/LG`) z trwałym zapisem w preferencjach użytkownika.
+- Rozszerzono opcje admina:
+  - globalne domyślne UI dla nowych kont (domyślny priorytet filtra, compact mode),
+  - przełącznik globalnych przypomnień.
+- Testy po zmianach:
+  - `npm --prefix backend run build` = PASS,
+  - `npm --prefix frontend run build` = PASS,
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/modal-popup-smoke.sh` = PASS,
+  - `./Moj/testy/ui-random-10.sh` = PASS,
+  - test klikalny Playwright: profil UI (persist motywu + compact) = PASS,
+  - test klikalny Playwright: eksport backupu z `Konfiguracja` = PASS.
+
 ### 2026-02-21 (hotfix kliknięcia zgłoszenia + instalator 0.3.2)
 - Naprawiono problem z otwieraniem szczegółów zgłoszenia po kliknięciu:
   - dodano jawny przycisk `Otwórz` w tabeli,

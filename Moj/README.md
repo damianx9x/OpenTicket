@@ -12,6 +12,24 @@ Po buildzie dostaniesz w tym folderze:
 - `OpenTicket-Installer.zip` (opcjonalny backup)
 - pliki `*.sha256`
 
+## 1b) Zbuduj instalator Windows
+Na Windows (PowerShell):
+```powershell
+cd <repo-root>
+powershell -ExecutionPolicy Bypass -File .\Moj\build-oficjalna-instalka-win.ps1
+```
+
+Na macOS/Linux (bash, gdy masz środowisko do builda Windows):
+```bash
+cd <repo-root>
+./Moj/build-oficjalna-instalka-win.sh
+```
+
+Po buildzie dostaniesz:
+- `OpenTicket-Installer.exe` (instalator NSIS),
+- `OpenTicket-Portable.exe` (wersja portable, opcjonalnie),
+- pliki `*.sha256`.
+
 ## 2) Zainstaluj (test "na żywym organizmie")
 ```bash
 ./Moj/install-local.sh

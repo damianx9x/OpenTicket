@@ -14,6 +14,9 @@ type ResolvedRuntimePaths = {
   dbFile: string;
   uploadsDir: string;
   backupsDir: string;
+  installationMode: AppConfig['installationMode'];
+  remoteApiBaseUrl?: string;
+  checkedDbCandidates: string[];
 };
 
 @Injectable()
@@ -29,8 +32,16 @@ export class BackupService {
     const runtime = this.resolveRuntimePaths();
 
     if (!fs.existsSync(runtime.dbFile)) {
+      const checked = runtime.checkedDbCandidates.join(', ');
+      if (runtime.installationMode === 'client_only') {
+        const target = runtime.remoteApiBaseUrl || 'zdalny serwer (brak skonfigurowanego adresu)';
+        throw new BadRequestException(
+          `Ta instalacja działa w trybie klienta i nie ma lokalnej bazy danych do eksportu. Wykonaj backup na serwerze: ${target}. Sprawdzone ścieżki: ${checked}.`,
+        );
+      }
+
       throw new BadRequestException(
-        `Brak pliku bazy danych app.db do eksportu (sprawdzono: ${runtime.dbFile}).`,
+        `Brak pliku bazy danych app.db do eksportu. Sprawdzone ścieżki: ${checked}.`,
       );
     }
 
@@ -200,21 +211,20 @@ export class BackupService {
     const cached = this.configLoader.getConfigSync();
     const fileConfig = this.readConfigFile(configFile);
 
-    const candidateDataPaths = [
+    const candidateDataPaths = this.uniqueNormalizedPaths([
       process.env.TICKET_SYSTEM_DATA_DIR,
       cached?.dataPath,
       fileConfig?.dataPath,
       this.configLoader.getDefaultDataDirectoryPath(),
-    ]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .map((value) => path.resolve(value));
+      ...this.resolveLegacyDataPathCandidates(),
+    ]);
 
-    const candidateDbFiles = [
+    const candidateDbFiles = this.uniqueNormalizedPaths([
       this.resolveSqlitePath(process.env.DATABASE_URL),
       this.resolveSqlitePath(cached?.databaseUrl),
       this.resolveSqlitePath(fileConfig?.databaseUrl),
       ...candidateDataPaths.map((dataPath) => path.join(dataPath, 'app.db')),
-    ].filter((value): value is string => !!value);
+    ]);
 
     const existingDbFile = candidateDbFiles.find((dbPath) => fs.existsSync(dbPath));
     const dbFile = existingDbFile || candidateDbFiles[0] || path.join(this.configLoader.getDefaultDataDirectoryPath(), 'app.db');
@@ -239,7 +249,38 @@ export class BackupService {
       dbFile,
       uploadsDir,
       backupsDir,
+      installationMode: cached?.installationMode || fileConfig?.installationMode || 'server_client',
+      remoteApiBaseUrl: cached?.remoteApiBaseUrl || fileConfig?.remoteApiBaseUrl || undefined,
+      checkedDbCandidates: candidateDbFiles,
     };
+  }
+
+  private uniqueNormalizedPaths(values: Array<string | null | undefined>): string[] {
+    const unique = new Set<string>();
+    for (const raw of values) {
+      if (!raw || typeof raw !== 'string' || raw.trim().length === 0) {
+        continue;
+      }
+      unique.add(path.resolve(raw));
+    }
+    return [...unique];
+  }
+
+  private resolveLegacyDataPathCandidates(): string[] {
+    const platform = os.platform();
+    const homeDir = os.homedir();
+    if (platform === 'darwin') {
+      return [
+        path.join(homeDir, 'Library', 'Application Support', 'ticket-system', 'data'),
+        path.join(homeDir, 'Library', 'Application Support', 'TicketSystem', 'data'),
+        path.join(homeDir, 'Library', 'Application Support', 'openticket-desktop', 'data'),
+      ];
+    }
+    if (platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
+      return [path.join(appData, 'ticket-system', 'data'), path.join(appData, 'OpenTicketDesktop', 'data')];
+    }
+    return [path.join(homeDir, '.local', 'share', 'ticket-system', 'data')];
   }
 
   private persistImportedConfigSafely(importedConfigPath: string, runtime: ResolvedRuntimePaths): void {

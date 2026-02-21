@@ -7,6 +7,7 @@ LOG_DIR="$RUNTIME_DIR/logs"
 REPORT_DIR="$RUNTIME_DIR/reports"
 PID_DIR="$RUNTIME_DIR/pids"
 ENV_FILE="$RUNTIME_DIR/env"
+FALLBACK_TEST_LOG_DIR="$ROOT_DIR/Moj/testy/runtime/logs"
 mkdir -p "$REPORT_DIR" "$LOG_DIR" "$PID_DIR"
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -98,15 +99,41 @@ fi
 } >> "$REPORT_FILE"
 
 {
+  BACKEND_LOG_FILE="$LOG_DIR/backend.log"
+  FRONTEND_LOG_FILE="$LOG_DIR/frontend.log"
+  DESKTOP_LOG_FILE="$LOG_DIR/desktop.log"
+
+  if [[ ! -f "$BACKEND_LOG_FILE" && -f "$FALLBACK_TEST_LOG_DIR/backend.log" ]]; then
+    BACKEND_LOG_FILE="$FALLBACK_TEST_LOG_DIR/backend.log"
+  fi
+  if [[ ! -f "$FRONTEND_LOG_FILE" && -f "$FALLBACK_TEST_LOG_DIR/frontend.log" ]]; then
+    FRONTEND_LOG_FILE="$FALLBACK_TEST_LOG_DIR/frontend.log"
+  fi
+  if [[ ! -f "$DESKTOP_LOG_FILE" && -f "$FALLBACK_TEST_LOG_DIR/desktop.log" ]]; then
+    DESKTOP_LOG_FILE="$FALLBACK_TEST_LOG_DIR/desktop.log"
+  fi
+
   echo ""
-  echo "=== Tail backend.log ==="
-  tail -n 200 "$LOG_DIR/backend.log" 2>&1 || true
+  echo "=== Tail backend.log ($BACKEND_LOG_FILE) ==="
+  if [[ -f "$BACKEND_LOG_FILE" ]]; then
+    tail -n 200 "$BACKEND_LOG_FILE" 2>&1 || true
+  else
+    echo "backend.log not found"
+  fi
   echo ""
-  echo "=== Tail frontend.log ==="
-  tail -n 200 "$LOG_DIR/frontend.log" 2>&1 || true
+  echo "=== Tail frontend.log ($FRONTEND_LOG_FILE) ==="
+  if [[ -f "$FRONTEND_LOG_FILE" ]]; then
+    tail -n 200 "$FRONTEND_LOG_FILE" 2>&1 || true
+  else
+    echo "frontend.log not found"
+  fi
   echo ""
-  echo "=== Tail desktop.log ==="
-  tail -n 200 "$LOG_DIR/desktop.log" 2>&1 || true
+  echo "=== Tail desktop.log ($DESKTOP_LOG_FILE) ==="
+  if [[ -f "$DESKTOP_LOG_FILE" ]]; then
+    tail -n 200 "$DESKTOP_LOG_FILE" 2>&1 || true
+  else
+    echo "desktop.log not found"
+  fi
 } >> "$REPORT_FILE"
 
 echo "[diagnose] report: $REPORT_FILE"

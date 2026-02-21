@@ -116,3 +116,4 @@ final/
 
 # local electron-builder output fallback
 desktop/release-user/
+desktop/release-win/
