@@ -2,8 +2,8 @@
 
 <!-- INSTALLER_LINK:START -->
 ## Installer (PKG)
-- Latest: [OpenTicket-Installer.pkg](https://github.com/damianx9x/projekt-systemu-ticketowego/releases/latest/download/OpenTicket-Installer.pkg)
-- Release v0.3.1: [OpenTicket-Installer.pkg](https://github.com/damianx9x/projekt-systemu-ticketowego/releases/download/v0.3.1/OpenTicket-Installer.pkg)
+- Latest: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
+- Release v0.3.1: [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.1/OpenTicket-Installer.pkg)
 <!-- INSTALLER_LINK:END -->
 
 ## GitHub Release Standard
@@ -86,7 +86,7 @@ Status serwera:
 
 ## Status repo i gałąź bazowa
 - Repo robocze: bieżący checkout (`develop`)
-- Źródło: [damianx9x/projekt-systemu-ticketowego](https://github.com/damianx9x/projekt-systemu-ticketowego)
+- Źródło: [damianx9x/OpenTicket](https://github.com/damianx9x/OpenTicket)
 - Gałąź bazowa: `master`
 - Baseline: `docs/BASELINE.md`
 - Status etapów: `docs/IMPLEMENTATION-STATUS.md`
