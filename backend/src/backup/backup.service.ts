@@ -39,14 +39,39 @@ export class BackupService {
     const archiveName = `ticket-backup-${timestamp}.tar.gz`;
     const archivePath = path.join(runtime.backupsDir, archiveName);
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-export-'));
+    const includes: string[] = [];
 
     try {
+      // Best-effort checkpoint so SQLite WAL is merged before copy.
+      try {
+        await this.prisma.$executeRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
+      } catch {
+        // ignore checkpoint issues; sidecar files are still exported below
+      }
+
       fs.copyFileSync(runtime.dbFile, path.join(stageDir, 'app.db'));
+      includes.push('app.db');
+
+      const dbSidecars: Array<{ source: string; target: string }> = [
+        { source: `${runtime.dbFile}-wal`, target: 'app.db-wal' },
+        { source: `${runtime.dbFile}-shm`, target: 'app.db-shm' },
+        { source: `${runtime.dbFile}-journal`, target: 'app.db-journal' },
+      ];
+      for (const sidecar of dbSidecars) {
+        if (!fs.existsSync(sidecar.source)) {
+          continue;
+        }
+        fs.copyFileSync(sidecar.source, path.join(stageDir, sidecar.target));
+        includes.push(sidecar.target);
+      }
+
       if (fs.existsSync(runtime.uploadsDir)) {
         fs.cpSync(runtime.uploadsDir, path.join(stageDir, 'uploads'), { recursive: true });
+        includes.push('uploads/');
       }
       if (fs.existsSync(runtime.configFile)) {
         fs.copyFileSync(runtime.configFile, path.join(stageDir, 'config.json'));
+        includes.push('config.json');
       }
 
       const manifest = {
@@ -56,7 +81,7 @@ export class BackupService {
         sourceDataPath: runtime.dataPath,
         sourceDatabaseFile: runtime.dbFile,
         sourceUploadsPath: runtime.uploadsDir,
-        includes: ['app.db', 'uploads/', 'config.json'],
+        includes,
       };
       fs.writeFileSync(path.join(stageDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
@@ -111,7 +136,30 @@ export class BackupService {
 
       await this.prisma.$disconnect().catch(() => undefined);
       fs.mkdirSync(runtime.dataPath, { recursive: true });
+
+      // Remove stale SQLite files before restore.
+      const dbRestoreTargets = [
+        runtime.dbFile,
+        `${runtime.dbFile}-wal`,
+        `${runtime.dbFile}-shm`,
+        `${runtime.dbFile}-journal`,
+      ];
+      for (const filePath of dbRestoreTargets) {
+        fs.rmSync(filePath, { force: true });
+      }
+
       fs.copyFileSync(importedDb, runtime.dbFile);
+      const importedSidecars: Array<{ source: string; target: string }> = [
+        { source: path.join(stageDir, 'app.db-wal'), target: `${runtime.dbFile}-wal` },
+        { source: path.join(stageDir, 'app.db-shm'), target: `${runtime.dbFile}-shm` },
+        { source: path.join(stageDir, 'app.db-journal'), target: `${runtime.dbFile}-journal` },
+      ];
+      for (const sidecar of importedSidecars) {
+        if (!fs.existsSync(sidecar.source)) {
+          continue;
+        }
+        fs.copyFileSync(sidecar.source, sidecar.target);
+      }
 
       const importedUploads = path.join(stageDir, 'uploads');
       if (fs.existsSync(importedUploads)) {

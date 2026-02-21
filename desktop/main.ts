@@ -1,9 +1,10 @@
 import electron from "electron";
 import path from "path";
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, spawnSync, type ChildProcess } from "child_process";
 import * as os from "os";
 import * as net from "net";
 import * as fs from "fs";
+import { autoUpdater } from "electron-updater";
 
 const { app, BrowserWindow, dialog, ipcMain, shell } = electron;
 
@@ -30,6 +31,62 @@ const BACKEND_MONITOR_INTERVAL_MS = 15000;
 const BACKEND_MONITOR_FAIL_THRESHOLD = 3;
 const isPackaged = app.isPackaged;
 const isUiDevMode = !isPackaged || process.argv.includes("--dev");
+
+type UpdateState =
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "not-available"
+  | "downloading"
+  | "downloaded"
+  | "error";
+
+type DesktopUpdateStatus = {
+  supported: boolean;
+  state: UpdateState;
+  appVersion: string;
+  message: string;
+  releaseName: string | null;
+  releaseVersion: string | null;
+  releaseDate: string | null;
+  progressPercent: number | null;
+  bytesPerSecond: number | null;
+  downloadedFile: string | null;
+  lastCheckedAt: string | null;
+  lastBackupPath: string | null;
+};
+
+type DesktopRuntimePaths = {
+  userDataPath: string;
+  configDir: string;
+  configFile: string;
+  dataPath: string;
+  dbFile: string;
+  uploadsDir: string;
+  backupsDir: string;
+};
+
+type UpdateStateFile = {
+  version: string;
+  updatedAt: string;
+  lastBackupPath?: string;
+};
+
+const updateStatus: DesktopUpdateStatus = {
+  supported: false,
+  state: "disabled",
+  appVersion: app.getVersion(),
+  message: "Auto-update jest dostępny tylko w buildzie instalatora.",
+  releaseName: null,
+  releaseVersion: null,
+  releaseDate: null,
+  progressPercent: null,
+  bytesPerSecond: null,
+  downloadedFile: null,
+  lastCheckedAt: null,
+  lastBackupPath: null,
+};
 
 type BackendRunnerCandidate = {
   command: string;
@@ -336,6 +393,398 @@ function getLocalIp(): string {
     }
   }
   return "127.0.0.1";
+}
+
+function isAutoUpdateSupported(): boolean {
+  return isPackaged && (process.platform === "darwin" || process.platform === "win32");
+}
+
+function emitUpdateStatus(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  mainWindow.webContents.send("update-status", { ...updateStatus });
+}
+
+function setUpdateStatus(patch: Partial<DesktopUpdateStatus>): void {
+  Object.assign(updateStatus, patch);
+  updateStatus.appVersion = app.getVersion();
+  emitUpdateStatus();
+}
+
+function readJsonFile<T = any>(filePath: string): T | null {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+function resolveDesktopRuntimePaths(): DesktopRuntimePaths {
+  const userDataPath = app.getPath("userData");
+  const configDir = path.join(userDataPath, "config");
+  const configFile = path.join(configDir, "config.json");
+  const config = readJsonFile<{
+    dataPath?: string;
+    databaseUrl?: string;
+    uploadsPath?: string;
+  }>(configFile);
+
+  const dataPath =
+    process.env.TICKET_SYSTEM_DATA_DIR?.trim() ||
+    config?.dataPath?.trim() ||
+    path.join(userDataPath, "data");
+
+  const dbFile =
+    resolveSqlitePath(config?.databaseUrl) || path.join(path.resolve(dataPath), "app.db");
+  const uploadsDir = config?.uploadsPath?.trim()
+    ? path.resolve(config.uploadsPath)
+    : path.join(path.dirname(dbFile), "uploads");
+
+  return {
+    userDataPath,
+    configDir,
+    configFile,
+    dataPath: path.dirname(dbFile),
+    dbFile,
+    uploadsDir,
+    backupsDir: path.join(path.dirname(dbFile), "backups", "updates"),
+  };
+}
+
+function nowStamp(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
+    now.getHours(),
+  )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function sanitizeReason(reason: string): string {
+  return reason.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+async function createPreUpdateBackup(reason = "manual-update"): Promise<{
+  success: boolean;
+  message: string;
+  backupPath: string | null;
+}> {
+  const runtime = resolveDesktopRuntimePaths();
+  fs.mkdirSync(runtime.backupsDir, { recursive: true });
+
+  const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), "openticket-update-backup-"));
+  const safeReason = sanitizeReason(reason || "manual-update");
+  const baseName = `openticket-backup-${safeReason}-${nowStamp()}`;
+  const archivePath = path.join(runtime.backupsDir, `${baseName}.tar.gz`);
+  const copied: string[] = [];
+
+  try {
+    const candidates = [
+      runtime.dbFile,
+      `${runtime.dbFile}-wal`,
+      `${runtime.dbFile}-shm`,
+      `${runtime.dbFile}-journal`,
+    ];
+    for (const filePath of candidates) {
+      if (!fs.existsSync(filePath)) {
+        continue;
+      }
+      const targetName = path.basename(filePath);
+      fs.copyFileSync(filePath, path.join(stageDir, targetName));
+      copied.push(targetName);
+    }
+
+    if (fs.existsSync(runtime.uploadsDir)) {
+      fs.cpSync(runtime.uploadsDir, path.join(stageDir, "uploads"), { recursive: true });
+      copied.push("uploads/");
+    }
+
+    if (fs.existsSync(runtime.configFile)) {
+      fs.copyFileSync(runtime.configFile, path.join(stageDir, "config.json"));
+      copied.push("config.json");
+    }
+
+    const manifest = {
+      schemaVersion: 1,
+      createdAt: new Date().toISOString(),
+      reason: safeReason,
+      appVersion: app.getVersion(),
+      backendPort: currentBackendPort,
+      runtime,
+      includes: copied,
+    };
+    fs.writeFileSync(path.join(stageDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf-8");
+
+    const tar = spawnSync("tar", ["-czf", archivePath, "-C", stageDir, "."], {
+      encoding: "utf-8",
+    });
+    if (tar.status === 0) {
+      setUpdateStatus({
+        lastBackupPath: archivePath,
+        message: `Utworzono backup przed aktualizacją: ${archivePath}`,
+      });
+      return {
+        success: true,
+        message: "Backup utworzony poprawnie.",
+        backupPath: archivePath,
+      };
+    }
+
+    const fallbackDir = path.join(runtime.backupsDir, `${baseName}-folder`);
+    fs.cpSync(stageDir, fallbackDir, { recursive: true });
+    setUpdateStatus({
+      lastBackupPath: fallbackDir,
+      message: `Backup zapisany jako folder (tar niedostępny): ${fallbackDir}`,
+    });
+    return {
+      success: true,
+      message: "Backup utworzony jako folder (brak narzędzia tar).",
+      backupPath: fallbackDir,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Backup przed aktualizacją nie powiódł się: ${error?.message || String(error)}`,
+      backupPath: null,
+    };
+  } finally {
+    fs.rmSync(stageDir, { recursive: true, force: true });
+  }
+}
+
+function getUpdateStateFilePath(): string {
+  return path.join(app.getPath("userData"), "config", "update-state.json");
+}
+
+function readUpdateStateFile(): UpdateStateFile | null {
+  return readJsonFile<UpdateStateFile>(getUpdateStateFilePath());
+}
+
+function writeUpdateStateFile(payload: UpdateStateFile): void {
+  const statePath = getUpdateStateFilePath();
+  fs.mkdirSync(path.dirname(statePath), { recursive: true });
+  fs.writeFileSync(statePath, JSON.stringify(payload, null, 2), "utf-8");
+}
+
+async function ensureUpgradeBackupOnVersionChange(): Promise<void> {
+  try {
+    const previous = readUpdateStateFile();
+    const currentVersion = app.getVersion();
+
+    if (previous?.version && previous.version !== currentVersion) {
+      const backup = await createPreUpdateBackup(`pre-upgrade-${previous.version}-to-${currentVersion}`);
+      if (backup.success) {
+        setUpdateStatus({
+          message: `Wykryto nową wersję ${currentVersion}. Utworzono backup: ${backup.backupPath || "-"}`,
+        });
+      } else {
+        setUpdateStatus({
+          state: "error",
+          message: `Wykryto nową wersję ${currentVersion}, ale backup przed migracją nie powiódł się: ${backup.message}`,
+        });
+      }
+      writeUpdateStateFile({
+        version: currentVersion,
+        updatedAt: new Date().toISOString(),
+        lastBackupPath: backup.backupPath || undefined,
+      });
+      return;
+    }
+
+    writeUpdateStateFile({
+      version: currentVersion,
+      updatedAt: new Date().toISOString(),
+      lastBackupPath: previous?.lastBackupPath,
+    });
+  } catch (error) {
+    console.warn("Failed to write update-state.json", error);
+  }
+}
+
+function configureAutoUpdater(): void {
+  if (!isAutoUpdateSupported()) {
+    setUpdateStatus({
+      supported: false,
+      state: "disabled",
+      message: "Auto-update działa tylko w instalatorze macOS/Windows.",
+    });
+    return;
+  }
+
+  setUpdateStatus({
+    supported: true,
+    state: "idle",
+    message: "Aktualizacje gotowe. Kliknij „Sprawdź aktualizacje”.",
+  });
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on("checking-for-update", () => {
+    setUpdateStatus({
+      state: "checking",
+      message: "Sprawdzanie aktualizacji...",
+      lastCheckedAt: new Date().toISOString(),
+      progressPercent: null,
+      bytesPerSecond: null,
+      downloadedFile: null,
+    });
+  });
+
+  autoUpdater.on("update-available", (info: any) => {
+    setUpdateStatus({
+      state: "available",
+      message: `Dostępna aktualizacja: ${info?.version || "nowsza wersja"}.`,
+      releaseName: info?.releaseName || null,
+      releaseVersion: info?.version || null,
+      releaseDate: info?.releaseDate || null,
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    setUpdateStatus({
+      state: "not-available",
+      message: "Masz najnowszą wersję aplikacji.",
+      releaseName: null,
+      releaseVersion: null,
+      releaseDate: null,
+      progressPercent: null,
+      bytesPerSecond: null,
+      downloadedFile: null,
+    });
+  });
+
+  autoUpdater.on("download-progress", (progress: any) => {
+    setUpdateStatus({
+      state: "downloading",
+      message: `Pobieranie aktualizacji: ${Math.round(progress?.percent || 0)}%`,
+      progressPercent: progress?.percent ?? null,
+      bytesPerSecond: progress?.bytesPerSecond ?? null,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info: any) => {
+    setUpdateStatus({
+      state: "downloaded",
+      message: "Aktualizacja pobrana. Możesz ją zainstalować.",
+      releaseName: info?.releaseName || updateStatus.releaseName,
+      releaseVersion: info?.version || updateStatus.releaseVersion,
+      releaseDate: info?.releaseDate || updateStatus.releaseDate,
+      downloadedFile: info?.downloadedFile || null,
+      progressPercent: 100,
+    });
+  });
+
+  autoUpdater.on("error", (error: Error) => {
+    setUpdateStatus({
+      state: "error",
+      message: `Błąd auto-update: ${error.message}`,
+    });
+  });
+}
+
+async function checkForUpdates(): Promise<{ success: boolean; message: string; status: DesktopUpdateStatus }> {
+  if (!isAutoUpdateSupported()) {
+    return {
+      success: false,
+      message: "Auto-update działa tylko w buildzie instalatora.",
+      status: { ...updateStatus },
+    };
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return {
+      success: true,
+      message: "Sprawdzenie aktualizacji uruchomione.",
+      status: { ...updateStatus },
+    };
+  } catch (error: any) {
+    setUpdateStatus({
+      state: "error",
+      message: `Nie udało się sprawdzić aktualizacji: ${error?.message || String(error)}`,
+    });
+    return {
+      success: false,
+      message: updateStatus.message,
+      status: { ...updateStatus },
+    };
+  }
+}
+
+async function downloadUpdatePackage(): Promise<{
+  success: boolean;
+  message: string;
+  status: DesktopUpdateStatus;
+}> {
+  if (!isAutoUpdateSupported()) {
+    return {
+      success: false,
+      message: "Auto-update działa tylko w buildzie instalatora.",
+      status: { ...updateStatus },
+    };
+  }
+
+  try {
+    await autoUpdater.downloadUpdate();
+    return {
+      success: true,
+      message: "Pobieranie aktualizacji uruchomione.",
+      status: { ...updateStatus },
+    };
+  } catch (error: any) {
+    setUpdateStatus({
+      state: "error",
+      message: `Nie udało się pobrać aktualizacji: ${error?.message || String(error)}`,
+    });
+    return {
+      success: false,
+      message: updateStatus.message,
+      status: { ...updateStatus },
+    };
+  }
+}
+
+async function installDownloadedUpdate(): Promise<{
+  success: boolean;
+  message: string;
+  status: DesktopUpdateStatus;
+}> {
+  if (!isAutoUpdateSupported()) {
+    return {
+      success: false,
+      message: "Auto-update działa tylko w buildzie instalatora.",
+      status: { ...updateStatus },
+    };
+  }
+
+  if (updateStatus.state !== "downloaded") {
+    return {
+      success: false,
+      message: "Najpierw pobierz aktualizację.",
+      status: { ...updateStatus },
+    };
+  }
+
+  setUpdateStatus({
+    state: "idle",
+    message: "Instalowanie aktualizacji i restart aplikacji...",
+  });
+  stopBackendHealthMonitor();
+  await stopBackendProcess();
+
+  setTimeout(() => {
+    autoUpdater.quitAndInstall(false, true);
+  }, 250);
+
+  return {
+    success: true,
+    message: "Instalacja aktualizacji uruchomiona.",
+    status: { ...updateStatus },
+  };
 }
 
 /**
@@ -828,11 +1277,13 @@ async function createWindow(port: number): Promise<void> {
  */
 app.on("ready", async () => {
   try {
+    configureAutoUpdater();
     const userDataPath = app.getPath("userData");
     const configFilePath = path.join(userDataPath, "config", "config.json");
 
     // Clean old configuration to ensure setup wizard on first run
     cleanOldConfig(configFilePath);
+    await ensureUpgradeBackupOnVersionChange();
 
     // Find free port and start backend
     const port = await findFreePort();
@@ -842,6 +1293,7 @@ app.on("ready", async () => {
 
     // Create window
     await createWindow(port);
+    emitUpdateStatus();
 
     // IPC handlers
     ipcMain.handle("select-folder", async () => {
@@ -958,6 +1410,37 @@ app.on("ready", async () => {
 
     ipcMain.handle("engine-diagnose", async () => {
       return writeEngineDiagnosisReport();
+    });
+
+    ipcMain.handle("update-get-status", async () => {
+      return { ...updateStatus };
+    });
+
+    ipcMain.handle("update-check", async () => {
+      return checkForUpdates();
+    });
+
+    ipcMain.handle("update-download", async () => {
+      return downloadUpdatePackage();
+    });
+
+    ipcMain.handle("update-install", async () => {
+      return installDownloadedUpdate();
+    });
+
+    ipcMain.handle("update-create-backup", async (_event, payload: { reason?: string }) => {
+      return createPreUpdateBackup(payload?.reason || "manual-before-update");
+    });
+
+    ipcMain.handle("open-backups-folder", async () => {
+      const runtime = resolveDesktopRuntimePaths();
+      fs.mkdirSync(runtime.backupsDir, { recursive: true });
+      const result = await shell.openPath(runtime.backupsDir);
+      return {
+        success: result === "",
+        message: result === "" ? "Otwarto folder backupów." : result,
+        path: runtime.backupsDir,
+      };
     });
   } catch (error) {
     console.error("Failed to initialize app:", error);

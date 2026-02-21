@@ -78,6 +78,47 @@ const api = {
     return ipcRenderer.invoke("engine-diagnose");
   },
 
+  getUpdateStatus: async (): Promise<{
+    supported: boolean;
+    state: string;
+    appVersion: string;
+    message: string;
+    releaseName: string | null;
+    releaseVersion: string | null;
+    releaseDate: string | null;
+    progressPercent: number | null;
+    bytesPerSecond: number | null;
+    downloadedFile: string | null;
+    lastCheckedAt: string | null;
+    lastBackupPath: string | null;
+  }> => {
+    return ipcRenderer.invoke("update-get-status");
+  },
+
+  checkForUpdates: async (): Promise<{ success: boolean; message: string; status: any }> => {
+    return ipcRenderer.invoke("update-check");
+  },
+
+  downloadUpdate: async (): Promise<{ success: boolean; message: string; status: any }> => {
+    return ipcRenderer.invoke("update-download");
+  },
+
+  installUpdate: async (): Promise<{ success: boolean; message: string; status: any }> => {
+    return ipcRenderer.invoke("update-install");
+  },
+
+  createUpdateBackup: async (reason?: string): Promise<{
+    success: boolean;
+    message: string;
+    backupPath: string | null;
+  }> => {
+    return ipcRenderer.invoke("update-create-backup", { reason });
+  },
+
+  openBackupsFolder: async (): Promise<{ success: boolean; message: string; path: string }> => {
+    return ipcRenderer.invoke("open-backups-folder");
+  },
+
   openExternalUrl: async (url: string): Promise<{ success: boolean; message: string }> => {
     return ipcRenderer.invoke("open-external-url", { url });
   },
@@ -93,6 +134,12 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
     ipcRenderer.on("backend-watchdog", listener);
     return () => ipcRenderer.removeListener("backend-watchdog", listener);
+  },
+
+  onUpdateStatus: (callback: (payload: any) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
+    ipcRenderer.on("update-status", listener);
+    return () => ipcRenderer.removeListener("update-status", listener);
   },
 };
 

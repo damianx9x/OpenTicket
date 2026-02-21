@@ -24,7 +24,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
-    "electron-is-dev": "^2.0.0"
+    "electron-is-dev": "^2.0.0",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
@@ -98,6 +99,13 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "damianx9x",
+        "repo": "OpenTicket"
+      }
+    ]
   }
 }

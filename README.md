@@ -203,6 +203,26 @@ make moj-testy-stop
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-21 (bezpieczne aktualizacje + backup przed update)
+- Dodano mechanizm aktualizacji desktop (Electron) oparty o GitHub Releases:
+  - check update / download / install z poziomu zakładki `Serwer`,
+  - status aktualizacji live w UI (wersja, postęp, komunikaty, gotowość do instalacji).
+- Dodano backup przed aktualizacją:
+  - checkbox `Zrób backup bazy + zdjęć przed aktualizacją`,
+  - ręczny przycisk `Backup teraz` + `Otwórz folder backupów`,
+  - backup zawiera: `app.db`, `app.db-wal`, `app.db-shm`, `app.db-journal`, `uploads/`, `config.json`, `manifest.json`.
+- Dodano automatyczny backup przy wykryciu nowej wersji aplikacji na starcie (przed uruchomieniem backendu/migracji).
+- Ustawiono publikację auto-update w `desktop/package.json` (`build.publish -> GitHub OpenTicket`).
+- Wzmocniono backup backendowy (`/api/v1/system/backup/export`):
+  - checkpoint SQLite (best-effort),
+  - eksport/odtwarzanie plików WAL/SHM/JOURNAL.
+- Testy po zmianach:
+  - `npm --prefix backend run build` = PASS,
+  - `npm --prefix frontend run build` = PASS,
+  - `npm --prefix desktop run build:electron` = PASS,
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/auth-smoke.sh` = PASS.
+
 ### 2026-02-21 (hotfix setup/login + stabilność WebKit testów)
 - Naprawiono krytyczny błąd po setupie (`P2021`, brak tabel po `setup/init` bez restartu):
   - `SetupService` wymusza refresh połączeń runtime Prisma przed resetem pliku sqlite i po zakończeniu setupu,
@@ -551,6 +571,7 @@ APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
 3. Etap 6: podpisany QR + generator PDF naklejek + minimalny auth.
 
 ## Changelog
+- `2026-02-21`: bezpieczny mechanizm aktualizacji desktop (check/download/install), backup przed aktualizacją (DB+WAL+uploads+config), automatyczny backup przy zmianie wersji, publish config pod GitHub Releases.
 - `2026-02-21`: hotfix setup/login po inicjalizacji (refresh połączeń Prisma; koniec błędów `P2021` po `setup/init`) + poprawka selektorów random UI testów dla WebKit.
 - `2026-02-21`: release `0.3.0` (backend/frontend/desktop), kompletny deinstalator w instalatorze `.pkg`, narzędzia ratunkowe na loginie desktop, poprawa deterministyczności `Moj/testy/ui-random-10` i `Moj/testy/start.sh`, pełny retest go/no-go.
 - `2026-02-20`: stabilizacja repo, naprawa backendu i narzędzi diagnostycznych (Etap 0-2), testy 5/5 dla Etap 1 i 2.

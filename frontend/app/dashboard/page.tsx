@@ -263,6 +263,8 @@ export default function DashboardPage() {
   const [serverInfo, setServerInfo] = useState<SystemInfo | null>(null);
   const [serverDiagnostics, setServerDiagnostics] = useState<DiagnosticsReport | null>(null);
   const [serverLoading, setServerLoading] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const [backupBeforeUpdate, setBackupBeforeUpdate] = useState(true);
 
   const [ticketReminders, setTicketReminders] = useState<ReminderItem[]>([]);
   const [globalReminders, setGlobalReminders] = useState<ReminderItem[]>([]);
@@ -288,7 +290,16 @@ export default function DashboardPage() {
   >([]);
   const [customerHistoryLoading, setCustomerHistoryLoading] = useState(false);
   const [serviceBusy, setServiceBusy] = useState<
-    'restart' | 'repair' | 'logs' | 'diagnostics' | null
+    | 'restart'
+    | 'repair'
+    | 'logs'
+    | 'diagnostics'
+    | 'update-check'
+    | 'update-download'
+    | 'update-install'
+    | 'update-backup'
+    | 'open-backups'
+    | null
   >(null);
   const [serviceInfo, setServiceInfo] = useState('');
 
@@ -595,6 +606,20 @@ export default function DashboardPage() {
     }
   };
 
+  const loadUpdateStatus = async () => {
+    const bridge = getElectron();
+    if (!bridge?.getUpdateStatus) {
+      setUpdateStatus(null);
+      return;
+    }
+    try {
+      const status = await bridge.getUpdateStatus();
+      setUpdateStatus(status);
+    } catch {
+      setUpdateStatus(null);
+    }
+  };
+
   const loadTicketReminders = async (ticketId: string) => {
     try {
       const items = await listReminders({ ticketId, includeDone: true });
@@ -782,6 +807,7 @@ export default function DashboardPage() {
       void loadSettings();
     } else if (activeNav === 'server' && isAdmin) {
       void loadServerStatus();
+      void loadUpdateStatus();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNav, bootLoading, isAdmin]);
@@ -842,6 +868,23 @@ export default function DashboardPage() {
     return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootLoading]);
+
+  useEffect(() => {
+    const bridge = getElectron();
+    if (!bridge?.onUpdateStatus) {
+      return;
+    }
+
+    const unsubscribe = bridge.onUpdateStatus((payload: UpdateStatus) => {
+      setUpdateStatus(payload);
+    });
+    void loadUpdateStatus();
+
+    return () => {
+      unsubscribe?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCreateTicket = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -1076,20 +1119,24 @@ export default function DashboardPage() {
     }
   };
 
-  const handleExportBackup = async () => {
+  const handleExportBackup = async (options?: { silentSuccess?: boolean }): Promise<string | null> => {
     if (!isAdmin) {
       notify({ type: 'error', text: 'Eksport backupu wymaga roli ADMIN.' });
-      return;
+      return null;
     }
     try {
       const result = await exportBackup();
       setBackupPath(result.archivePath);
-      notify({ type: 'success', text: `Backup gotowy: ${result.archiveName}` });
+      if (!options?.silentSuccess) {
+        notify({ type: 'success', text: `Backup gotowy: ${result.archiveName}` });
+      }
+      return result.archivePath;
     } catch (error) {
       notify({
         type: 'error',
         text: `Eksport backupu nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
       });
+      return null;
     }
   };
 
@@ -1560,6 +1607,111 @@ export default function DashboardPage() {
     } finally {
       setServiceBusy(null);
     }
+  };
+
+  const runUpdateAction = async (
+    action: 'update-check' | 'update-download' | 'update-install' | 'open-backups',
+    runner: (bridge: ElectronBridge) => Promise<any>,
+  ) => {
+    const bridge = getElectron();
+    if (!bridge) {
+      notify({ type: 'error', text: 'Akcja aktualizacji jest dostępna tylko w aplikacji desktop.' });
+      return null;
+    }
+
+    setServiceBusy(action);
+    try {
+      const result = await runner(bridge);
+      if (result?.status) {
+        setUpdateStatus(result.status);
+      } else {
+        await loadUpdateStatus();
+      }
+      const message = result?.message || 'Akcja aktualizacji wykonana.';
+      setServiceInfo(message);
+      notify({ type: 'success', text: message });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nieznany błąd aktualizacji.';
+      setServiceInfo(message);
+      notify({ type: 'error', text: message });
+      return null;
+    } finally {
+      setServiceBusy(null);
+    }
+  };
+
+  const handleCreateDesktopBackup = async (
+    reason = 'manual-before-update',
+    options?: { silentSuccess?: boolean },
+  ): Promise<string | null> => {
+    const bridge = getElectron();
+    if (!bridge?.createUpdateBackup) {
+      notify({ type: 'error', text: 'Backup desktop jest dostępny tylko w aplikacji instalatora.' });
+      return null;
+    }
+
+    setServiceBusy('update-backup');
+    try {
+      const result = await bridge.createUpdateBackup(reason);
+      const ok = Boolean(result?.success);
+      const message = result?.message || (ok ? 'Backup utworzony.' : 'Backup nie powiódł się.');
+      setServiceInfo(message);
+      if (ok) {
+        if (result.backupPath) {
+          setBackupPath(result.backupPath);
+        }
+        await loadUpdateStatus();
+        if (!options?.silentSuccess) {
+          notify({ type: 'success', text: message });
+        }
+        return result.backupPath || null;
+      }
+
+      notify({ type: 'error', text: message });
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Nieznany błąd backupu.';
+      setServiceInfo(message);
+      notify({ type: 'error', text: message });
+      return null;
+    } finally {
+      setServiceBusy(null);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    await runUpdateAction('update-check', (bridge) => bridge.checkForUpdates());
+  };
+
+  const handleDownloadUpdate = async () => {
+    if (backupBeforeUpdate) {
+      const backupPath = await handleCreateDesktopBackup('before-update-download', { silentSuccess: true });
+      if (!backupPath) {
+        notify({
+          type: 'error',
+          text: 'Przerwano aktualizację, bo backup przed aktualizacją nie został utworzony.',
+        });
+        return;
+      }
+    }
+
+    await runUpdateAction('update-download', (bridge) => bridge.downloadUpdate());
+  };
+
+  const handleInstallUpdate = async () => {
+    if (backupBeforeUpdate) {
+      const backupPath = await handleCreateDesktopBackup('before-update-install', { silentSuccess: true });
+      if (!backupPath) {
+        notify({
+          type: 'error',
+          text: 'Przerwano instalację aktualizacji, bo backup nie został utworzony.',
+        });
+        return;
+      }
+    }
+
+    await runUpdateAction('update-install', (bridge) => bridge.installUpdate());
   };
 
   if (bootLoading) {
@@ -3070,6 +3222,101 @@ export default function DashboardPage() {
                     </div>
                   )}
                 </div>
+
+                {isElectron && (
+                  <div className="ticket-surface rounded-xl border border-slate-100 p-5">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h2 className="text-lg font-semibold text-slate-900">Aktualizacje aplikacji</h2>
+                      <button
+                        type="button"
+                        onClick={() => void handleCheckForUpdates()}
+                        disabled={serviceBusy !== null}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                        {serviceBusy === 'update-check' ? 'Sprawdzam...' : 'Sprawdź aktualizacje'}
+                      </button>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                        <p>
+                          <strong>Wersja lokalna:</strong> {updateStatus?.appVersion || serverInfo?.version || '-'}
+                        </p>
+                        <p>
+                          <strong>Status:</strong> {updateStatus?.message || 'Brak danych'}
+                        </p>
+                        <p>
+                          <strong>Dostępna wersja:</strong> {updateStatus?.releaseVersion || '-'}
+                        </p>
+                        <p>
+                          <strong>Nazwa wydania:</strong> {updateStatus?.releaseName || '-'}
+                        </p>
+                        <p>
+                          <strong>Postęp pobierania:</strong>{' '}
+                          {updateStatus?.progressPercent !== null && updateStatus?.progressPercent !== undefined
+                            ? `${Math.round(updateStatus.progressPercent)}%`
+                            : '-'}
+                        </p>
+                        <p>
+                          <strong>Ostatni backup update:</strong> {updateStatus?.lastBackupPath || '-'}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
+                        <label className="flex items-center gap-2 text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={backupBeforeUpdate}
+                            onChange={(event) => setBackupBeforeUpdate(event.target.checked)}
+                          />
+                          Zrób backup bazy + zdjęć przed aktualizacją
+                        </label>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadUpdate()}
+                            disabled={serviceBusy !== null}
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {serviceBusy === 'update-download' ? 'Pobieranie...' : 'Pobierz aktualizację'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleInstallUpdate()}
+                            disabled={serviceBusy !== null}
+                            className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {serviceBusy === 'update-install' ? 'Instalowanie...' : 'Zainstaluj aktualizację'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleCreateDesktopBackup('manual-update-backup')}
+                            disabled={serviceBusy !== null}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {serviceBusy === 'update-backup' ? 'Tworzenie...' : 'Backup teraz'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void runUpdateAction('open-backups', (bridge) => bridge.openBackupsFolder())
+                            }
+                            disabled={serviceBusy !== null}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {serviceBusy === 'open-backups' ? 'Otwieranie...' : 'Otwórz folder backupów'}
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Aktualizacja nadpisuje tylko aplikację. Dane klienta zostają w katalogu danych i są dodatkowo
+                          archiwizowane przed update.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {serverDiagnostics && (
                   <div className="ticket-surface rounded-xl border border-slate-100 p-5">
                     <h3 className="mb-2 text-sm font-semibold text-slate-900">Raport diagnostyczny (JSON)</h3>

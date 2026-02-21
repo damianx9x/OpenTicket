@@ -19,6 +19,21 @@ declare global {
     probeError: string | null;
   }
 
+  interface UpdateStatus {
+    supported: boolean;
+    state: string;
+    appVersion: string;
+    message: string;
+    releaseName: string | null;
+    releaseVersion: string | null;
+    releaseDate: string | null;
+    progressPercent: number | null;
+    bytesPerSecond: number | null;
+    downloadedFile: string | null;
+    lastCheckedAt: string | null;
+    lastBackupPath: string | null;
+  }
+
   interface ElectronBridge {
     selectFolder: () => Promise<string | null>;
     getLocalIp: () => Promise<string>;
@@ -34,10 +49,23 @@ declare global {
       message: string;
       reportPath: string;
     }>;
+    getUpdateStatus: () => Promise<UpdateStatus>;
+    checkForUpdates: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;
+    downloadUpdate: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;
+    installUpdate: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;
+    createUpdateBackup: (reason?: string) => Promise<{
+      success: boolean;
+      message: string;
+      backupPath: string | null;
+    }>;
+    openBackupsFolder: () => Promise<{ success: boolean; message: string; path: string }>;
     openExternalUrl: (url: string) => Promise<{ success: boolean; message: string }>;
     onBackendCrashed: (callback: () => void) => () => void;
     onBackendWatchdog: (
       callback: (payload: { success: boolean; message: string; status?: EngineStatus }) => void,
+    ) => () => void;
+    onUpdateStatus: (
+      callback: (payload: UpdateStatus) => void,
     ) => () => void;
   }
 
