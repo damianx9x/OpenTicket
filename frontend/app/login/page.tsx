@@ -244,6 +244,10 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[var(--ts-bg)] px-4 py-10">
       <div className="mx-auto grid w-full max-w-6xl gap-6 md:grid-cols-2">
         <section className="ticket-surface rounded-2xl border border-slate-200 p-6">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <img src="/openticket-mark.svg" alt="OpenTicket" className="h-7 w-7 rounded-md object-contain" />
+            <span className="text-sm font-semibold text-slate-800">OpenTicket</span>
+          </div>
           <h1 className="text-2xl font-bold text-slate-900">Logowanie</h1>
           <p className="mt-1 text-sm text-slate-600">Panel admina i techników serwisu.</p>
 

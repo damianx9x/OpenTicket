@@ -75,7 +75,8 @@ fi
 log "Tworzenie instalatora .pkg z kompletnym deinstalatorem"
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 PKG_STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openticket-pkg-root.XXXXXX")"
-trap 'rm -rf "$PKG_STAGE_ROOT"' EXIT
+PKG_SCRIPTS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openticket-pkg-scripts.XXXXXX")"
+trap 'rm -rf "$PKG_STAGE_ROOT" "$PKG_SCRIPTS_DIR"' EXIT
 
 mkdir -p "$PKG_STAGE_ROOT/Applications"
 mkdir -p "$PKG_STAGE_ROOT/Library/Application Support/OpenTicket"
@@ -109,6 +110,31 @@ exec "/Applications/Odinstaluj OpenTicket.command"
 EOF
 chmod 755 "$PKG_STAGE_ROOT/Applications/Uninstall OpenTicket.command"
 
+cat > "$PKG_SCRIPTS_DIR/postinstall" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_PATH="/Applications/OpenTicket.app"
+if [[ ! -d "$APP_PATH" ]]; then
+  exit 0
+fi
+
+CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
+  exit 0
+fi
+
+CONSOLE_UID="$(id -u "$CONSOLE_USER" 2>/dev/null || true)"
+if [[ -z "$CONSOLE_UID" ]]; then
+  exit 0
+fi
+
+# Start setup assistant immediately after installation (without browser flow).
+/bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open -a "$APP_PATH" --args --setup-assistant >/dev/null 2>&1 || true
+exit 0
+EOF
+chmod 755 "$PKG_SCRIPTS_DIR/postinstall"
+
 # Defensively remove AppleDouble/resource-fork leftovers from staged payload.
 find "$PKG_STAGE_ROOT" -name '._*' -type f -delete 2>/dev/null || true
 xattr -rc "$PKG_STAGE_ROOT" 2>/dev/null || true
@@ -117,6 +143,7 @@ PKG_VERSION="$(node -p "require('./desktop/package.json').version")"
 
 COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 pkgbuild \
   --root "$PKG_STAGE_ROOT" \
+  --scripts "$PKG_SCRIPTS_DIR" \
   --identifier "com.openticket.installer" \
   --version "$PKG_VERSION" \
   "$PKG_OUT"

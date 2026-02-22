@@ -36,4 +36,20 @@ export class SettingsController {
   async updateAdminSettings(@Body() patch: Record<string, unknown>) {
     return this.settingsService.updateSystemSettings(patch as any);
   }
+
+  @Get('cost-catalog')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN', 'AGENT')
+  @ApiOperation({ summary: 'Katalog pozycji kosztorysu (odczyt dla admin/technik)' })
+  async getCostCatalog() {
+    return this.settingsService.getCostCatalog();
+  }
+
+  @Put('cost-catalog')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Aktualizacja katalogu pozycji kosztorysu (admin)' })
+  async updateCostCatalog(@Body() body: { items?: unknown }) {
+    return this.settingsService.updateCostCatalog(body?.items || []);
+  }
 }

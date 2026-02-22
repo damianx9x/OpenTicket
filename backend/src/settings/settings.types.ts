@@ -40,6 +40,17 @@ export interface SystemSettings {
   };
 }
 
+export interface CostCatalogItem {
+  id: string;
+  name: string;
+  unitNet: number;
+  vatCode: string;
+  defaultQty: number;
+  category?: string;
+  unit?: string;
+  active: boolean;
+}
+
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   branding: {
     companyName: 'OpenTicket',

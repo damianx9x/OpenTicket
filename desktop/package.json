@@ -1,6 +1,6 @@
 {
   "name": "openticket-desktop",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "OpenTicket - self-contained ticket management for desktop",
   "main": "dist/main.js",
   "homepage": "./",
@@ -110,7 +110,10 @@
     "nsis": {
       "artifactName": "OpenTicket-Setup-${version}.${ext}",
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true
     },
     "portable": {
       "artifactName": "OpenTicket-Portable-${version}.${ext}"

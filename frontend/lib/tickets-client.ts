@@ -16,6 +16,7 @@ export type TicketStatus =
   | 'ARCHIVED';
 
 export type TicketPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+export type TicketChannel = 'APP' | 'WEB_FORM' | 'EMAIL' | 'DROP_OFF';
 
 export interface TicketListMeta extends ApiMeta {
   total?: number;
@@ -37,7 +38,7 @@ export interface TicketSummary {
   description: string;
   status: TicketStatus;
   priority: TicketPriority;
-  channel: string;
+  channel: TicketChannel;
   ownerUserId: string;
   assignedAgentId?: string | null;
   createdAt: string;
@@ -86,9 +87,27 @@ export interface TicketQuery {
   limit?: number;
   status?: TicketStatus | '';
   priority?: TicketPriority | '';
+  channel?: TicketChannel | '';
+  assignedAgentId?: string;
+  assignedState?: 'assigned' | 'unassigned' | '';
   search?: string;
   onlyMine?: boolean;
   minAgeDays?: number;
+  hasAttachments?: boolean;
+  hasComments?: boolean;
+  createdFrom?: string;
+  createdTo?: string;
+  sort?:
+    | 'createdAt_asc'
+    | 'createdAt_desc'
+    | 'updatedAt_asc'
+    | 'updatedAt_desc'
+    | 'priority_asc'
+    | 'priority_desc'
+    | 'number_asc'
+    | 'number_desc'
+    | 'status_asc'
+    | 'status_desc';
 }
 
 export interface CustomerHistoryItem {
@@ -174,8 +193,16 @@ function normalizeQuery(query: TicketQuery): URLSearchParams {
   if (query.search) params.set('search', query.search);
   if (query.status) params.set('status', query.status);
   if (query.priority) params.set('priority', query.priority);
+  if (query.channel) params.set('channel', query.channel);
+  if (query.assignedAgentId) params.set('assignedAgentId', query.assignedAgentId);
+  if (query.assignedState) params.set('assignedState', query.assignedState);
   if (query.onlyMine) params.set('onlyMine', '1');
   if (query.minAgeDays && query.minAgeDays > 0) params.set('minAgeDays', String(Math.floor(query.minAgeDays)));
+  if (typeof query.hasAttachments === 'boolean') params.set('hasAttachments', query.hasAttachments ? '1' : '0');
+  if (typeof query.hasComments === 'boolean') params.set('hasComments', query.hasComments ? '1' : '0');
+  if (query.createdFrom) params.set('createdFrom', query.createdFrom);
+  if (query.createdTo) params.set('createdTo', query.createdTo);
+  if (query.sort) params.set('sort', query.sort);
 
   return params;
 }

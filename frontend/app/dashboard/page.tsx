@@ -13,7 +13,6 @@ import {
   ExternalLink,
   Flame,
   Folder,
-  Headphones,
   Image as ImageIcon,
   LogOut,
   Mail,
@@ -45,6 +44,7 @@ import {
   type CostItem,
   type CostSummary,
   type CreateTicketInput,
+  type TicketChannel,
   type TicketPriority,
   type TicketStatus,
   type TicketSummary,
@@ -100,8 +100,10 @@ import {
   type UILanguage,
 } from '@/lib/i18n';
 import { ApiRequestError } from '@/lib/api-base';
+import { listCostCatalog, saveCostCatalog, type CostCatalogItem } from '@/lib/cost-catalog-client';
 
 const PRIORITIES: TicketPriority[] = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
+const CHANNELS: TicketChannel[] = ['APP', 'WEB_FORM', 'EMAIL', 'DROP_OFF'];
 const WORKFLOW_STATUSES: TicketStatus[] = [
   'RECEIVED',
   'DIAGNOSIS',
@@ -226,18 +228,52 @@ const DASHBOARD_WIDGET_SIZES_DEFAULT: Record<DashboardWidgetKey, DashboardWidget
   closedToday: 'md',
 };
 const DASHBOARD_THEMES: Array<{ value: DashboardTheme; label: string }> = [
-  { value: 'helpdesk-blue', label: 'Helpdesk Blue' },
-  { value: 'graphite-noir', label: 'Graphite Noir' },
-  { value: 'emerald-flow', label: 'Emerald Flow' },
+  { value: 'helpdesk-blue', label: 'Nordic Blue Pro' },
+  { value: 'graphite-noir', label: 'Graphite Noir Pro' },
+  { value: 'emerald-flow', label: 'Emerald Focus Pro' },
 ];
+
+type FilterState = {
+  search: string;
+  status: string;
+  priority: string;
+  channel: string;
+  assignedAgentId: string;
+  assignedState: '' | 'assigned' | 'unassigned';
+  onlyMine: boolean;
+  minAgeDays: string;
+  hasAttachments: '' | 'yes' | 'no';
+  hasComments: '' | 'yes' | 'no';
+  createdFrom: string;
+  createdTo: string;
+  sort:
+    | 'createdAt_desc'
+    | 'createdAt_asc'
+    | 'updatedAt_desc'
+    | 'updatedAt_asc'
+    | 'priority_desc'
+    | 'priority_asc'
+    | 'number_desc'
+    | 'number_asc'
+    | 'status_desc'
+    | 'status_asc';
+};
 
 type SavedFilterPreset = {
   name: string;
   status?: string;
   priority?: string;
+  channel?: string;
+  assignedAgentId?: string;
+  assignedState?: '' | 'assigned' | 'unassigned';
   search?: string;
   onlyMine?: boolean;
   minAgeDays?: number;
+  hasAttachments?: boolean;
+  hasComments?: boolean;
+  createdFrom?: string;
+  createdTo?: string;
+  sort?: FilterState['sort'];
 };
 
 type DashboardPreferences = {
@@ -249,9 +285,33 @@ type DashboardPreferences = {
   defaultFilters?: {
     status?: string;
     priority?: string;
+    channel?: string;
+    assignedAgentId?: string;
+    assignedState?: '' | 'assigned' | 'unassigned';
     onlyMine?: boolean;
     minAgeDays?: number;
+    hasAttachments?: boolean;
+    hasComments?: boolean;
+    createdFrom?: string;
+    createdTo?: string;
+    sort?: FilterState['sort'];
   };
+};
+
+const DEFAULT_FILTER_STATE: FilterState = {
+  search: '',
+  status: '',
+  priority: '',
+  channel: '',
+  assignedAgentId: '',
+  assignedState: '',
+  onlyMine: false,
+  minAgeDays: '',
+  hasAttachments: '',
+  hasComments: '',
+  createdFrom: '',
+  createdTo: '',
+  sort: 'createdAt_desc',
 };
 
 function formatDate(value: string): string {
@@ -373,6 +433,20 @@ export default function DashboardPage() {
   const [backupPath, setBackupPath] = useState('');
   const [backupFileToImport, setBackupFileToImport] = useState<File | null>(null);
   const [loadingDemoDataset, setLoadingDemoDataset] = useState(false);
+  const [costCatalog, setCostCatalog] = useState<CostCatalogItem[]>([]);
+  const [costCatalogSaving, setCostCatalogSaving] = useState(false);
+  const [catalogEditor, setCatalogEditor] = useState<CostCatalogItem>({
+    id: '',
+    name: '',
+    unitNet: 0,
+    vatCode: '23',
+    defaultQty: 1,
+    category: '',
+    unit: '',
+    active: true,
+  });
+  const [selectedCatalogId, setSelectedCatalogId] = useState('');
+  const [quickPresetName, setQuickPresetName] = useState('');
   const [testEmailTo, setTestEmailTo] = useState('');
   const [testSmsTo, setTestSmsTo] = useState('');
   const [serverInfo, setServerInfo] = useState<SystemInfo | null>(null);
@@ -422,13 +496,7 @@ export default function DashboardPage() {
   const [commentInternal, setCommentInternal] = useState(false);
   const [costForm, setCostForm] = useState(emptyCostForm);
 
-  const [filters, setFilters] = useState({
-    search: '',
-    status: '',
-    priority: '',
-    onlyMine: false,
-    minAgeDays: '',
-  });
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTER_STATE);
   const [statisticsFilters, setStatisticsFilters] = useState({
     from: '',
     to: '',
@@ -490,10 +558,12 @@ export default function DashboardPage() {
   const isAdmin = normalizedCurrentRole === 'ADMIN';
   const companyName = settings?.branding?.companyName?.trim() || 'OpenTicket';
   const companyLogo = settings?.branding?.logoDataUrl?.trim() || '';
+  const fallbackBrandMark = '/openticket-mark.svg';
   const visibleNavItems = useMemo(
     () => NAV_ITEMS.filter((item) => isAdmin || (item.id !== 'vat' && item.id !== 'server')),
     [isAdmin],
   );
+  const savedPresetOptions = dashboardPrefs.savedFilters || [];
 
   useEffect(() => {
     if (!isAdmin && (activeNav === 'vat' || activeNav === 'server')) {
@@ -877,34 +947,57 @@ export default function DashboardPage() {
       ...prev,
       status: filter.status || '',
       priority: filter.priority || '',
+      channel: filter.channel || '',
+      assignedAgentId: filter.assignedAgentId || '',
+      assignedState: filter.assignedState || '',
       search: filter.search || '',
       onlyMine: Boolean(filter.onlyMine),
       minAgeDays:
         filter.minAgeDays && Number.isFinite(filter.minAgeDays) && filter.minAgeDays > 0
           ? String(Math.floor(filter.minAgeDays))
           : '',
+      hasAttachments:
+        typeof filter.hasAttachments === 'boolean' ? (filter.hasAttachments ? 'yes' : 'no') : '',
+      hasComments: typeof filter.hasComments === 'boolean' ? (filter.hasComments ? 'yes' : 'no') : '',
+      createdFrom: filter.createdFrom || '',
+      createdTo: filter.createdTo || '',
+      sort: filter.sort || prev.sort,
     }));
+    setQuickPresetName(filter.name);
   };
 
   const addCurrentFilterToSaved = async () => {
     const name = window.prompt(isPolish ? 'Nazwa filtra (np. "Pilne Apple")' : 'Filter name (for example: "Urgent Apple")');
     if (!name) return;
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      return;
+    }
     const normalizedMinAge = Number(filters.minAgeDays);
+    const nextPreset: SavedFilterPreset = {
+      name: normalizedName,
+      status: filters.status || undefined,
+      priority: filters.priority || undefined,
+      channel: filters.channel || undefined,
+      assignedAgentId: filters.assignedAgentId || undefined,
+      assignedState: filters.assignedState || undefined,
+      search: filters.search || undefined,
+      onlyMine: filters.onlyMine || undefined,
+      minAgeDays: Number.isFinite(normalizedMinAge) && normalizedMinAge > 0 ? Math.floor(normalizedMinAge) : undefined,
+      hasAttachments: filters.hasAttachments === 'yes' ? true : filters.hasAttachments === 'no' ? false : undefined,
+      hasComments: filters.hasComments === 'yes' ? true : filters.hasComments === 'no' ? false : undefined,
+      createdFrom: filters.createdFrom || undefined,
+      createdTo: filters.createdTo || undefined,
+      sort: filters.sort || undefined,
+    };
+    const existing = dashboardPrefs.savedFilters || [];
+    const deduped = existing.filter((preset) => preset.name !== normalizedName);
     const next: DashboardPreferences = {
       ...dashboardPrefs,
-      savedFilters: [
-        ...(dashboardPrefs.savedFilters || []),
-        {
-          name: name.trim(),
-          status: filters.status || undefined,
-          priority: filters.priority || undefined,
-          search: filters.search || undefined,
-          onlyMine: filters.onlyMine || undefined,
-          minAgeDays: Number.isFinite(normalizedMinAge) && normalizedMinAge > 0 ? Math.floor(normalizedMinAge) : undefined,
-        },
-      ],
+      savedFilters: [...deduped, nextPreset],
     };
     await savePrefs(next);
+    setQuickPresetName(normalizedName);
   };
 
   const loadStatistics = async () => {
@@ -992,6 +1085,15 @@ export default function DashboardPage() {
     }
   };
 
+  const loadCostCatalogData = async () => {
+    try {
+      const catalog = await listCostCatalog();
+      setCostCatalog(Array.isArray(catalog) ? catalog : []);
+    } catch {
+      setCostCatalog([]);
+    }
+  };
+
   const loadServerStatus = async () => {
     setServerLoading(true);
     try {
@@ -1076,8 +1178,17 @@ export default function DashboardPage() {
         search: filters.search || undefined,
         status: (filters.status as TicketStatus) || undefined,
         priority: (filters.priority as TicketPriority) || undefined,
+        channel: (filters.channel as TicketChannel) || undefined,
+        assignedAgentId: filters.assignedAgentId || undefined,
+        assignedState: filters.assignedState || undefined,
         onlyMine: filters.onlyMine,
         minAgeDays: filters.minAgeDays ? Number(filters.minAgeDays) : undefined,
+        hasAttachments:
+          filters.hasAttachments === 'yes' ? true : filters.hasAttachments === 'no' ? false : undefined,
+        hasComments: filters.hasComments === 'yes' ? true : filters.hasComments === 'no' ? false : undefined,
+        createdFrom: filters.createdFrom || undefined,
+        createdTo: filters.createdTo || undefined,
+        sort: filters.sort || undefined,
       });
 
       setTickets(response.items);
@@ -1185,6 +1296,9 @@ export default function DashboardPage() {
             ...prev,
             status: prefObject.defaultFilters?.status || prev.status,
             priority: prefObject.defaultFilters?.priority || prev.priority,
+            channel: prefObject.defaultFilters?.channel || prev.channel,
+            assignedAgentId: prefObject.defaultFilters?.assignedAgentId || prev.assignedAgentId,
+            assignedState: prefObject.defaultFilters?.assignedState || prev.assignedState,
             onlyMine:
               typeof prefObject.defaultFilters?.onlyMine === 'boolean'
                 ? prefObject.defaultFilters.onlyMine
@@ -1193,10 +1307,25 @@ export default function DashboardPage() {
               prefObject.defaultFilters?.minAgeDays && Number.isFinite(prefObject.defaultFilters.minAgeDays)
                 ? String(Math.max(1, Math.floor(prefObject.defaultFilters.minAgeDays)))
                 : prev.minAgeDays,
+            hasAttachments:
+              typeof prefObject.defaultFilters?.hasAttachments === 'boolean'
+                ? prefObject.defaultFilters.hasAttachments
+                  ? 'yes'
+                  : 'no'
+                : prev.hasAttachments,
+            hasComments:
+              typeof prefObject.defaultFilters?.hasComments === 'boolean'
+                ? prefObject.defaultFilters.hasComments
+                  ? 'yes'
+                  : 'no'
+                : prev.hasComments,
+            createdFrom: prefObject.defaultFilters?.createdFrom || prev.createdFrom,
+            createdTo: prefObject.defaultFilters?.createdTo || prev.createdTo,
+            sort: prefObject.defaultFilters?.sort || prev.sort,
           }));
         }
 
-        await Promise.all([loadTicketsData(), loadAssignableAgents(), loadGlobalReminders()]);
+        await Promise.all([loadTicketsData(), loadAssignableAgents(), loadGlobalReminders(), loadCostCatalogData()]);
       } catch (error) {
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('ts_auth_token');
@@ -1221,7 +1350,21 @@ export default function DashboardPage() {
       loadTicketsData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.status, filters.priority, filters.onlyMine, filters.minAgeDays]);
+  }, [
+    filters.search,
+    filters.status,
+    filters.priority,
+    filters.channel,
+    filters.assignedAgentId,
+    filters.assignedState,
+    filters.onlyMine,
+    filters.minAgeDays,
+    filters.hasAttachments,
+    filters.hasComments,
+    filters.createdFrom,
+    filters.createdTo,
+    filters.sort,
+  ]);
 
   useEffect(() => {
     if (selectedTicketId) {
@@ -1295,7 +1438,7 @@ export default function DashboardPage() {
     } else if (activeNav === 'users') {
       void loadUsers();
     } else if (activeNav === 'vat' && isAdmin) {
-      void loadSettings();
+      void Promise.all([loadSettings(), loadCostCatalogData()]);
     } else if (activeNav === 'server' && isAdmin) {
       void loadServerStatus();
       void loadUpdateStatus();
@@ -1489,6 +1632,7 @@ export default function DashboardPage() {
       });
 
       setCostForm(emptyCostForm);
+      setSelectedCatalogId('');
       await loadTicketDetails(selectedTicketId);
       notify({ type: 'success', text: 'Pozycja kosztowa została dodana.' });
     } catch (error) {
@@ -1499,6 +1643,102 @@ export default function DashboardPage() {
     } finally {
       setSubmittingCost(false);
     }
+  };
+
+  const handleSelectCatalogItem = (catalogId: string) => {
+    setSelectedCatalogId(catalogId);
+    if (!catalogId) {
+      return;
+    }
+    const item = costCatalog.find((entry) => entry.id === catalogId && entry.active);
+    if (!item) {
+      return;
+    }
+    setCostForm({
+      name: item.name,
+      qty: String(item.defaultQty || 1),
+      unitNet: String(item.unitNet || 0),
+      vatCode: item.vatCode || '23',
+    });
+  };
+
+  const handleSaveCostCatalog = async (nextCatalog: CostCatalogItem[], successMessage: string) => {
+    if (!isAdmin) {
+      notify({ type: 'error', text: 'Edycja katalogu kosztów wymaga roli ADMIN.' });
+      return;
+    }
+
+    setCostCatalogSaving(true);
+    try {
+      const saved = await saveCostCatalog(nextCatalog);
+      setCostCatalog(saved);
+      notify({ type: 'success', text: successMessage });
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: `Nie udało się zapisać katalogu kosztów: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    } finally {
+      setCostCatalogSaving(false);
+    }
+  };
+
+  const handleAddCatalogEntry = async () => {
+    const name = catalogEditor.name.trim();
+    if (!name) {
+      notify({ type: 'error', text: 'Nazwa pozycji kosztowej jest wymagana.' });
+      return;
+    }
+    const unitNet = Number(catalogEditor.unitNet);
+    const defaultQty = Number(catalogEditor.defaultQty);
+    if (!Number.isFinite(unitNet) || unitNet < 0) {
+      notify({ type: 'error', text: 'Cena netto musi być poprawną liczbą.' });
+      return;
+    }
+    if (!Number.isFinite(defaultQty) || defaultQty <= 0) {
+      notify({ type: 'error', text: 'Domyślna ilość musi być dodatnia.' });
+      return;
+    }
+
+    const next: CostCatalogItem[] = [
+      ...costCatalog,
+      {
+        id: crypto.randomUUID(),
+        name,
+        unitNet: Number(unitNet.toFixed(2)),
+        vatCode: catalogEditor.vatCode || '23',
+        defaultQty: Number(defaultQty.toFixed(2)),
+        category: catalogEditor.category?.trim() || undefined,
+        unit: catalogEditor.unit?.trim() || undefined,
+        active: catalogEditor.active,
+      },
+    ];
+    await handleSaveCostCatalog(next, 'Dodano pozycję do katalogu kosztorysu.');
+    setCatalogEditor({
+      id: '',
+      name: '',
+      unitNet: 0,
+      vatCode: '23',
+      defaultQty: 1,
+      category: '',
+      unit: '',
+      active: true,
+    });
+  };
+
+  const handleToggleCatalogEntry = async (id: string, active: boolean) => {
+    const next = costCatalog.map((item) => (item.id === id ? { ...item, active } : item));
+    await handleSaveCostCatalog(next, active ? 'Pozycja została aktywowana.' : 'Pozycja została dezaktywowana.');
+  };
+
+  const handleRemoveCatalogEntry = async (id: string) => {
+    const item = costCatalog.find((entry) => entry.id === id);
+    if (!item) return;
+    if (!window.confirm(`Usunąć pozycję katalogu "${item.name}"?`)) {
+      return;
+    }
+    const next = costCatalog.filter((entry) => entry.id !== id);
+    await handleSaveCostCatalog(next, 'Pozycja została usunięta z katalogu.');
   };
 
   const handleResetSetup = async () => {
@@ -1576,6 +1816,9 @@ export default function DashboardPage() {
       ...dashboardPrefs,
       savedFilters: next,
     });
+    if (quickPresetName === name) {
+      setQuickPresetName('');
+    }
   };
 
   const saveDefaultFiltersFromCurrent = async () => {
@@ -1585,8 +1828,16 @@ export default function DashboardPage() {
       defaultFilters: {
         status: filters.status || undefined,
         priority: filters.priority || undefined,
+        channel: filters.channel || undefined,
+        assignedAgentId: filters.assignedAgentId || undefined,
+        assignedState: filters.assignedState || undefined,
         onlyMine: filters.onlyMine || undefined,
         minAgeDays: Number.isFinite(normalizedMinAge) && normalizedMinAge > 0 ? Math.floor(normalizedMinAge) : undefined,
+        hasAttachments: filters.hasAttachments === 'yes' ? true : filters.hasAttachments === 'no' ? false : undefined,
+        hasComments: filters.hasComments === 'yes' ? true : filters.hasComments === 'no' ? false : undefined,
+        createdFrom: filters.createdFrom || undefined,
+        createdTo: filters.createdTo || undefined,
+        sort: filters.sort || undefined,
       },
     });
     notify({
@@ -2468,7 +2719,7 @@ export default function DashboardPage() {
             {companyLogo ? (
               <img src={companyLogo} alt={companyName} className="h-8 w-8 rounded-md bg-white/90 object-contain p-1" />
             ) : (
-              <Headphones className="h-6 w-6" />
+              <img src={fallbackBrandMark} alt="OpenTicket" className="h-8 w-8 rounded-md bg-white/90 object-contain p-1" />
             )}
             <span className="truncate">{companyName}</span>
           </div>
@@ -2536,6 +2787,28 @@ export default function DashboardPage() {
                   </option>
                 ))}
               </select>
+              {activeNav === 'tickets' && savedPresetOptions.length > 0 && (
+                <select
+                  className="max-w-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+                  value={quickPresetName}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setQuickPresetName(value);
+                    const selected = savedPresetOptions.find((item) => item.name === value);
+                    if (selected) {
+                      applySavedFilter(selected);
+                    }
+                  }}
+                  title={isPolish ? 'Szybka zmiana filtra' : 'Quick filter switch'}
+                >
+                  <option value="">{isPolish ? 'Szybki preset filtra' : 'Quick filter preset'}</option>
+                  {savedPresetOptions.map((preset) => (
+                    <option key={preset.name} value={preset.name}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+              )}
               <div className="relative">
                 <button
                   type="button"
@@ -2788,7 +3061,7 @@ export default function DashboardPage() {
                       />
                     </div>
 
-                    <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+                    <div className="grid w-full gap-2 md:w-auto md:grid-cols-4 xl:grid-cols-5">
                       <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
                         <input
                           type="checkbox"
@@ -2799,7 +3072,7 @@ export default function DashboardPage() {
                       </label>
 
                       <input
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none md:w-36"
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
                         type="number"
                         min={1}
                         max={3650}
@@ -2818,7 +3091,7 @@ export default function DashboardPage() {
                         value={filters.status}
                         onChange={(event) => setFilters((prev) => ({ ...prev, status: event.target.value }))}
                       >
-                        <option value="">Wszystkie statusy</option>
+                        <option value="">{isPolish ? 'Status: wszystkie' : 'Status: all'}</option>
                         {FILTER_STATUSES.map((status) => (
                           <option key={status} value={status}>
                             {STATUS_LABELS[uiLanguage][status]}
@@ -2831,7 +3104,7 @@ export default function DashboardPage() {
                         value={filters.priority}
                         onChange={(event) => setFilters((prev) => ({ ...prev, priority: event.target.value }))}
                       >
-                        <option value="">Wszystkie priorytety</option>
+                        <option value="">{isPolish ? 'Priorytet: wszystkie' : 'Priority: all'}</option>
                         {PRIORITIES.map((priority) => (
                           <option key={priority} value={priority}>
                             {PRIORITY_LABELS[uiLanguage][priority]}
@@ -2839,13 +3112,112 @@ export default function DashboardPage() {
                         ))}
                       </select>
 
+                      <select
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        value={filters.channel}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, channel: event.target.value }))}
+                      >
+                        <option value="">{isPolish ? 'Kanał: wszystkie' : 'Channel: all'}</option>
+                        {CHANNELS.map((channel) => (
+                          <option key={channel} value={channel}>
+                            {channel}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        value={filters.assignedState}
+                        onChange={(event) =>
+                          setFilters((prev) => ({ ...prev, assignedState: event.target.value as FilterState['assignedState'] }))
+                        }
+                      >
+                        <option value="">{isPolish ? 'Przypisanie: dowolne' : 'Assignment: any'}</option>
+                        <option value="assigned">{isPolish ? 'Przypisane' : 'Assigned'}</option>
+                        <option value="unassigned">{isPolish ? 'Nieprzypisane' : 'Unassigned'}</option>
+                      </select>
+
+                      <select
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        value={filters.assignedAgentId}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, assignedAgentId: event.target.value }))}
+                      >
+                        <option value="">{isPolish ? 'Technik: wszyscy' : 'Technician: all'}</option>
+                        {assignableAgents.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.name || agent.email}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        value={filters.hasAttachments}
+                        onChange={(event) =>
+                          setFilters((prev) => ({ ...prev, hasAttachments: event.target.value as FilterState['hasAttachments'] }))
+                        }
+                      >
+                        <option value="">{isPolish ? 'Załączniki: wszystkie' : 'Attachments: all'}</option>
+                        <option value="yes">{isPolish ? 'Tylko z załącznikami' : 'Only with attachments'}</option>
+                        <option value="no">{isPolish ? 'Tylko bez załączników' : 'Only without attachments'}</option>
+                      </select>
+
+                      <select
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        value={filters.hasComments}
+                        onChange={(event) =>
+                          setFilters((prev) => ({ ...prev, hasComments: event.target.value as FilterState['hasComments'] }))
+                        }
+                      >
+                        <option value="">{isPolish ? 'Komentarze: wszystkie' : 'Comments: all'}</option>
+                        <option value="yes">{isPolish ? 'Tylko z komentarzami' : 'Only with comments'}</option>
+                        <option value="no">{isPolish ? 'Tylko bez komentarzy' : 'Only without comments'}</option>
+                      </select>
+
+                      <input
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        type="date"
+                        value={filters.createdFrom}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, createdFrom: event.target.value }))}
+                      />
+                      <input
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        type="date"
+                        value={filters.createdTo}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, createdTo: event.target.value }))}
+                      />
+
+                      <select
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                        value={filters.sort}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, sort: event.target.value as FilterState['sort'] }))}
+                      >
+                        <option value="createdAt_desc">{isPolish ? 'Sortuj: najnowsze' : 'Sort: newest'}</option>
+                        <option value="createdAt_asc">{isPolish ? 'Sortuj: najstarsze' : 'Sort: oldest'}</option>
+                        <option value="updatedAt_desc">{isPolish ? 'Ostatnio aktualizowane' : 'Recently updated'}</option>
+                        <option value="priority_desc">{isPolish ? 'Priorytet malejąco' : 'Priority desc'}</option>
+                        <option value="number_desc">{isPolish ? 'Numer malejąco' : 'Number desc'}</option>
+                        <option value="status_asc">{isPolish ? 'Status A→Z' : 'Status A→Z'}</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilters({ ...DEFAULT_FILTER_STATE });
+                          setQuickPresetName('');
+                        }}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
+                      >
+                        {isPolish ? 'Wyczyść filtry' : 'Clear filters'}
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => void loadTicketsData()}
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
                       >
                         <RefreshCw className="h-4 w-4" />
-                        Odśwież
+                        {isPolish ? 'Odśwież' : 'Refresh'}
                       </button>
                     </div>
                   </div>
@@ -3245,6 +3617,21 @@ export default function DashboardPage() {
                             </div>
 
                             <form className="grid gap-2" onSubmit={handleAddCostItem}>
+                              <select
+                                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                value={selectedCatalogId}
+                                onChange={(event) => handleSelectCatalogItem(event.target.value)}
+                              >
+                                <option value="">{isPolish ? 'Wybierz z katalogu (opcjonalnie)' : 'Select from catalog (optional)'}</option>
+                                {costCatalog
+                                  .filter((entry) => entry.active)
+                                  .map((entry) => (
+                                    <option key={entry.id} value={entry.id}>
+                                      {entry.category ? `${entry.category} · ` : ''}
+                                      {entry.name} ({Number(entry.unitNet).toFixed(2)} PLN)
+                                    </option>
+                                  ))}
+                              </select>
                               <input
                                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
                                 placeholder="Nazwa pozycji"
@@ -3896,6 +4283,34 @@ export default function DashboardPage() {
                           ))}
                         </select>
                       </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { key: 'helpdesk-blue', swatch: 'from-blue-500 to-indigo-700' },
+                          { key: 'graphite-noir', swatch: 'from-slate-700 to-slate-900' },
+                          { key: 'emerald-flow', swatch: 'from-emerald-500 to-teal-700' },
+                        ].map((themeCard) => (
+                          <button
+                            key={themeCard.key}
+                            type="button"
+                            onClick={() =>
+                              void savePrefs({
+                                ...dashboardPrefs,
+                                theme: themeCard.key as DashboardTheme,
+                              })
+                            }
+                            className={`rounded-lg border p-2 text-left text-[11px] ${
+                              (dashboardPrefs.theme || 'helpdesk-blue') === themeCard.key
+                                ? 'border-blue-400 ring-2 ring-blue-100'
+                                : 'border-slate-200'
+                            }`}
+                          >
+                            <div className={`mb-2 h-8 rounded bg-gradient-to-r ${themeCard.swatch}`} />
+                            <span className="font-semibold text-slate-700">
+                              {DASHBOARD_THEMES.find((item) => item.value === themeCard.key)?.label || themeCard.key}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
                       <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                         <input
                           type="checkbox"
@@ -3922,7 +4337,7 @@ export default function DashboardPage() {
                       <h3 className="text-sm font-semibold text-slate-800">
                         {isPolish ? 'Domyślne filtry użytkownika' : 'Default user filters'}
                       </h3>
-                      <div className="grid gap-2 md:grid-cols-2">
+                      <div className="grid gap-2 md:grid-cols-3">
                         <select
                           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                           value={filters.status}
@@ -3947,8 +4362,65 @@ export default function DashboardPage() {
                             </option>
                           ))}
                         </select>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.channel}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, channel: event.target.value }))}
+                        >
+                          <option value="">{isPolish ? 'Kanał: wszystkie' : 'Channel: all'}</option>
+                          {CHANNELS.map((channel) => (
+                            <option key={channel} value={channel}>
+                              {channel}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.assignedState}
+                          onChange={(event) =>
+                            setFilters((prev) => ({ ...prev, assignedState: event.target.value as FilterState['assignedState'] }))
+                          }
+                        >
+                          <option value="">{isPolish ? 'Przypisanie: dowolne' : 'Assignment: any'}</option>
+                          <option value="assigned">{isPolish ? 'Przypisane' : 'Assigned'}</option>
+                          <option value="unassigned">{isPolish ? 'Nieprzypisane' : 'Unassigned'}</option>
+                        </select>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.assignedAgentId}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, assignedAgentId: event.target.value }))}
+                        >
+                          <option value="">{isPolish ? 'Technik: wszyscy' : 'Technician: all'}</option>
+                          {assignableAgents.map((agent) => (
+                            <option key={agent.id} value={agent.id}>
+                              {agent.name || agent.email}
+                            </option>
+                          ))}
+                        </select>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.hasAttachments}
+                          onChange={(event) =>
+                            setFilters((prev) => ({ ...prev, hasAttachments: event.target.value as FilterState['hasAttachments'] }))
+                          }
+                        >
+                          <option value="">{isPolish ? 'Załączniki: wszystkie' : 'Attachments: all'}</option>
+                          <option value="yes">{isPolish ? 'Tylko z załącznikami' : 'Only with attachments'}</option>
+                          <option value="no">{isPolish ? 'Tylko bez załączników' : 'Only without attachments'}</option>
+                        </select>
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.hasComments}
+                          onChange={(event) =>
+                            setFilters((prev) => ({ ...prev, hasComments: event.target.value as FilterState['hasComments'] }))
+                          }
+                        >
+                          <option value="">{isPolish ? 'Komentarze: wszystkie' : 'Comments: all'}</option>
+                          <option value="yes">{isPolish ? 'Tylko z komentarzami' : 'Only with comments'}</option>
+                          <option value="no">{isPolish ? 'Tylko bez komentarzy' : 'Only without comments'}</option>
+                        </select>
                       </div>
-                      <div className="grid gap-2 md:grid-cols-2">
+                      <div className="grid gap-2 md:grid-cols-3">
                         <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
                           <input
                             type="checkbox"
@@ -3968,6 +4440,30 @@ export default function DashboardPage() {
                             setFilters((prev) => ({ ...prev, minAgeDays: event.target.value.replace(/[^0-9]/g, '') }))
                           }
                         />
+                        <input
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          type="date"
+                          value={filters.createdFrom}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, createdFrom: event.target.value }))}
+                        />
+                        <input
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          type="date"
+                          value={filters.createdTo}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, createdTo: event.target.value }))}
+                        />
+                        <select
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={filters.sort}
+                          onChange={(event) => setFilters((prev) => ({ ...prev, sort: event.target.value as FilterState['sort'] }))}
+                        >
+                          <option value="createdAt_desc">{isPolish ? 'Sortuj: najnowsze' : 'Sort: newest'}</option>
+                          <option value="createdAt_asc">{isPolish ? 'Sortuj: najstarsze' : 'Sort: oldest'}</option>
+                          <option value="updatedAt_desc">{isPolish ? 'Ostatnio aktualizowane' : 'Recently updated'}</option>
+                          <option value="priority_desc">{isPolish ? 'Priorytet malejąco' : 'Priority desc'}</option>
+                          <option value="number_desc">{isPolish ? 'Numer malejąco' : 'Number desc'}</option>
+                          <option value="status_asc">{isPolish ? 'Status A→Z' : 'Status A→Z'}</option>
+                        </select>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -3984,12 +4480,30 @@ export default function DashboardPage() {
                               ...prev,
                               status: dashboardPrefs.defaultFilters?.status || '',
                               priority: dashboardPrefs.defaultFilters?.priority || '',
+                              channel: dashboardPrefs.defaultFilters?.channel || '',
+                              assignedAgentId: dashboardPrefs.defaultFilters?.assignedAgentId || '',
+                              assignedState: dashboardPrefs.defaultFilters?.assignedState || '',
                               onlyMine: Boolean(dashboardPrefs.defaultFilters?.onlyMine),
                               minAgeDays:
                                 dashboardPrefs.defaultFilters?.minAgeDays &&
                                 Number.isFinite(dashboardPrefs.defaultFilters.minAgeDays)
                                   ? String(Math.floor(dashboardPrefs.defaultFilters.minAgeDays))
                                   : '',
+                              hasAttachments:
+                                typeof dashboardPrefs.defaultFilters?.hasAttachments === 'boolean'
+                                  ? dashboardPrefs.defaultFilters.hasAttachments
+                                    ? 'yes'
+                                    : 'no'
+                                  : '',
+                              hasComments:
+                                typeof dashboardPrefs.defaultFilters?.hasComments === 'boolean'
+                                  ? dashboardPrefs.defaultFilters.hasComments
+                                    ? 'yes'
+                                    : 'no'
+                                  : '',
+                              createdFrom: dashboardPrefs.defaultFilters?.createdFrom || '',
+                              createdTo: dashboardPrefs.defaultFilters?.createdTo || '',
+                              sort: dashboardPrefs.defaultFilters?.sort || 'createdAt_desc',
                             }))
                           }
                           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
@@ -4002,9 +4516,18 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="ticket-surface rounded-xl border border-slate-100 p-5">
-                  <h3 className="mb-3 text-lg font-semibold text-slate-900">
-                    {isPolish ? 'Zapisane presety filtrów' : 'Saved filter presets'}
-                  </h3>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-lg font-semibold text-slate-900">
+                      {isPolish ? 'Zapisane presety filtrów' : 'Saved filter presets'}
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => void addCurrentFilterToSaved()}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100"
+                    >
+                      {isPolish ? 'Utwórz preset z bieżących filtrów' : 'Create preset from current filters'}
+                    </button>
+                  </div>
                   {(dashboardPrefs.savedFilters || []).length === 0 ? (
                     <p className="text-sm text-slate-500">
                       {isPolish ? 'Brak zapisanych presetów. Zapisz filtr z widoku zgłoszeń.' : 'No saved presets yet.'}
@@ -4019,8 +4542,11 @@ export default function DashboardPage() {
                           <div className="text-sm text-slate-700">
                             <strong>{saved.name}</strong>
                             <p className="text-xs text-slate-500">
-                              status={saved.status || '-'}, priorytet={saved.priority || '-'}, onlyMine=
-                              {saved.onlyMine ? '1' : '0'}, minAgeDays={saved.minAgeDays || 0}
+                              status={saved.status || '-'}, priorytet={saved.priority || '-'}, kanał={saved.channel || '-'},
+                              przypisanie={saved.assignedState || '-'}, onlyMine={saved.onlyMine ? '1' : '0'}, minAgeDays=
+                              {saved.minAgeDays || 0}, załączniki=
+                              {typeof saved.hasAttachments === 'boolean' ? (saved.hasAttachments ? '1' : '0') : '-'}, komentarze=
+                              {typeof saved.hasComments === 'boolean' ? (saved.hasComments ? '1' : '0') : '-'}
                             </p>
                           </div>
                           <div className="flex gap-2">
@@ -4361,6 +4887,159 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                <div className="ticket-surface rounded-xl border border-slate-100 p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      {isPolish ? 'Katalog pozycji kosztorysu' : 'Cost catalog'}
+                    </h2>
+                    <span className="text-xs text-slate-500">
+                      {isPolish ? `Aktywne pozycje: ${costCatalog.filter((item) => item.active).length}` : `Active entries: ${costCatalog.filter((item) => item.active).length}`}
+                    </span>
+                  </div>
+                  <div className="grid gap-4 lg:grid-cols-[1.1fr_1.5fr]">
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs text-slate-600">
+                        {isPolish
+                          ? 'Pozycje z katalogu pojawią się technikom w rozwijanej liście podczas dodawania kosztu.'
+                          : 'Catalog entries are available in the cost dropdown for technicians.'}
+                      </p>
+                      <input
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        placeholder={isPolish ? 'Nazwa pozycji (np. Diagnostyka płyty)' : 'Entry name'}
+                        value={catalogEditor.name}
+                        onChange={(event) => setCatalogEditor((prev) => ({ ...prev, name: event.target.value }))}
+                      />
+                      <div className="grid gap-2 md:grid-cols-2">
+                        <input
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          placeholder={isPolish ? 'Kategoria (opcjonalnie)' : 'Category (optional)'}
+                          value={catalogEditor.category || ''}
+                          onChange={(event) => setCatalogEditor((prev) => ({ ...prev, category: event.target.value }))}
+                        />
+                        <input
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          placeholder={isPolish ? 'Jednostka (np. szt.)' : 'Unit (e.g. pcs)'}
+                          value={catalogEditor.unit || ''}
+                          onChange={(event) => setCatalogEditor((prev) => ({ ...prev, unit: event.target.value }))}
+                        />
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-3">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          placeholder={isPolish ? 'Cena netto' : 'Net price'}
+                          value={catalogEditor.unitNet}
+                          onChange={(event) =>
+                            setCatalogEditor((prev) => ({
+                              ...prev,
+                              unitNet: Number(event.target.value),
+                            }))
+                          }
+                        />
+                        <input
+                          type="number"
+                          min={0.01}
+                          step="0.01"
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          placeholder={isPolish ? 'Domyślna ilość' : 'Default qty'}
+                          value={catalogEditor.defaultQty}
+                          onChange={(event) =>
+                            setCatalogEditor((prev) => ({
+                              ...prev,
+                              defaultQty: Number(event.target.value),
+                            }))
+                          }
+                        />
+                        <select
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          value={catalogEditor.vatCode}
+                          onChange={(event) => setCatalogEditor((prev) => ({ ...prev, vatCode: event.target.value }))}
+                        >
+                          {VAT_CODES.map((code) => (
+                            <option key={code} value={code}>
+                              VAT {code}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={catalogEditor.active}
+                          onChange={(event) => setCatalogEditor((prev) => ({ ...prev, active: event.target.checked }))}
+                        />
+                        {isPolish ? 'Pozycja aktywna' : 'Entry active'}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void handleAddCatalogEntry()}
+                        disabled={costCatalogSaving}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {costCatalogSaving ? (isPolish ? 'Zapisywanie...' : 'Saving...') : isPolish ? 'Dodaj do katalogu' : 'Add to catalog'}
+                      </button>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                      {costCatalog.length === 0 ? (
+                        <p className="p-4 text-sm text-slate-500">
+                          {isPolish ? 'Katalog jest pusty. Dodaj pierwszą pozycję.' : 'Catalog is empty. Add your first entry.'}
+                        </p>
+                      ) : (
+                        <table className="min-w-full text-sm">
+                          <thead className="sticky top-0 border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                            <tr>
+                              <th className="px-3 py-2 text-left">{isPolish ? 'Pozycja' : 'Item'}</th>
+                              <th className="px-3 py-2 text-right">{isPolish ? 'Netto' : 'Net'}</th>
+                              <th className="px-3 py-2 text-right">{isPolish ? 'VAT' : 'VAT'}</th>
+                              <th className="px-3 py-2 text-right">{isPolish ? 'Ilość' : 'Qty'}</th>
+                              <th className="px-3 py-2 text-right">{isPolish ? 'Akcje' : 'Actions'}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {costCatalog.map((entry) => (
+                              <tr key={entry.id} className="border-t border-slate-100">
+                                <td className="px-3 py-2">
+                                  <p className={`font-medium ${entry.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+                                    {entry.category ? `${entry.category} · ` : ''}
+                                    {entry.name}
+                                  </p>
+                                  {entry.unit && <p className="text-xs text-slate-500">{entry.unit}</p>}
+                                </td>
+                                <td className="px-3 py-2 text-right">{Number(entry.unitNet).toFixed(2)} PLN</td>
+                                <td className="px-3 py-2 text-right">VAT {entry.vatCode}</td>
+                                <td className="px-3 py-2 text-right">{Number(entry.defaultQty).toFixed(2)}</td>
+                                <td className="px-3 py-2">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      disabled={costCatalogSaving}
+                                      onClick={() => void handleToggleCatalogEntry(entry.id, !entry.active)}
+                                      className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                                    >
+                                      {entry.active ? (isPolish ? 'Ukryj' : 'Disable') : isPolish ? 'Aktywuj' : 'Enable'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={costCatalogSaving}
+                                      onClick={() => void handleRemoveCatalogEntry(entry.id)}
+                                      className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 hover:bg-red-100 disabled:opacity-50"
+                                    >
+                                      {isPolish ? 'Usuń' : 'Delete'}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="ticket-surface rounded-xl border border-slate-100 p-5">

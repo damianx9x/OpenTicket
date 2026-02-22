@@ -59,8 +59,17 @@ export class TicketsService {
     if (query.priority) {
       andFilters.push({ priority: query.priority as any });
     }
+    if (query.channel) {
+      andFilters.push({ channel: query.channel as any });
+    }
     if (query.assignedAgentId) {
       andFilters.push({ assignedAgentId: query.assignedAgentId });
+    }
+    if (query.assignedState === 'assigned') {
+      andFilters.push({ assignedAgentId: { not: null } });
+    }
+    if (query.assignedState === 'unassigned') {
+      andFilters.push({ assignedAgentId: null });
     }
     if (query.onlyMine && currentUser?.id) {
       andFilters.push({
@@ -71,6 +80,26 @@ export class TicketsService {
       const threshold = new Date(Date.now() - query.minAgeDays * 24 * 60 * 60 * 1000);
       andFilters.push({ createdAt: { lte: threshold } });
     }
+    if (typeof query.hasAttachments === 'boolean') {
+      andFilters.push(
+        query.hasAttachments ? { attachments: { some: {} } } : { attachments: { none: {} } },
+      );
+    }
+    if (typeof query.hasComments === 'boolean') {
+      andFilters.push(
+        query.hasComments ? { comments: { some: {} } } : { comments: { none: {} } },
+      );
+    }
+    if (query.createdFrom || query.createdTo) {
+      const createdAtFilter: Prisma.DateTimeFilter = {};
+      if (query.createdFrom) {
+        createdAtFilter.gte = new Date(`${query.createdFrom}T00:00:00.000Z`);
+      }
+      if (query.createdTo) {
+        createdAtFilter.lte = new Date(`${query.createdTo}T23:59:59.999Z`);
+      }
+      andFilters.push({ createdAt: createdAtFilter });
+    }
     if (query.search) {
       const normalized = query.search.trim();
       if (normalized.length > 0) {
@@ -79,6 +108,7 @@ export class TicketsService {
           { description: { contains: normalized } },
           { owner: { name: { contains: normalized } } },
           { owner: { email: { contains: normalized } } },
+          { owner: { phone: { contains: normalized } } },
           { assignedAgent: { name: { contains: normalized } } },
           { assignedAgent: { email: { contains: normalized } } },
           { comments: { some: { body: { contains: normalized } } } },
@@ -315,6 +345,10 @@ export class TicketsService {
       updatedAt_desc: { updatedAt: 'desc' },
       priority_asc: { priority: 'asc' },
       priority_desc: { priority: 'desc' },
+      number_asc: { number: 'asc' },
+      number_desc: { number: 'desc' },
+      status_asc: { status: 'asc' },
+      status_desc: { status: 'desc' },
     };
     return sortMap[sort] ?? { createdAt: 'desc' };
   }

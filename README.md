@@ -3,9 +3,9 @@
 <!-- INSTALLER_LINK:START -->
 ## Installers (macOS + Windows)
 - macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- macOS PKG (v0.3.2): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.2/OpenTicket-Installer.pkg)
+- macOS PKG (v0.3.3): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.3/OpenTicket-Installer.pkg)
 - Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
-- Windows EXE (v0.3.2): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.2/OpenTicket-Installer.exe)
+- Windows EXE (v0.3.3): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.3/OpenTicket-Installer.exe)
 <!-- INSTALLER_LINK:END -->
 
 ## GitHub Release Standard
@@ -230,6 +230,35 @@ Windows local build alternatywnie: `powershell -ExecutionPolicy Bypass -File .\\
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-22 (release prep 0.3.3: ikona + filtry rozszerzone + katalog kosztów)
+- Rebranding wizualny:
+  - nowy zestaw ikon aplikacji (`desktop/assets/icon.png`, `desktop/assets/icon.ico`, `desktop/assets/icon.icns`) oraz generator ikon `scripts/generate-openticket-icons.py`,
+  - nowy znak marki w WebUI: `frontend/public/openticket-mark.svg` (logowanie + fallback logo).
+- Rozbudowane filtry ticketów (backend + frontend):
+  - nowe kryteria: `kanał`, `przypisanie` (`assigned/unassigned`), `ma załączniki`, `ma komentarze`, `zakres dat od/do`, rozszerzone sortowanie (`status`, `numer`),
+  - zapisywanie i szybkie przełączanie presetów filtrów użytkownika bez wychodzenia z dashboardu.
+- Katalog pozycji kosztorysu:
+  - nowe API: `GET/PUT /api/v1/settings/cost-catalog`,
+  - panel admina do zarządzania pozycjami katalogu,
+  - dropdown w formularzu kosztów z auto-uzupełnianiem `nazwa/kwota/VAT/ilość`.
+- Motywy UI dopracowane pod profesjonalny wygląd:
+  - `Helpdesk Blue`,
+  - `Graphite Noir`,
+  - `Emerald Flow`.
+- Aktualizacja instalatora:
+  - `.pkg` uruchamia setup assistant po instalacji (`--setup-assistant`),
+  - `.exe` ma pełniejszą konfigurację skrótów i czyszczenie app data przy uninstall.
+- Testy i walidacja:
+  - `make test` = PASS,
+  - `make stage3-test` = PASS (5/5),
+  - `make moj-testy-smoke` = PASS,
+  - `make moj-testy-auth-smoke` = PASS,
+  - `make moj-testy-profile-ui-smoke` = PASS,
+  - `make moj-testy-backup-ui-smoke` = PASS,
+  - `make moj-testy-custom-path-backup-smoke` = PASS,
+  - `make moj-testy-setup-import-smoke` = PASS,
+  - `make moj-testy-fresh-10x-smoke` uruchomione 3 razy = `10/10 PASS` w każdej rundzie.
+
 ### 2026-02-22 (setup import existing DB + 10x fresh simulation)
 - Setup (krok 1) dostał wybór źródła danych:
   - `Nowa baza (czysta instalacja)`,
@@ -744,6 +773,7 @@ APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
 3. Etap 6: podpisany QR + generator PDF naklejek + minimalny auth.
 
 ## Changelog
+- `2026-02-22`: release prep `0.3.3` (nowa ikona OpenTicket, rozszerzone filtry ticketów + szybkie presety, katalog pozycji kosztorysu z auto-uzupełnianiem, dopracowane motywy UI, rebuild instalatorów macOS/Windows i potrójny deep smoke `fresh-10x`).
 - `2026-02-21`: bezpieczny mechanizm aktualizacji desktop (check/download/install), backup przed aktualizacją (DB+WAL+uploads+config), automatyczny backup przy zmianie wersji, publish config pod GitHub Releases.
 - `2026-02-21`: hotfix setup/login po inicjalizacji (refresh połączeń Prisma; koniec błędów `P2021` po `setup/init`) + poprawka selektorów random UI testów dla WebKit.
 - `2026-02-21`: release `0.3.0` (backend/frontend/desktop), kompletny deinstalator w instalatorze `.pkg`, narzędzia ratunkowe na loginie desktop, poprawa deterministyczności `Moj/testy/ui-random-10` i `Moj/testy/start.sh`, pełny retest go/no-go.

@@ -31,6 +31,7 @@ const BACKEND_MONITOR_INTERVAL_MS = 15000;
 const BACKEND_MONITOR_FAIL_THRESHOLD = 3;
 const isPackaged = app.isPackaged;
 const isUiDevMode = !isPackaged || process.argv.includes("--dev");
+const forceSetupAssistant = process.argv.includes("--setup-assistant");
 
 type UpdateState =
   | "disabled"
@@ -1258,7 +1259,8 @@ async function createWindow(port: number): Promise<void> {
     },
   });
 
-  const startUrl = `http://127.0.0.1:${port}`;
+  const startPath = forceSetupAssistant ? "/setup?source=installer" : "/";
+  const startUrl = `http://127.0.0.1:${port}${startPath}`;
 
   console.log(`Loading ${startUrl}`);
   mainWindow.loadURL(startUrl);

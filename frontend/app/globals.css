@@ -12,6 +12,10 @@
     --ts-text: #0f172a;
     --ts-muted: #64748b;
     --ts-primary: #2463eb;
+    --ts-bg-grad-start: #e8eefc;
+    --ts-bg-grad-mid: #f3f5fa;
+    --ts-bg-grad-end: #eef2ff;
+    --ts-card-shadow: 0 12px 30px -20px rgba(15, 23, 42, 0.35);
   }
 
   :root[data-ts-theme='helpdesk-blue'] {
@@ -22,26 +26,38 @@
     --ts-text: #0f172a;
     --ts-muted: #64748b;
     --ts-primary: #2463eb;
+    --ts-bg-grad-start: #e8eefc;
+    --ts-bg-grad-mid: #f3f5fa;
+    --ts-bg-grad-end: #eef2ff;
+    --ts-card-shadow: 0 12px 30px -20px rgba(15, 23, 42, 0.35);
   }
 
   :root[data-ts-theme='graphite-noir'] {
-    --ts-bg: #edf0f5;
+    --ts-bg: #eceff3;
     --ts-panel: #ffffff;
-    --ts-sidebar: #111827;
-    --ts-sidebar-border: #1f2937;
+    --ts-sidebar: #0f1727;
+    --ts-sidebar-border: #1f2a3f;
     --ts-text: #0f172a;
-    --ts-muted: #6b7280;
+    --ts-muted: #5f6b82;
     --ts-primary: #0f766e;
+    --ts-bg-grad-start: #dfe5ee;
+    --ts-bg-grad-mid: #eceff3;
+    --ts-bg-grad-end: #e7edf7;
+    --ts-card-shadow: 0 14px 32px -22px rgba(15, 23, 42, 0.4);
   }
 
   :root[data-ts-theme='emerald-flow'] {
-    --ts-bg: #eef7f4;
+    --ts-bg: #edf7f2;
     --ts-panel: #ffffff;
-    --ts-sidebar: #064e3b;
-    --ts-sidebar-border: #065f46;
+    --ts-sidebar: #06493a;
+    --ts-sidebar-border: #0f6451;
     --ts-text: #06261f;
     --ts-muted: #3f6f60;
     --ts-primary: #0f9f6e;
+    --ts-bg-grad-start: #dff2ea;
+    --ts-bg-grad-mid: #edf7f2;
+    --ts-bg-grad-end: #e7f3ee;
+    --ts-card-shadow: 0 14px 32px -22px rgba(6, 70, 54, 0.35);
   }
 
   html,
@@ -51,7 +67,10 @@
 
   body {
     margin: 0;
-    background: radial-gradient(circle at top right, #eef4ff 0%, var(--ts-bg) 45%);
+    background:
+      radial-gradient(circle at 18% 10%, var(--ts-bg-grad-start) 0%, transparent 46%),
+      radial-gradient(circle at 86% 0%, var(--ts-bg-grad-end) 0%, transparent 42%),
+      linear-gradient(145deg, var(--ts-bg-grad-mid) 0%, var(--ts-bg) 100%);
     color: var(--ts-text);
   }
 }
@@ -59,7 +78,7 @@
 @layer components {
   .ticket-surface {
     background: var(--ts-panel);
-    box-shadow: 0 12px 30px -20px rgba(15, 23, 42, 0.35);
+    box-shadow: var(--ts-card-shadow);
   }
 
   .modal-overlay {
@@ -72,7 +91,7 @@
 }
 
 body.ts-compact .ticket-surface {
-  box-shadow: 0 8px 20px -16px rgba(15, 23, 42, 0.35);
+  box-shadow: 0 8px 20px -16px rgba(15, 23, 42, 0.3);
 }
 
 body.ts-compact input,

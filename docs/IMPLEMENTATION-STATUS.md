@@ -61,11 +61,11 @@ Notatka badawcza jest teraz traktowana jako formalne źródło wymagań i ma map
   - folder `Moj/` z gotowym workflow testowym:
     - `Moj/build-oficjalna-instalka.sh`
     - `Moj/install-local.sh`
-    - `Moj/deinstaluj-ticket-system.sh`
+    - `Moj/deinstaluj-openticket.sh`
   - generowanie artefaktów:
-    - `Moj/TicketSystem-Installer.pkg`
-    - `Moj/TicketSystem-Installer.dmg`
-    - `Moj/TicketSystem-Installer.zip`
+    - `Moj/OpenTicket-Installer.pkg`
+    - `Moj/OpenTicket-Installer.dmg`
+    - `Moj/OpenTicket-Installer.zip`
   - sumy kontrolne SHA256 dla instalek.
   - naprawa błędu runtime `spawn node ENOENT`:
     - backend uruchamiany przez `process.execPath` + `ELECTRON_RUN_AS_NODE` (bez zależności od systemowego `node`),
@@ -99,6 +99,11 @@ Notatka badawcza jest teraz traktowana jako formalne źródło wymagań i ma map
   - fallback do `/login?email=...` jeśli auto-login nie powiedzie się,
   - wzmocniona obsługa localStorage (Safari/WebKit privacy-safe),
   - konfiguracja firmy: upload logo + podgląd,
+  - rozbudowany profil użytkownika:
+    - szybkie presety filtrów,
+    - filtry zaawansowane (`kanał`, `przypisanie`, `załączniki`, `komentarze`, `zakres dat`),
+    - 3 motywy kolorystyczne (`Helpdesk Blue`, `Graphite Noir`, `Emerald Flow`),
+  - katalog pozycji kosztorysu (admin + dropdown z auto-uzupełnianiem w popupie zgłoszenia),
   - testy kanałów e-mail/SMS z czytelnym komunikatem sukces/błąd w UI.
 - Testy:
   - `setup -> login/dashboard` (manual + Playwright) = `PASS`,
