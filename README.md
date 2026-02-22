@@ -230,6 +230,29 @@ Windows local build alternatywnie: `powershell -ExecutionPolicy Bypass -File .\\
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-22 (hotfix: utrata logowania po restarcie/reset + setupMode)
+- Naprawiono krytyczny scenariusz z logów klienta:
+  - po `import backupu` i `clearCache` backend potrafił błędnie uznać, że jest w setupie i przyjmował `POST /api/v1/setup/client-only`,
+  - skutkiem było nadpisanie configu trybem `client_only` i późniejsze błędy `P2021 (auth_sessions)` / „Internal server error” przy logowaniu.
+- Zmiany w silniku:
+  - `ConfigLoaderService` nie opiera się już wyłącznie na cache; po `clearCache` czyta i waliduje `config.json` z dysku,
+  - walidacja configu działa także dla cache (`loadConfig/getConfigSync`) i automatycznie wraca do setupu, gdy brakuje lokalnej bazy SQLite (server+client),
+  - blokada nieprawidłowego `client_only` bez poprawnego `remoteApiBaseUrl`,
+  - `SetupService.initializeClientOnlyMode` sprawdza realny stan przez `loadConfig()` i odrzuca re-inicjalizację po konfiguracji,
+  - `SetupService.getSetupStatus()` i `isSystemSetup()` bazują na realnym stanie konfiguracji, nie na stale cache.
+- Stabilność auth:
+  - `AuthService` obsługuje brak tabel sesji (`P2021/P2022`) bez 500 i zwraca czytelny komunikat serwisowy (503),
+  - lookup tokenu w uszkodzonej strukturze nie powoduje już pętli błędów.
+- Desktop reset:
+  - `factory reset` czyści też katalog `backups` (nie tylko `backup`).
+- Nowy test regresyjny:
+  - `./Moj/testy/setup-state-regression-smoke.sh` (setup → login → import backupu → blokada client-only → usunięcie DB → powrót do setup) = PASS.
+- Retest po poprawkach:
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/auth-smoke.sh` = PASS,
+  - `./Moj/testy/client-only-smoke.sh` = PASS,
+  - `./Moj/testy/setup-state-regression-smoke.sh` = PASS.
+
 ### 2026-02-22 (release prep 0.3.3: ikona + filtry rozszerzone + katalog kosztów)
 - Rebranding wizualny:
   - nowy zestaw ikon aplikacji (`desktop/assets/icon.png`, `desktop/assets/icon.ico`, `desktop/assets/icon.icns`) oraz generator ikon `scripts/generate-openticket-icons.py`,
@@ -773,6 +796,7 @@ APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
 3. Etap 6: podpisany QR + generator PDF naklejek + minimalny auth.
 
 ## Changelog
+- `2026-02-22`: hotfix stabilności setup/login po restarcie i imporcie backupu: twarda walidacja configu z dysku (koniec błędnego `setupMode` po `clearCache`), blokada `setup/client-only` po zakończonej konfiguracji, fallback do setupu po ręcznym usunięciu `app.db`, obsługa błędów `P2021/P2022` w auth bez `Internal server error`, nowy test regresyjny `setup-state-regression-smoke`.
 - `2026-02-22`: release prep `0.3.3` (nowa ikona OpenTicket, rozszerzone filtry ticketów + szybkie presety, katalog pozycji kosztorysu z auto-uzupełnianiem, dopracowane motywy UI, rebuild instalatorów macOS/Windows i potrójny deep smoke `fresh-10x`).
 - `2026-02-21`: bezpieczny mechanizm aktualizacji desktop (check/download/install), backup przed aktualizacją (DB+WAL+uploads+config), automatyczny backup przy zmianie wersji, publish config pod GitHub Releases.
 - `2026-02-21`: hotfix setup/login po inicjalizacji (refresh połączeń Prisma; koniec błędów `P2021` po `setup/init`) + poprawka selektorów random UI testów dla WebKit.

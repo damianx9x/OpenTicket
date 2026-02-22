@@ -53,8 +53,12 @@ export class SetupController {
   }
 
   @Post('client-only')
-  async initializeClientOnly(@Body() request: ClientOnlySetupRequest): Promise<SetupResponse> {
+  async initializeClientOnly(
+    @Body() request: ClientOnlySetupRequest,
+    @Req() req: Request,
+  ): Promise<SetupResponse> {
     this.logger.log('Client-only setup requested');
+    this.assertLoopbackRequest(req);
 
     if (!request?.remoteApiBaseUrl || request.remoteApiBaseUrl.trim().length === 0) {
       throw new BadRequestException('Missing required field: remoteApiBaseUrl');

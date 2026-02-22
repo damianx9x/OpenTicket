@@ -180,7 +180,8 @@ export class SetupService {
   }
 
   async initializeClientOnlyMode(request: ClientOnlySetupRequest): Promise<SetupResponse> {
-    if (!this.configLoader.isSetupMode()) {
+    const runtimeConfig = await this.configLoader.loadConfig();
+    if (!runtimeConfig.setupMode) {
       return {
         success: false,
         message: 'System is already configured. Cannot re-initialize.',
@@ -200,9 +201,14 @@ export class SetupService {
       fs.mkdirSync(uploadsPath, { recursive: true });
     }
 
+    const migrations = await this.runMigrations(dbUrl);
+    this.logger.log(
+      `Client-only bootstrap DB prepared. Migrations applied: ${migrations.applied} (DATABASE_URL=${migrations.databaseUrl})`,
+    );
+
     const config: AppConfig = {
       databaseMode: 'sqlite',
-      databaseUrl: dbUrl,
+      databaseUrl: migrations.databaseUrl,
       storageMode: 'local',
       dataPath,
       uploadsPath,
@@ -720,8 +726,8 @@ export class SetupService {
   }
 
   async isSystemSetup(): Promise<boolean> {
-    const config = this.configLoader.getConfigSync();
-    return config !== null && !config.setupMode;
+    const config = await this.configLoader.loadConfig();
+    return !config.setupMode;
   }
 
   async getSetupStatus(): Promise<{
@@ -731,15 +737,15 @@ export class SetupService {
     installationMode: 'server_client' | 'client_only';
     remoteApiBaseUrl?: string;
   }> {
-    const isSetup = await this.isSystemSetup();
-    const config = this.configLoader.getConfigSync();
+    const config = await this.configLoader.loadConfig();
+    const isSetup = !config.setupMode;
 
     return {
       isSetup,
       setupMode: !isSetup,
       defaultDataPath: this.getRecommendedDataPath(),
-      installationMode: (config?.installationMode as 'server_client' | 'client_only') || 'server_client',
-      remoteApiBaseUrl: config?.remoteApiBaseUrl || undefined,
+      installationMode: (config.installationMode as 'server_client' | 'client_only') || 'server_client',
+      remoteApiBaseUrl: config.remoteApiBaseUrl || undefined,
     };
   }
 

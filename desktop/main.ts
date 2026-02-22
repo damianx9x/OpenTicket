@@ -1151,6 +1151,7 @@ async function performFactoryReset(): Promise<{
       path.join(normalized, "app.db-shm"),
       path.join(normalized, "app.db-journal"),
       path.join(normalized, "uploads"),
+      path.join(normalized, "backups"),
       path.join(normalized, "backup"),
       path.join(normalized, "cache"),
     );

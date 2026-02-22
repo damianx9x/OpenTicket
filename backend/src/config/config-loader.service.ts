@@ -18,45 +18,27 @@ export class ConfigLoaderService {
    */
   async loadConfig(): Promise<AppConfig> {
     if (ConfigLoaderService.cachedConfig) {
-      this.applyProcessEnv(ConfigLoaderService.cachedConfig);
-      return ConfigLoaderService.cachedConfig;
+      const validated = this.validateLoadedConfig(ConfigLoaderService.cachedConfig);
+      ConfigLoaderService.cachedConfig = validated;
+      this.applyProcessEnv(validated);
+      return validated;
     }
 
     const configPath = this.getConfigPath();
     const configFile = path.join(configPath, 'config.json');
 
     if (fs.existsSync(configFile)) {
-      try {
-        const raw = fs.readFileSync(configFile, 'utf-8');
-        const parsed = JSON.parse(raw) as AppConfig;
-        parsed.createdAt = new Date(parsed.createdAt);
-        parsed.installationMode = parsed.installationMode || 'server_client';
-        parsed.port = this.resolvePort(parsed.port);
-
-        if (parsed.databaseMode === 'sqlite' && !parsed.setupMode && parsed.installationMode !== 'client_only') {
-          const sqlitePath = this.resolveSqliteDatabasePath(parsed.databaseUrl);
-          if (!sqlitePath || !fs.existsSync(sqlitePath)) {
-            this.logger.warn(
-              `Configured SQLite database is missing or invalid (${parsed.databaseUrl}). Switching to setup mode.`,
-            );
-            return this.getSetupModeConfig(parsed.dataPath);
-          }
-          if (!this.ensureDirectoryWritable(path.dirname(sqlitePath))) {
-            this.logger.warn(
-              `Configured SQLite directory is not writable (${path.dirname(sqlitePath)}). Switching to setup mode.`,
-            );
-            return this.getSetupModeConfig(parsed.dataPath);
-          }
-        }
-
-        ConfigLoaderService.cachedConfig = parsed;
-        this.applyProcessEnv(parsed);
+      const parsed = this.readConfigFromDisk();
+      if (parsed) {
+        const validated = this.validateLoadedConfig(parsed);
+        ConfigLoaderService.cachedConfig = validated;
+        this.applyProcessEnv(validated);
         this.logger.log(`Configuration loaded from ${configFile}`);
-        return ConfigLoaderService.cachedConfig;
-      } catch (error) {
-        this.logger.error(`Failed to load config from ${configFile}: ${error}`);
-        return this.getSetupModeConfig();
+        return validated;
       }
+
+      this.logger.error(`Failed to load config from ${configFile}. Entering setup mode.`);
+      return this.getSetupModeConfig();
     }
 
     this.logger.log('No configuration found, entering SETUP_MODE');
@@ -165,7 +147,22 @@ export class ConfigLoaderService {
    * Get current configuration
    */
   getConfigSync(): AppConfig | null {
-    return ConfigLoaderService.cachedConfig;
+    if (ConfigLoaderService.cachedConfig) {
+      const validated = this.validateLoadedConfig(ConfigLoaderService.cachedConfig);
+      ConfigLoaderService.cachedConfig = validated;
+      this.applyProcessEnv(validated);
+      return validated;
+    }
+
+    const parsed = this.readConfigFromDisk();
+    if (!parsed) {
+      return null;
+    }
+
+    const validated = this.validateLoadedConfig(parsed);
+    ConfigLoaderService.cachedConfig = validated;
+    this.applyProcessEnv(validated);
+    return validated;
   }
 
   /**
@@ -193,7 +190,7 @@ export class ConfigLoaderService {
    * Check if system is in setup mode
    */
   isSetupMode(): boolean {
-    return ConfigLoaderService.cachedConfig?.setupMode ?? true;
+    return this.getConfigSync()?.setupMode ?? true;
   }
 
   /**
@@ -264,6 +261,65 @@ export class ConfigLoaderService {
     throw new Error(
       `No writable SQLite directory available. Checked: ${path.dirname(configuredDbPath)} and ${path.dirname(fallbackDbPath)}`,
     );
+  }
+
+  private readConfigFromDisk(): AppConfig | null {
+    const configFile = path.join(this.getConfigPath(), 'config.json');
+    if (!fs.existsSync(configFile)) {
+      return null;
+    }
+
+    try {
+      const raw = fs.readFileSync(configFile, 'utf-8');
+      const parsed = JSON.parse(raw) as AppConfig;
+
+      return {
+        ...parsed,
+        createdAt: parsed.createdAt ? new Date(parsed.createdAt) : new Date(),
+        installationMode: parsed.installationMode || 'server_client',
+        port: this.resolvePort(parsed.port || 3000),
+      };
+    } catch (error) {
+      this.logger.error(`Failed to parse config file ${configFile}: ${error}`);
+      return null;
+    }
+  }
+
+  private validateLoadedConfig(config: AppConfig): AppConfig {
+    if (config.databaseMode === 'sqlite' && !config.setupMode && config.installationMode !== 'client_only') {
+      const sqlitePath = this.resolveSqliteDatabasePath(config.databaseUrl);
+      if (!sqlitePath || !fs.existsSync(sqlitePath)) {
+        this.logger.warn(
+          `Configured SQLite database is missing or invalid (${config.databaseUrl}). Switching to setup mode.`,
+        );
+        return this.getSetupModeConfig(config.dataPath);
+      }
+      if (!this.ensureDirectoryWritable(path.dirname(sqlitePath))) {
+        this.logger.warn(
+          `Configured SQLite directory is not writable (${path.dirname(sqlitePath)}). Switching to setup mode.`,
+        );
+        return this.getSetupModeConfig(config.dataPath);
+      }
+    }
+
+    if (!config.setupMode && config.installationMode === 'client_only') {
+      const remote = (config.remoteApiBaseUrl || '').trim();
+      if (!remote) {
+        this.logger.warn('Client-only configuration is missing remoteApiBaseUrl. Switching to setup mode.');
+        return this.getSetupModeConfig(config.dataPath);
+      }
+      try {
+        const parsed = new URL(remote);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          throw new Error(`Unsupported protocol ${parsed.protocol}`);
+        }
+      } catch {
+        this.logger.warn(`Client-only remoteApiBaseUrl is invalid (${remote}). Switching to setup mode.`);
+        return this.getSetupModeConfig(config.dataPath);
+      }
+    }
+
+    return config;
   }
 
   private resolveSqliteDatabasePath(databaseUrl: string): string | null {

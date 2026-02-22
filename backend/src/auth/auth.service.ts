@@ -76,15 +76,27 @@ export class AuthService {
     const tokenHash = hashAccessToken(token);
     const expiresAt = new Date(Date.now() + DEFAULT_SESSION_DAYS * 24 * 60 * 60 * 1000);
 
-    await this.prisma.authSession.create({
-      data: {
-        userId,
-        tokenHash,
-        userAgent: metadata.userAgent || null,
-        ip: metadata.ip || null,
-        expiresAt,
-      },
-    });
+    try {
+      await this.prisma.authSession.create({
+        data: {
+          userId,
+          tokenHash,
+          userAgent: metadata.userAgent || null,
+          ip: metadata.ip || null,
+          expiresAt,
+        },
+      });
+    } catch (error) {
+      if (this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error)) {
+        this.logger.error(
+          `Cannot create auth session: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        throw new ServiceUnavailableException(
+          'Silnik sesji logowania nie jest gotowy. Użyj „Szybka naprawa” albo „Reset systemu”, a następnie zaloguj ponownie.',
+        );
+      }
+      throw error;
+    }
 
     const user = await this.getSafeUserById(userId);
     return { token, expiresAt, user };
@@ -96,21 +108,46 @@ export class AuthService {
     }
 
     const tokenHash = hashAccessToken(token);
-    const session = await this.prisma.authSession.findUnique({
-      where: { tokenHash },
-      include: {
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            role: true,
-            phone: true,
-            disabledAt: true,
+    let session:
+      | {
+          id: string;
+          expiresAt: Date;
+          user: {
+            id: string;
+            email: string;
+            name: string;
+            role: string;
+            phone: string | null;
+            disabledAt: Date | null;
+          };
+        }
+      | null = null;
+
+    try {
+      session = await this.prisma.authSession.findUnique({
+        where: { tokenHash },
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              role: true,
+              phone: true,
+              disabledAt: true,
+            },
           },
         },
-      },
-    });
+      });
+    } catch (error) {
+      if (this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error)) {
+        this.logger.warn(
+          `Session lookup skipped (database not ready): ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+      }
+      throw error;
+    }
 
     if (!session) {
       return null;
@@ -121,10 +158,18 @@ export class AuthService {
       return null;
     }
 
-    await this.prisma.authSession.update({
-      where: { id: session.id },
-      data: { lastUsedAt: new Date() },
-    });
+    await this.prisma.authSession
+      .update({
+        where: { id: session.id },
+        data: { lastUsedAt: new Date() },
+      })
+      .catch((error) => {
+        if (!this.isSchemaMismatchError(error)) {
+          this.logger.warn(
+            `Failed to update auth session lastUsedAt: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      });
 
     return {
       id: session.user.id,
@@ -141,11 +186,19 @@ export class AuthService {
     }
 
     const tokenHash = hashAccessToken(token);
-    await this.prisma.authSession.deleteMany({ where: { tokenHash } });
+    await this.prisma.authSession.deleteMany({ where: { tokenHash } }).catch((error) => {
+      if (!this.isSchemaMismatchError(error)) {
+        throw error;
+      }
+    });
   }
 
   async logoutEverywhere(userId: string): Promise<void> {
-    await this.prisma.authSession.deleteMany({ where: { userId } });
+    await this.prisma.authSession.deleteMany({ where: { userId } }).catch((error) => {
+      if (!this.isSchemaMismatchError(error)) {
+        throw error;
+      }
+    });
   }
 
   async getSafeUserById(userId: string): Promise<AuthenticatedUser> {
@@ -187,5 +240,19 @@ export class AuthService {
       message.includes('unable to open the database file') ||
       message.includes('error code 14')
     );
+  }
+
+  private isSchemaMismatchError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const code = ((error as any)?.code || '').toString().toUpperCase();
+    if (code === 'P2021' || code === 'P2022') {
+      return true;
+    }
+
+    const message = (error as any)?.message?.toString?.().toLowerCase?.() || '';
+    return message.includes('table') && message.includes('does not exist');
   }
 }

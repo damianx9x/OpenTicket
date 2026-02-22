@@ -120,6 +120,21 @@ Raport:
 ./Moj/testy/runtime/reports/custom-path-backup-smoke-*.json
 ```
 
+## Test regresji setup/login po restarcie i usunięciu bazy
+```bash
+./Moj/testy/setup-state-regression-smoke.sh
+```
+Zakres:
+- setup od zera + login admina,
+- export + import backupu (ścieżka, która wcześniej czyściła cache i psuła `setupMode`),
+- próba przełączenia na `client_only` po konfiguracji (musi być zablokowana),
+- ręczne usunięcie `app.db` i weryfikacja, że system wraca do setupu (bez „martwego” ekranu logowania).
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/setup-state-regression-smoke-*.json
+```
+
 ## Test stabilności 10x od zera (fresh + random UI)
 ```bash
 ./Moj/testy/fresh-10x-smoke.sh
