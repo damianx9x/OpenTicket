@@ -34,6 +34,17 @@ Moj/TicketSystem-Installer.zip
 Moj/OpenTicket-Installer.pkg
 Moj/OpenTicket-Installer.dmg
 Moj/OpenTicket-Installer.zip
+Moj/OpenTicket-Setup-*.exe
+Moj/OpenTicket-Setup-*.exe.blockmap
+Moj/OpenTicket-Portable-*.exe
+Moj/OpenTicket-*.zip
+Moj/OpenTicket-*.zip.blockmap
+Moj/OpenTicket-*.dmg
+Moj/OpenTicket-*.dmg.blockmap
+Moj/latest.yml
+Moj/latest-mac.yml
+Moj/latest.yml.sha256
+Moj/latest-mac.yml.sha256
 Moj/*.sha256
 Moj/.DS_Store
 Moj/testy/runtime/

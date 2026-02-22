@@ -18,6 +18,9 @@ export interface SetupRequest {
   adminEmail: string;
   adminPassword: string;
   organizationName?: string;
+  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  existingDatabasePath?: string;
+  existingBackupArchivePath?: string;
 }
 
 export interface ClientOnlySetupRequest {
@@ -33,6 +36,8 @@ export interface SetupResponse {
   adminEmail?: string;
   installationMode?: InstallationMode;
   remoteApiBaseUrl?: string;
+  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapSourcePath?: string;
 }
 
 export interface SetupStatus {
@@ -83,6 +88,13 @@ export interface ValidateRemoteResponse {
     setupMode?: boolean;
     installationMode?: InstallationMode;
   };
+}
+
+export interface DiscoverLocalDataResponse {
+  success: boolean;
+  existingDatabases: string[];
+  backupArchives: string[];
+  searchedPaths: string[];
 }
 
 function localSetupBase(): string {
@@ -173,6 +185,13 @@ export async function validateRemoteApiBase(remoteApiBaseUrl: string): Promise<V
   return requestData<ValidateRemoteResponse>(buildLocalSetupUrl('/api/v1/setup/validate-remote'), {
     method: 'POST',
     body: JSON.stringify({ remoteApiBaseUrl }),
+  });
+}
+
+export async function discoverLocalDataSources(): Promise<DiscoverLocalDataResponse> {
+  return requestData<DiscoverLocalDataResponse>(buildLocalSetupUrl('/api/v1/setup/discover-local-data'), {
+    method: 'POST',
+    body: JSON.stringify({}),
   });
 }
 

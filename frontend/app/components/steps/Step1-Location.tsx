@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, Folder, Loader2, RefreshCw, Wifi } from 'lucide-react';
 import { normalizeApiBaseUrl } from '@/lib/api-base';
 import {
+  discoverLocalDataSources,
   discoverSetupServers,
   type DiscoveredSetupServer,
   type InstallationMode,
@@ -16,6 +17,9 @@ interface Step1Props {
     installationMode: InstallationMode;
     dataPath: string;
     remoteApiBaseUrl?: string;
+    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+    existingDatabasePath?: string;
+    existingBackupArchivePath?: string;
   }) => void;
   defaultValue: string;
 }
@@ -39,12 +43,18 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   const resolvedDefaultPath = defaultValue?.trim().length > 0 ? defaultValue : getPlatformDefaultPath();
   const [installationMode, setInstallationMode] = useState<InstallationMode>('server_client');
   const [dataPath, setDataPath] = useState(resolvedDefaultPath);
+  const [bootstrapMode, setBootstrapMode] = useState<'fresh' | 'existing_db' | 'backup_archive'>('fresh');
+  const [existingDatabasePath, setExistingDatabasePath] = useState('');
+  const [existingBackupArchivePath, setExistingBackupArchivePath] = useState('');
   const [remoteApiBaseUrl, setRemoteApiBaseUrl] = useState('http://127.0.0.1:3200');
   const [useDefault, setUseDefault] = useState(true);
   const [checkingPath, setCheckingPath] = useState(false);
   const [discoveringServers, setDiscoveringServers] = useState(false);
+  const [discoveringLocalData, setDiscoveringLocalData] = useState(false);
   const [validatingRemote, setValidatingRemote] = useState(false);
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredSetupServer[]>([]);
+  const [discoveredDatabases, setDiscoveredDatabases] = useState<string[]>([]);
+  const [discoveredBackups, setDiscoveredBackups] = useState<string[]>([]);
   const [discoverySummary, setDiscoverySummary] = useState('');
   const [remoteValidated, setRemoteValidated] = useState<{ url: string; latencyMs?: number } | null>(null);
   const [pathFeedback, setPathFeedback] = useState<{
@@ -55,6 +65,32 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   const isElectron =
     typeof window !== 'undefined' &&
     Boolean((window as any).electron?.selectFolder || (window as any).electronAPI?.selectFolder);
+
+  const selectFilePath = async (kind: 'database' | 'backup'): Promise<string | null> => {
+    const bridge =
+      typeof window !== 'undefined'
+        ? (window as any).electron || (window as any).electronAPI
+        : null;
+
+    if (!bridge?.selectFile) {
+      setPathFeedback({
+        type: 'info',
+        text: 'W trybie przeglądarki wpisz ścieżkę ręcznie. W instalatorze możesz wybrać plik natywnie.',
+      });
+      return null;
+    }
+
+    try {
+      const selected = await bridge.selectFile(kind);
+      return selected || null;
+    } catch (error) {
+      setPathFeedback({
+        type: 'error',
+        text: `Nie udało się wybrać pliku: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+      return null;
+    }
+  };
 
   const runPathValidation = async (targetPath: string): Promise<string | null> => {
     setCheckingPath(true);
@@ -136,6 +172,37 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       });
     } finally {
       setDiscoveringServers(false);
+    }
+  };
+
+  const discoverLocalData = async (): Promise<void> => {
+    setDiscoveringLocalData(true);
+    setPathFeedback({
+      type: 'info',
+      text: 'Szukam poprzedniej bazy i backupów na tym komputerze...',
+    });
+    try {
+      const result = await discoverLocalDataSources();
+      setDiscoveredDatabases(result.existingDatabases || []);
+      setDiscoveredBackups(result.backupArchives || []);
+      if ((result.existingDatabases || []).length === 0 && (result.backupArchives || []).length === 0) {
+        setPathFeedback({
+          type: 'warning',
+          text: 'Nie znaleziono poprzedniej bazy ani backupów. Możesz kontynuować z nową bazą.',
+        });
+      } else {
+        setPathFeedback({
+          type: 'success',
+          text: `Wykryto ${result.existingDatabases.length} baz i ${result.backupArchives.length} backupów.`,
+        });
+      }
+    } catch (error) {
+      setPathFeedback({
+        type: 'error',
+        text: `Nie udało się wykryć poprzednich danych: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    } finally {
+      setDiscoveringLocalData(false);
     }
   };
 
@@ -265,13 +332,32 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       return;
     }
 
+    if (bootstrapMode === 'existing_db' && existingDatabasePath.trim().length === 0) {
+      setPathFeedback({
+        type: 'error',
+        text: 'Wskaż plik istniejącej bazy app.db, aby kontynuować.',
+      });
+      return;
+    }
+
+    if (bootstrapMode === 'backup_archive' && existingBackupArchivePath.trim().length === 0) {
+      setPathFeedback({
+        type: 'error',
+        text: 'Wskaż archiwum backupu (.tar.gz), aby kontynuować.',
+      });
+      return;
+    }
+
     onContinue({
       installationMode,
       dataPath: validatedPath,
+      bootstrapMode,
+      existingDatabasePath: existingDatabasePath.trim() || undefined,
+      existingBackupArchivePath: existingBackupArchivePath.trim() || undefined,
     });
   };
 
-  const isBusy = checkingPath || discoveringServers || validatingRemote;
+  const isBusy = checkingPath || discoveringServers || discoveringLocalData || validatingRemote;
 
   return (
     <div className="space-y-6">
@@ -411,6 +497,163 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
         </div>
       ) : (
         <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-700">Źródło danych przy pierwszym uruchomieniu</p>
+              <button
+                type="button"
+                onClick={() => void discoverLocalData()}
+                disabled={discoveringLocalData || checkingPath}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {discoveringLocalData ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Wykryj poprzednią bazę/backup
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                <input
+                  type="radio"
+                  checked={bootstrapMode === 'fresh'}
+                  onChange={() => {
+                    setBootstrapMode('fresh');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium text-slate-800">Nowa baza (czysta instalacja)</p>
+                  <p className="text-xs text-slate-600">Utworzy świeżą bazę `app.db` i strukturę katalogów.</p>
+                </div>
+              </label>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                <input
+                  type="radio"
+                  checked={bootstrapMode === 'existing_db'}
+                  onChange={() => {
+                    setBootstrapMode('existing_db');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div className="w-full">
+                  <p className="font-medium text-slate-800">Import istniejącej bazy `app.db`</p>
+                  <p className="text-xs text-slate-600">Przenosi dane z poprzedniej instalacji i uruchamia migracje.</p>
+                  {bootstrapMode === 'existing_db' && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        value={existingDatabasePath}
+                        onChange={(event) => setExistingDatabasePath(event.target.value)}
+                        placeholder="/ścieżka/do/app.db"
+                        className="min-w-[260px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const selected = await selectFilePath('database');
+                          if (selected) {
+                            setExistingDatabasePath(selected);
+                          }
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        Wybierz plik
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </label>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                <input
+                  type="radio"
+                  checked={bootstrapMode === 'backup_archive'}
+                  onChange={() => {
+                    setBootstrapMode('backup_archive');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div className="w-full">
+                  <p className="font-medium text-slate-800">Import backupu `.tar.gz`</p>
+                  <p className="text-xs text-slate-600">Odtwarza bazę i pliki (zdjęcia) z jednego archiwum.</p>
+                  {bootstrapMode === 'backup_archive' && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        value={existingBackupArchivePath}
+                        onChange={(event) => setExistingBackupArchivePath(event.target.value)}
+                        placeholder="/ścieżka/do/backup.tar.gz"
+                        className="min-w-[260px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const selected = await selectFilePath('backup');
+                          if (selected) {
+                            setExistingBackupArchivePath(selected);
+                          }
+                        }}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        Wybierz plik
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            {(discoveredDatabases.length > 0 || discoveredBackups.length > 0) && (
+              <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+                {discoveredDatabases.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase text-slate-600">Wykryte bazy app.db</p>
+                    <div className="max-h-32 space-y-2 overflow-auto pr-1">
+                      {discoveredDatabases.slice(0, 6).map((dbPath) => (
+                        <button
+                          key={dbPath}
+                          type="button"
+                          onClick={() => {
+                            setBootstrapMode('existing_db');
+                            setExistingDatabasePath(dbPath);
+                            setPathFeedback({ type: 'info', text: `Wybrano bazę: ${dbPath}` });
+                          }}
+                          className="w-full rounded border border-slate-200 px-2 py-1 text-left font-mono text-[11px] text-slate-700 hover:bg-slate-50"
+                        >
+                          {dbPath}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {discoveredBackups.length > 0 && (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase text-slate-600">Wykryte backupy .tar.gz</p>
+                    <div className="max-h-32 space-y-2 overflow-auto pr-1">
+                      {discoveredBackups.slice(0, 6).map((backupPath) => (
+                        <button
+                          key={backupPath}
+                          type="button"
+                          onClick={() => {
+                            setBootstrapMode('backup_archive');
+                            setExistingBackupArchivePath(backupPath);
+                            setPathFeedback({ type: 'info', text: `Wybrano backup: ${backupPath}` });
+                          }}
+                          className="w-full rounded border border-slate-200 px-2 py-1 text-left font-mono text-[11px] text-slate-700 hover:bg-slate-50"
+                        >
+                          {backupPath}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 p-4 hover:bg-gray-50">
             <input
               type="radio"

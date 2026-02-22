@@ -3,6 +3,7 @@ import { ConfigLoaderService } from '../config/config-loader.service';
 import {
   AppConfig,
   ClientOnlySetupRequest,
+  DiscoverLocalDataResponse,
   DiscoverServersRequest,
   DiscoverServersResponse,
   DiscoveredServerInfo,
@@ -61,6 +62,16 @@ export class SetupService {
       const uploadsPath = path.join(dataPath, 'uploads');
       const dbPath = path.join(dataPath, 'app.db');
       const dbUrl = this.toSqliteDatabaseUrl(dbPath);
+      const bootstrapMode = this.normalizeBootstrapMode(request.bootstrapMode);
+      const existingDatabasePath = this.resolveOptionalAbsolutePath(request.existingDatabasePath);
+      const existingBackupArchivePath = this.resolveOptionalAbsolutePath(request.existingBackupArchivePath);
+
+      if (bootstrapMode === 'existing_db' && !existingDatabasePath) {
+        throw new Error('Wybrano import istniejącej bazy, ale nie podano ścieżki do pliku app.db.');
+      }
+      if (bootstrapMode === 'backup_archive' && !existingBackupArchivePath) {
+        throw new Error('Wybrano import backupu, ale nie podano ścieżki do archiwum .tar.gz.');
+      }
 
       if (!fs.existsSync(dataPath)) {
         fs.mkdirSync(dataPath, { recursive: true });
@@ -80,11 +91,25 @@ export class SetupService {
       // We hard-disconnect before touching database file and reconnect lazily after setup.
       await this.refreshRuntimePrisma('before sqlite reset');
 
-      // Setup should always start from a clean sqlite file.
-      // This avoids partial schema artifacts after interrupted setup attempts.
-      if (fs.existsSync(dbPath)) {
-        fs.rmSync(dbPath, { force: true });
-        this.logger.warn(`Removed existing sqlite file before setup: ${dbPath}`);
+      if (bootstrapMode === 'fresh') {
+        // Setup should always start from a clean sqlite file.
+        // This avoids partial schema artifacts after interrupted setup attempts.
+        if (fs.existsSync(dbPath)) {
+          fs.rmSync(dbPath, { force: true });
+          this.logger.warn(`Removed existing sqlite file before setup: ${dbPath}`);
+        }
+      } else if (bootstrapMode === 'existing_db') {
+        this.importExistingDatabaseToRuntime({
+          sourceDbPath: existingDatabasePath as string,
+          targetDbPath: dbPath,
+          uploadsPath,
+        });
+      } else if (bootstrapMode === 'backup_archive') {
+        this.importBackupArchiveToRuntime({
+          archivePath: existingBackupArchivePath as string,
+          targetDbPath: dbPath,
+          uploadsPath,
+        });
       }
 
       const migrations = await this.runMigrations(dbUrl);
@@ -99,10 +124,16 @@ export class SetupService {
       const adminUserId = await this.createAdminUser(prisma, request.adminEmail, request.adminPassword);
 
       if (request.organizationName) {
-        await prisma.organization.create({
-          data: { name: request.organizationName },
+        const existingOrg = await prisma.organization.findFirst({
+          where: { name: request.organizationName },
+          select: { id: true },
         });
-        this.logger.log(`Organization created: ${request.organizationName}`);
+        if (!existingOrg) {
+          await prisma.organization.create({
+            data: { name: request.organizationName },
+          });
+          this.logger.log(`Organization created: ${request.organizationName}`);
+        }
       }
 
       await this.ensureDefaultSystemSettings(prisma, request.organizationName);
@@ -134,6 +165,13 @@ export class SetupService {
         adminUserId,
         adminEmail: request.adminEmail,
         installationMode: 'server_client',
+        bootstrapMode,
+        bootstrapSourcePath:
+          bootstrapMode === 'existing_db'
+            ? existingDatabasePath || undefined
+            : bootstrapMode === 'backup_archive'
+              ? existingBackupArchivePath || undefined
+              : undefined,
       };
     } catch (error: any) {
       this.logger.error(`Initialization failed: ${error.message}`, error.stack);
@@ -714,6 +752,118 @@ export class SetupService {
     return this.configLoader.getDefaultDataDirectoryPath();
   }
 
+  private normalizeBootstrapMode(
+    rawMode?: string,
+  ): 'fresh' | 'existing_db' | 'backup_archive' {
+    const normalized = (rawMode || 'fresh').trim().toLowerCase();
+    if (normalized === 'existing_db' || normalized === 'backup_archive') {
+      return normalized;
+    }
+    return 'fresh';
+  }
+
+  private resolveOptionalAbsolutePath(inputPath?: string): string | null {
+    if (!inputPath || inputPath.trim().length === 0) {
+      return null;
+    }
+    return this.resolveDataPath(inputPath.trim());
+  }
+
+  private importExistingDatabaseToRuntime(params: {
+    sourceDbPath: string;
+    targetDbPath: string;
+    uploadsPath: string;
+  }): void {
+    const sourceDbPath = path.resolve(params.sourceDbPath);
+    const targetDbPath = path.resolve(params.targetDbPath);
+    const sameFile = sourceDbPath === targetDbPath;
+    if (!fs.existsSync(sourceDbPath)) {
+      throw new Error(`Nie znaleziono pliku bazy danych: ${sourceDbPath}`);
+    }
+
+    fs.mkdirSync(path.dirname(targetDbPath), { recursive: true });
+    fs.mkdirSync(params.uploadsPath, { recursive: true });
+
+    if (!sameFile) {
+      const dbTargets = [
+        targetDbPath,
+        `${targetDbPath}-wal`,
+        `${targetDbPath}-shm`,
+        `${targetDbPath}-journal`,
+      ];
+      for (const target of dbTargets) {
+        fs.rmSync(target, { force: true });
+      }
+      fs.copyFileSync(sourceDbPath, targetDbPath);
+      this.copyFileIfExists(`${sourceDbPath}-wal`, `${targetDbPath}-wal`);
+      this.copyFileIfExists(`${sourceDbPath}-shm`, `${targetDbPath}-shm`);
+      this.copyFileIfExists(`${sourceDbPath}-journal`, `${targetDbPath}-journal`);
+    }
+
+    this.logger.log(`Setup import: existing database copied (${sourceDbPath} -> ${targetDbPath})`);
+  }
+
+  private importBackupArchiveToRuntime(params: {
+    archivePath: string;
+    targetDbPath: string;
+    uploadsPath: string;
+  }): void {
+    const archivePath = path.resolve(params.archivePath);
+    if (!fs.existsSync(archivePath)) {
+      throw new Error(`Nie znaleziono archiwum backupu: ${archivePath}`);
+    }
+
+    const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openticket-setup-import-'));
+
+    try {
+      const extract = spawnSync('tar', ['-xzf', archivePath, '-C', stageDir], { encoding: 'utf-8' });
+      if (extract.status !== 0) {
+        const reason = (extract.stderr || extract.stdout || 'tar extract failed').trim();
+        throw new Error(`Nie udało się rozpakować backupu: ${reason}`);
+      }
+
+      const importedDbPath = path.join(stageDir, 'app.db');
+      if (!fs.existsSync(importedDbPath)) {
+        throw new Error('Backup nie zawiera pliku app.db.');
+      }
+
+      fs.mkdirSync(path.dirname(params.targetDbPath), { recursive: true });
+      const dbTargets = [
+        params.targetDbPath,
+        `${params.targetDbPath}-wal`,
+        `${params.targetDbPath}-shm`,
+        `${params.targetDbPath}-journal`,
+      ];
+      for (const target of dbTargets) {
+        fs.rmSync(target, { force: true });
+      }
+
+      fs.copyFileSync(importedDbPath, params.targetDbPath);
+      this.copyFileIfExists(path.join(stageDir, 'app.db-wal'), `${params.targetDbPath}-wal`);
+      this.copyFileIfExists(path.join(stageDir, 'app.db-shm'), `${params.targetDbPath}-shm`);
+      this.copyFileIfExists(path.join(stageDir, 'app.db-journal'), `${params.targetDbPath}-journal`);
+
+      const importedUploads = path.join(stageDir, 'uploads');
+      if (fs.existsSync(importedUploads)) {
+        fs.rmSync(params.uploadsPath, { recursive: true, force: true });
+        fs.cpSync(importedUploads, params.uploadsPath, { recursive: true });
+      } else if (!fs.existsSync(params.uploadsPath)) {
+        fs.mkdirSync(params.uploadsPath, { recursive: true });
+      }
+
+      this.logger.log(`Setup import: backup restored from ${archivePath}`);
+    } finally {
+      fs.rmSync(stageDir, { recursive: true, force: true });
+    }
+  }
+
+  private copyFileIfExists(source: string, target: string): void {
+    if (!fs.existsSync(source)) {
+      return;
+    }
+    fs.copyFileSync(source, target);
+  }
+
   validateDataPath(inputPath?: string): DataPathValidationResult {
     const requestedPath = (inputPath || '').trim();
     const resolvedPath = this.resolveDataPath(requestedPath);
@@ -780,6 +930,57 @@ export class SetupService {
             : error?.message || 'Nie udało się zweryfikować lokalizacji danych.',
       };
     }
+  }
+
+  discoverLocalDataSources(): DiscoverLocalDataResponse {
+    const searched = new Set<string>();
+    const dbCandidates = new Set<string>();
+    const backupCandidates = new Set<string>();
+
+    const dataDirs = this.getLocalDataCandidateDirectories();
+    for (const dirPath of dataDirs) {
+      const resolvedDir = path.resolve(dirPath);
+      searched.add(resolvedDir);
+      const dbPath = path.join(resolvedDir, 'app.db');
+      if (fs.existsSync(dbPath)) {
+        dbCandidates.add(dbPath);
+      }
+      const backupsDir = path.join(resolvedDir, 'backups');
+      if (fs.existsSync(backupsDir)) {
+        searched.add(backupsDir);
+        for (const filePath of this.listBackupArchives(backupsDir)) {
+          backupCandidates.add(filePath);
+        }
+      }
+    }
+
+    const homeDir = os.homedir();
+    const additionalBackupDirs = [
+      path.join(homeDir, 'Desktop'),
+      path.join(homeDir, 'Downloads'),
+      path.join(homeDir, 'Desktop', 'backups'),
+      path.join(homeDir, 'Downloads', 'backups'),
+    ];
+    for (const dirPath of additionalBackupDirs) {
+      searched.add(path.resolve(dirPath));
+      for (const filePath of this.listBackupArchives(dirPath)) {
+        backupCandidates.add(filePath);
+      }
+    }
+
+    const existingDatabases = Array.from(dbCandidates).sort();
+    const backupArchives = Array.from(backupCandidates).sort((a, b) => {
+      const aTime = this.safeMtimeMs(a);
+      const bTime = this.safeMtimeMs(b);
+      return bTime - aTime;
+    });
+
+    return {
+      success: true,
+      existingDatabases,
+      backupArchives,
+      searchedPaths: Array.from(searched).sort(),
+    };
   }
 
   async discoverRemoteServers(request: DiscoverServersRequest = {}): Promise<DiscoverServersResponse> {
@@ -919,7 +1120,12 @@ export class SetupService {
   }
 
   private toSqliteDatabaseUrl(dbPath: string): string {
-    return `file:${encodeURI(path.resolve(dbPath))}`;
+    const resolved = path.resolve(dbPath);
+    if (process.platform === 'win32') {
+      const normalized = resolved.replace(/\\/g, '/');
+      return normalized.startsWith('/') ? `file:${normalized}` : `file:/${normalized}`;
+    }
+    return `file:${resolved}`;
   }
 
   private normalizeRemoteApiBaseUrl(rawUrl: string): string {
@@ -939,6 +1145,70 @@ export class SetupService {
     parsed.hash = '';
 
     return parsed.toString().replace(/\/+$/, '');
+  }
+
+  private getLocalDataCandidateDirectories(): string[] {
+    const candidates = new Set<string>();
+    const config = this.configLoader.getConfigSync();
+    if (config?.dataPath) {
+      candidates.add(path.resolve(config.dataPath));
+    }
+    if (process.env.TICKET_SYSTEM_DATA_DIR) {
+      candidates.add(path.resolve(process.env.TICKET_SYSTEM_DATA_DIR));
+    }
+
+    const recommended = this.getRecommendedDataPath();
+    if (recommended) {
+      candidates.add(path.resolve(recommended));
+    }
+
+    const homeDir = os.homedir();
+    const platform = process.platform;
+    if (platform === 'darwin') {
+      const appSupport = path.join(homeDir, 'Library', 'Application Support');
+      [
+        'OpenTicket',
+        'openticket-desktop',
+        'ticket-system',
+        'TicketSystem',
+        'ticket-system-desktop',
+      ].forEach((name) => candidates.add(path.join(appSupport, name, 'data')));
+    } else if (platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming');
+      ['OpenTicket', 'openticket-desktop', 'ticket-system', 'TicketSystem'].forEach((name) =>
+        candidates.add(path.join(appData, name, 'data')),
+      );
+    } else {
+      candidates.add(path.join(homeDir, '.local', 'share', 'openticket', 'data'));
+      candidates.add(path.join(homeDir, '.local', 'share', 'ticket-system', 'data'));
+    }
+
+    return Array.from(candidates);
+  }
+
+  private listBackupArchives(dirPath: string): string[] {
+    if (!fs.existsSync(dirPath)) {
+      return [];
+    }
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dirPath);
+    } catch {
+      return [];
+    }
+
+    return entries
+      .filter((name) => name.endsWith('.tar.gz'))
+      .map((name) => path.join(dirPath, name))
+      .filter((fullPath) => fs.existsSync(fullPath));
+  }
+
+  private safeMtimeMs(filePath: string): number {
+    try {
+      return fs.statSync(filePath).mtimeMs;
+    } catch {
+      return 0;
+    }
   }
 
   private buildDiscoveryTargets(params: {
@@ -1120,7 +1390,7 @@ export class SetupService {
 
   private async refreshRuntimePrisma(stage: string): Promise<void> {
     try {
-      await this.prismaService.$disconnect();
+      await this.prismaService.refreshDatasource(process.env.DATABASE_URL, true);
       this.logger.log(`Runtime Prisma connections refreshed (${stage}).`);
     } catch (error: any) {
       this.logger.warn(

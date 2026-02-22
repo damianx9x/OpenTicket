@@ -106,6 +106,29 @@ Raport:
 ./Moj/testy/runtime/reports/backup-ui-smoke-*.json
 ```
 
+## Test backupu przy niestandardowej ścieżce (Application Support)
+```bash
+./Moj/testy/custom-path-backup-smoke.sh
+```
+Zakres:
+- setup na ścieżce z przestrzeniami (`~/Library/Application Support/...`),
+- logowanie admina po setupie (bez restartu aplikacji),
+- eksport backupu `.tar.gz`.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/custom-path-backup-smoke-*.json
+```
+
+## Test stabilności 10x od zera (fresh + random UI)
+```bash
+./Moj/testy/fresh-10x-smoke.sh
+```
+Opcjonalnie inna przeglądarka:
+```bash
+BROWSER=webkit ./Moj/testy/fresh-10x-smoke.sh
+```
+
 ## Aktualizacja screenshotów release (demo 200)
 ```bash
 ./Moj/testy/capture-release-screenshots.sh

@@ -11,6 +11,7 @@
 ## GitHub Release Standard
 - Każdy release ma tag semver (`v0.x.y`) i opis zmian w sekcji `Changelog`.
 - README musi zawierać aktualne linki do `.pkg` i `.exe` w sekcji `Installers (macOS + Windows)`.
+- Release musi zawierać metadane auto-update: `latest-mac.yml` (macOS) i `latest.yml` (Windows) oraz wskazane przez nie pliki binarne.
 - Screenshoty UI dla release są w `docs/screenshots/v0.3/` i opisane w `docs/screenshots/README.md`.
 - Przed publikacją uruchamiane są testy: `smoke`, `auth-smoke`, `ui-random-10` (Chromium + WebKit), `diagnose`.
 
@@ -126,6 +127,7 @@ cd <repo-root>
 - Kreator setup (krok 1) ma teraz wybór:
   - `Serwer + klient` (pełna instalacja lokalna),
   - `Sam klient` (połączenie do istniejącego serwera, bez lokalnego setupu admina).
+  - W trybie `Serwer + klient`: `Nowa baza`, `Import app.db` lub `Import backupu .tar.gz`.
 
 ## Test bez instalacji (`Moj/testy`)
 ```bash
@@ -142,6 +144,9 @@ cd <repo-root>
 ./Moj/testy/modal-popup-smoke.sh
 ./Moj/testy/profile-ui-smoke.sh
 ./Moj/testy/backup-ui-smoke.sh
+./Moj/testy/custom-path-backup-smoke.sh
+./Moj/testy/setup-import-smoke.sh
+./Moj/testy/fresh-10x-smoke.sh
 ./Moj/testy/capture-release-screenshots.sh
 ./Moj/testy/diagnose.sh
 ./Moj/testy/stop.sh
@@ -192,6 +197,9 @@ make moj-testy-auth-smoke
 make moj-testy-diagnose
 make moj-testy-profile-ui-smoke
 make moj-testy-backup-ui-smoke
+make moj-testy-custom-path-backup-smoke
+make moj-testy-setup-import-smoke
+make moj-testy-fresh-10x-smoke
 make moj-testy-stop
 ```
 `make up` automatycznie wykrywa zajęte porty i przełącza się na wolne (zakres `+100`).
@@ -222,6 +230,49 @@ Windows local build alternatywnie: `powershell -ExecutionPolicy Bypass -File .\\
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-22 (setup import existing DB + 10x fresh simulation)
+- Setup (krok 1) dostał wybór źródła danych:
+  - `Nowa baza (czysta instalacja)`,
+  - `Import istniejącej bazy app.db`,
+  - `Import backupu .tar.gz`.
+- Dodano natywny wybór pliku w instalatorze desktop (`selectFile`): osobno dla `app.db` i `backup`.
+- Backend setup (`/api/v1/setup/init`) obsługuje teraz:
+  - `bootstrapMode=fresh|existing_db|backup_archive`,
+  - `existingDatabasePath`,
+  - `existingBackupArchivePath`,
+  - oraz wykonuje migracje po imporcie.
+- Backup export został utwardzony:
+  - wykrywa aktywnie podpiętą bazę SQLite przez `PRAGMA database_list`,
+  - lepiej radzi sobie z rozjazdem ścieżek po update/rebrandingu.
+- UI/RBAC:
+  - dla ról innych niż ADMIN wymuszony fallback na bezpieczne zakładki (bez `Konfiguracja` i `Serwer`),
+  - formularze tworzenia/edycji użytkowników dostępne tylko dla ADMIN.
+- Testy:
+  - `./Moj/testy/setup-import-smoke.sh` = PASS (`existing_db` + `backup_archive`),
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/backup-ui-smoke.sh` = PASS,
+  - `./Moj/testy/profile-ui-smoke.sh` = PASS,
+  - `./Moj/testy/ui-random-10.sh --all-browsers --fresh` = PASS,
+  - 10x pętla fresh-start + random UI (10 akcji) = `10/10 PASS`.
+
+### 2026-02-22 (fix: login/backup po setupie na niestandardowej ścieżce)
+- Naprawiono krytyczny błąd po setupie z `~/Library/Application Support/...`:
+  - `PrismaService` jest teraz reloadowalny (`refreshDatasource`) i po setupie przełącza się na nową bazę bez wymagania restartu aplikacji,
+  - generowanie `DATABASE_URL` dla SQLite nie koduje już ścieżek w sposób powodujący problemy z przestrzeniami,
+  - checkpoint WAL przy backupie używa bezpiecznego `queryRaw`.
+- Uproszczono krok 1 setup:
+  - dodano przycisk `Wykryj poprzednią bazę/backup`,
+  - setup automatycznie skanuje popularne lokalizacje (`Application Support`, `Desktop`, `Downloads`) i pozwala wybrać znaleziony `app.db` lub `backup.tar.gz` jednym kliknięciem.
+- Dodano test regresyjny:
+  - `./Moj/testy/custom-path-backup-smoke.sh` (setup + login + backup na ścieżce z `Application Support`) = PASS.
+- Dodano test stabilności:
+  - `./Moj/testy/fresh-10x-smoke.sh` (10 pełnych cykli od zera) = PASS.
+- Retest po poprawkach:
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/setup-import-smoke.sh` = PASS,
+  - `./Moj/testy/custom-path-backup-smoke.sh` = PASS,
+  - `./Moj/testy/ui-random-10.sh --all-browsers --fresh` = PASS.
+
 ### 2026-02-21 (pełny debug + Windows installer + release automation)
 - Przeprowadzono pełny retest aplikacji po zmianach UI/logiki i instalatorów:
   - `make test` = PASS,

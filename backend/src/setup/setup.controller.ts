@@ -10,6 +10,7 @@ import {
 import { SetupService } from './setup.service';
 import {
   ClientOnlySetupRequest,
+  DiscoverLocalDataResponse,
   DiscoverServersRequest,
   DiscoverServersResponse,
   SetupRequest,
@@ -73,6 +74,12 @@ export class SetupController {
   @Post('validate-path')
   async validateDataPath(@Body() body: { dataPath?: string }) {
     return this.setupService.validateDataPath(body?.dataPath);
+  }
+
+  @Post('discover-local-data')
+  async discoverLocalData(@Req() req: Request): Promise<DiscoverLocalDataResponse> {
+    this.assertLoopbackRequest(req);
+    return this.setupService.discoverLocalDataSources();
   }
 
   @Post('discover-servers')

@@ -29,7 +29,7 @@ export class BackupService {
   ) {}
 
   async exportBackup(actorUserId: string) {
-    const runtime = this.resolveRuntimePaths();
+    const runtime = await this.resolveRuntimePaths();
 
     if (!fs.existsSync(runtime.dbFile)) {
       const checked = runtime.checkedDbCandidates.join(', ');
@@ -55,7 +55,7 @@ export class BackupService {
     try {
       // Best-effort checkpoint so SQLite WAL is merged before copy.
       try {
-        await this.prisma.$executeRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
+        await this.prisma.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE);');
       } catch {
         // ignore checkpoint issues; sidecar files are still exported below
       }
@@ -129,7 +129,7 @@ export class BackupService {
   }
 
   async importFromArchiveFile(archivePath: string) {
-    const runtime = this.resolveRuntimePaths();
+    const runtime = await this.resolveRuntimePaths();
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-import-'));
 
     try {
@@ -195,7 +195,7 @@ export class BackupService {
       throw new BadRequestException('Niepoprawna nazwa pliku backupu.');
     }
 
-    const runtime = this.resolveRuntimePaths();
+    const runtime = this.resolveRuntimePathsSync();
     const fullPath = path.join(runtime.backupsDir, fileName);
 
     if (!fs.existsSync(fullPath)) {
@@ -205,7 +205,23 @@ export class BackupService {
     return fullPath;
   }
 
-  private resolveRuntimePaths(): ResolvedRuntimePaths {
+  private async resolveRuntimePaths(): Promise<ResolvedRuntimePaths> {
+    const runtime = this.resolveRuntimePathsSync();
+    const liveDbFile = await this.detectLiveSqliteDatabasePath();
+    if (liveDbFile && fs.existsSync(liveDbFile)) {
+      const liveDataPath = path.dirname(liveDbFile);
+      runtime.dbFile = liveDbFile;
+      runtime.dataPath = liveDataPath;
+      runtime.uploadsDir = fs.existsSync(path.join(liveDataPath, 'uploads'))
+        ? path.join(liveDataPath, 'uploads')
+        : runtime.uploadsDir;
+      runtime.backupsDir = path.join(liveDataPath, 'backups');
+      runtime.checkedDbCandidates = this.uniqueNormalizedPaths([liveDbFile, ...runtime.checkedDbCandidates]);
+    }
+    return runtime;
+  }
+
+  private resolveRuntimePathsSync(): ResolvedRuntimePaths {
     const configDir = this.configLoader.getConfigDirectoryPath();
     const configFile = path.join(configDir, 'config.json');
     const cached = this.configLoader.getConfigSync();
@@ -224,6 +240,7 @@ export class BackupService {
       this.resolveSqlitePath(cached?.databaseUrl),
       this.resolveSqlitePath(fileConfig?.databaseUrl),
       ...candidateDataPaths.map((dataPath) => path.join(dataPath, 'app.db')),
+      ...this.findAppDbFiles(candidateDataPaths),
     ]);
 
     const existingDbFile = candidateDbFiles.find((dbPath) => fs.existsSync(dbPath));
@@ -253,6 +270,32 @@ export class BackupService {
       remoteApiBaseUrl: cached?.remoteApiBaseUrl || fileConfig?.remoteApiBaseUrl || undefined,
       checkedDbCandidates: candidateDbFiles,
     };
+  }
+
+  private async detectLiveSqliteDatabasePath(): Promise<string | null> {
+    try {
+      const rows = await this.prisma.$queryRawUnsafe<Array<{ name: string; file: string }>>(
+        'PRAGMA database_list;',
+      );
+      const mainEntry = (rows || []).find((entry) => entry?.name === 'main' && entry?.file);
+      if (!mainEntry?.file) {
+        return null;
+      }
+      return path.resolve(mainEntry.file);
+    } catch {
+      return null;
+    }
+  }
+
+  private findAppDbFiles(dataPaths: string[]): string[] {
+    const matches = new Set<string>();
+    for (const dataPath of dataPaths) {
+      const candidate = path.join(dataPath, 'app.db');
+      if (fs.existsSync(candidate)) {
+        matches.add(path.resolve(candidate));
+      }
+    }
+    return [...matches];
   }
 
   private uniqueNormalizedPaths(values: Array<string | null | undefined>): string[] {
@@ -330,7 +373,12 @@ export class BackupService {
   }
 
   private toSqliteDatabaseUrl(dbPath: string): string {
-    return `file:${encodeURI(path.resolve(dbPath))}`;
+    const resolved = path.resolve(dbPath);
+    if (process.platform === 'win32') {
+      const normalized = resolved.replace(/\\/g, '/');
+      return normalized.startsWith('/') ? `file:${normalized}` : `file:/${normalized}`;
+    }
+    return `file:${resolved}`;
   }
 
   private nowStamp(): string {

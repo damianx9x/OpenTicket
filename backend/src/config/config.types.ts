@@ -46,6 +46,16 @@ export interface SetupRequest {
   adminEmail: string;
   adminPassword: string;
   organizationName?: string;
+  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  existingDatabasePath?: string;
+  existingBackupArchivePath?: string;
+}
+
+export interface DiscoverLocalDataResponse {
+  success: boolean;
+  existingDatabases: string[];
+  backupArchives: string[];
+  searchedPaths: string[];
 }
 
 export interface ClientOnlySetupRequest {
@@ -100,4 +110,6 @@ export interface SetupResponse {
   adminEmail?: string;
   installationMode?: InstallationMode;
   remoteApiBaseUrl?: string;
+  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapSourcePath?: string;
 }

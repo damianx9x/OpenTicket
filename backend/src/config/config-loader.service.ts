@@ -232,7 +232,12 @@ export class ConfigLoaderService {
   }
 
   private toSqliteDatabaseUrl(dbPath: string): string {
-    return `file:${encodeURI(path.resolve(dbPath))}`;
+    const resolved = path.resolve(dbPath);
+    if (process.platform === 'win32') {
+      const normalized = resolved.replace(/\\/g, '/');
+      return normalized.startsWith('/') ? `file:${normalized}` : `file:/${normalized}`;
+    }
+    return `file:${resolved}`;
   }
 
   private resolveRuntimeDatabaseUrl(config: AppConfig): string {
