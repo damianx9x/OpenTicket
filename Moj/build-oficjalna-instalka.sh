@@ -153,23 +153,29 @@ DMG_SRC="$(find "$RELEASE_DIR" -maxdepth 2 -type f -name '*.dmg' | head -n 1 || 
 ZIP_SRC="$(find "$RELEASE_DIR" -maxdepth 2 -type f -name '*.zip' | head -n 1 || true)"
 
 if [[ -n "$DMG_SRC" ]]; then
-  cp "$DMG_SRC" "$DMG_OUT"
+  if ! cp "$DMG_SRC" "$DMG_OUT"; then
+    log "UWAGA: nie udało się skopiować DMG (prawdopodobnie brak miejsca na dysku). Instalator .pkg jest dostępny."
+  fi
 fi
 if [[ -n "$ZIP_SRC" ]]; then
-  cp "$ZIP_SRC" "$ZIP_OUT"
+  if ! cp "$ZIP_SRC" "$ZIP_OUT"; then
+    log "UWAGA: nie udało się skopiować ZIP (prawdopodobnie brak miejsca na dysku). Instalator .pkg jest dostępny."
+  fi
 fi
 
 log "Kopiowanie artefaktów auto-update macOS (latest-mac.yml + pliki wskazane)"
 MAC_UPDATE_YML="$RELEASE_DIR/latest-mac.yml"
 if [[ -f "$MAC_UPDATE_YML" ]]; then
-  cp "$MAC_UPDATE_YML" "$MOJ_DIR/latest-mac.yml"
+  if ! cp "$MAC_UPDATE_YML" "$MOJ_DIR/latest-mac.yml"; then
+    log "UWAGA: nie udało się skopiować latest-mac.yml (brak miejsca)."
+  fi
   while IFS= read -r rel; do
     [[ -z "$rel" ]] && continue
     if [[ -f "$RELEASE_DIR/$rel" ]]; then
-      cp "$RELEASE_DIR/$rel" "$MOJ_DIR/$rel"
+      cp "$RELEASE_DIR/$rel" "$MOJ_DIR/$rel" || log "UWAGA: pominięto kopiowanie $rel (brak miejsca)."
     fi
     if [[ -f "$RELEASE_DIR/$rel.blockmap" ]]; then
-      cp "$RELEASE_DIR/$rel.blockmap" "$MOJ_DIR/$rel.blockmap"
+      cp "$RELEASE_DIR/$rel.blockmap" "$MOJ_DIR/$rel.blockmap" || log "UWAGA: pominięto kopiowanie $rel.blockmap (brak miejsca)."
     fi
   done < <(
     awk '
