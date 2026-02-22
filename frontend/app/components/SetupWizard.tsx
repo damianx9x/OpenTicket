@@ -18,6 +18,9 @@ export interface SetupWizardState {
   installationMode: InstallationMode;
   dataPath: string;
   remoteApiBaseUrl: string;
+  bootstrapMode: 'fresh' | 'existing_db' | 'backup_archive';
+  existingDatabasePath: string;
+  existingBackupArchivePath: string;
   adminEmail: string;
   adminPassword: string;
   organizationName: string;
@@ -44,6 +47,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     installationMode: 'server_client',
     dataPath: initialDataPath,
     remoteApiBaseUrl: '',
+    bootstrapMode: 'fresh',
+    existingDatabasePath: '',
+    existingBackupArchivePath: '',
     adminEmail: '',
     adminPassword: '',
     organizationName: '',
@@ -72,12 +78,18 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     installationMode: InstallationMode;
     dataPath: string;
     remoteApiBaseUrl?: string;
+    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+    existingDatabasePath?: string;
+    existingBackupArchivePath?: string;
   }) => {
     setState((prev) => ({
       ...prev,
       installationMode: payload.installationMode,
       dataPath: payload.dataPath,
       remoteApiBaseUrl: payload.remoteApiBaseUrl || '',
+      bootstrapMode: payload.bootstrapMode || 'fresh',
+      existingDatabasePath: payload.existingDatabasePath || '',
+      existingBackupArchivePath: payload.existingBackupArchivePath || '',
       currentStep: payload.installationMode === 'client_only' ? 3 : 2,
       error: null,
     }));
@@ -110,6 +122,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
           adminEmail: state.adminEmail,
           adminPassword: state.adminPassword,
           organizationName: state.organizationName || undefined,
+          bootstrapMode: state.bootstrapMode,
+          existingDatabasePath: state.existingDatabasePath || undefined,
+          existingBackupArchivePath: state.existingBackupArchivePath || undefined,
         };
         result = await initializeSystem(request);
       }
@@ -182,6 +197,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
       installationMode: 'server_client',
       dataPath: '',
       remoteApiBaseUrl: '',
+      bootstrapMode: 'fresh',
+      existingDatabasePath: '',
+      existingBackupArchivePath: '',
       adminEmail: '',
       adminPassword: '',
       organizationName: '',
@@ -251,6 +269,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
                 installationMode: state.installationMode,
                 dataPath: state.dataPath,
                 remoteApiBaseUrl: state.remoteApiBaseUrl,
+                bootstrapMode: state.bootstrapMode,
+                existingDatabasePath: state.existingDatabasePath,
+                existingBackupArchivePath: state.existingBackupArchivePath,
                 adminEmail: state.adminEmail,
                 organizationName: state.organizationName,
               }}

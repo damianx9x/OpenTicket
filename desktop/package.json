@@ -70,6 +70,7 @@
         "dmg",
         "zip"
       ],
+      "artifactName": "OpenTicket-${version}-${arch}.${ext}",
       "category": "public.app-category.utilities",
       "icon": "assets/icon.icns",
       "hardenedRuntime": true,
@@ -107,8 +108,12 @@
       "icon": "assets/icon.ico"
     },
     "nsis": {
+      "artifactName": "OpenTicket-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "OpenTicket-Portable-${version}.${ext}"
     },
     "publish": [
       {

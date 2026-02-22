@@ -1309,6 +1309,26 @@ app.on("ready", async () => {
       return null;
     });
 
+    ipcMain.handle("select-file", async (_event, payload?: { kind?: "database" | "backup" }) => {
+      const kind = payload?.kind === "backup" ? "backup" : "database";
+      const filters =
+        kind === "backup"
+          ? [{ name: "Backup archives", extensions: ["tar", "tgz", "gz"] }]
+          : [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }];
+
+      const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ["openFile"],
+        title: kind === "backup" ? "Select Backup Archive" : "Select Existing Database",
+        buttonLabel: "Select",
+        filters,
+      });
+
+      if (!result.canceled && result.filePaths.length > 0) {
+        return result.filePaths[0];
+      }
+      return null;
+    });
+
     ipcMain.handle("get-local-ip", () => {
       return getLocalIp();
     });

@@ -39,6 +39,14 @@ jobs:
           cp Moj/OpenTicket-Installer.dmg.sha256 release-artifacts/ || true
           cp Moj/OpenTicket-Installer.zip release-artifacts/ || true
           cp Moj/OpenTicket-Installer.zip.sha256 release-artifacts/ || true
+          cp Moj/latest-mac.yml release-artifacts/ || true
+          cp Moj/latest-mac.yml.sha256 release-artifacts/ || true
+          cp Moj/OpenTicket-*-arm64.zip release-artifacts/ || true
+          cp Moj/OpenTicket-*-arm64.zip.blockmap release-artifacts/ || true
+          cp Moj/OpenTicket-*-arm64.zip.blockmap.sha256 release-artifacts/ || true
+          cp Moj/OpenTicket-*-arm64.dmg release-artifacts/ || true
+          cp Moj/OpenTicket-*-arm64.dmg.blockmap release-artifacts/ || true
+          cp Moj/OpenTicket-*-arm64.dmg.blockmap.sha256 release-artifacts/ || true
 
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
@@ -76,6 +84,10 @@ jobs:
           if (Test-Path Moj\OpenTicket-Installer.exe.sha256) { Copy-Item -Force Moj\OpenTicket-Installer.exe.sha256 release-artifacts\ }
           if (Test-Path Moj\OpenTicket-Portable.exe) { Copy-Item -Force Moj\OpenTicket-Portable.exe release-artifacts\ }
           if (Test-Path Moj\OpenTicket-Portable.exe.sha256) { Copy-Item -Force Moj\OpenTicket-Portable.exe.sha256 release-artifacts\ }
+          if (Test-Path Moj\latest.yml) { Copy-Item -Force Moj\latest.yml release-artifacts\ }
+          if (Test-Path Moj\latest.yml.sha256) { Copy-Item -Force Moj\latest.yml.sha256 release-artifacts\ }
+          Get-ChildItem Moj -Filter "OpenTicket-Setup-*.exe*" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item -Force $_.FullName release-artifacts\ }
+          Get-ChildItem Moj -Filter "OpenTicket-Portable-*.exe*" -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item -Force $_.FullName release-artifacts\ }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

@@ -10,6 +10,9 @@ interface Step3Props {
     installationMode: 'server_client' | 'client_only';
     dataPath: string;
     remoteApiBaseUrl?: string;
+    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+    existingDatabasePath?: string;
+    existingBackupArchivePath?: string;
     adminEmail: string;
     organizationName?: string;
   };
@@ -77,9 +80,25 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
             <p className="text-gray-900 font-mono text-sm mt-1">{summary.remoteApiBaseUrl}</p>
           </div>
         ) : (
-          <div>
+          <div className="space-y-3">
             <p className="text-sm font-medium text-gray-600">Data Location</p>
             <p className="text-gray-900 font-mono text-sm mt-1">{summary.dataPath}</p>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Źródło danych</p>
+              <p className="text-gray-900 text-sm mt-1">
+                {summary.bootstrapMode === 'existing_db'
+                  ? 'Import istniejącej bazy app.db'
+                  : summary.bootstrapMode === 'backup_archive'
+                    ? 'Import backupu (.tar.gz)'
+                    : 'Nowa, czysta baza'}
+              </p>
+              {summary.bootstrapMode === 'existing_db' && summary.existingDatabasePath ? (
+                <p className="mt-1 font-mono text-xs text-gray-600">{summary.existingDatabasePath}</p>
+              ) : null}
+              {summary.bootstrapMode === 'backup_archive' && summary.existingBackupArchivePath ? (
+                <p className="mt-1 font-mono text-xs text-gray-600">{summary.existingBackupArchivePath}</p>
+              ) : null}
+            </div>
           </div>
         )}
 
@@ -109,7 +128,14 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
               </>
             ) : (
               <>
-                <li>✓ SQLite database (app.db)</li>
+                <li>
+                  ✓{' '}
+                  {summary.bootstrapMode === 'existing_db'
+                    ? 'Import i walidacja istniejącej bazy (app.db)'
+                    : summary.bootstrapMode === 'backup_archive'
+                      ? 'Import backupu (.tar.gz) + odtworzenie danych'
+                      : 'SQLite database (app.db)'}
+                </li>
                 <li>✓ Configuration file (config.json)</li>
                 <li>✓ Uploads directory</li>
                 <li>✓ Admin user account</li>

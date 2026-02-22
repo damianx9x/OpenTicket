@@ -7,6 +7,10 @@ const api = {
     return ipcRenderer.invoke("select-folder");
   },
 
+  selectFile: async (kind: "database" | "backup"): Promise<string | null> => {
+    return ipcRenderer.invoke("select-file", { kind });
+  },
+
   // Network methods
   getLocalIp: async (): Promise<string> => {
     return ipcRenderer.invoke("get-local-ip");

@@ -36,6 +36,7 @@ declare global {
 
   interface ElectronBridge {
     selectFolder: () => Promise<string | null>;
+    selectFile: (kind: 'database' | 'backup') => Promise<string | null>;
     getLocalIp: () => Promise<string>;
     getAppPath: () => Promise<string>;
     resetSetup: () => Promise<{ success: boolean; message: string }>;

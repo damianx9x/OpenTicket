@@ -29,6 +29,8 @@ cd "$ROOT_DIR"
 
 log "Czyszczenie poprzednich artefaktów Windows"
 rm -f "$EXE_OUT" "$PORTABLE_OUT" "$MOJ_DIR"/OpenTicket-Installer.exe.sha256 "$MOJ_DIR"/OpenTicket-Portable.exe.sha256
+rm -f "$MOJ_DIR"/latest.yml "$MOJ_DIR"/OpenTicket-Setup-*.exe "$MOJ_DIR"/OpenTicket-Setup-*.exe.blockmap \
+  "$MOJ_DIR"/OpenTicket-Portable-*.exe "$MOJ_DIR"/OpenTicket-Portable-*.exe.blockmap
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 
@@ -50,6 +52,28 @@ log "Budowa artefaktów Windows (.exe)"
 VERSION="$(node -p "require('./desktop/package.json').version")"
 SETUP_SRC="$RELEASE_DIR/OpenTicket Setup ${VERSION}.exe"
 PORTABLE_SRC="$RELEASE_DIR/OpenTicket ${VERSION}.exe"
+WIN_UPDATE_YML="$RELEASE_DIR/latest.yml"
+
+if [[ -f "$WIN_UPDATE_YML" ]]; then
+  WIN_SETUP_REL="$(awk '/^path:[[:space:]]*/ {print $2}' "$WIN_UPDATE_YML" | tr -d '"' | head -n1)"
+  if [[ -n "$WIN_SETUP_REL" && -f "$RELEASE_DIR/$WIN_SETUP_REL" ]]; then
+    SETUP_SRC="$RELEASE_DIR/$WIN_SETUP_REL"
+  fi
+  if [[ -n "$WIN_SETUP_REL" && ! -f "$RELEASE_DIR/$WIN_SETUP_REL" && -f "$SETUP_SRC" ]]; then
+    cp "$SETUP_SRC" "$RELEASE_DIR/$WIN_SETUP_REL"
+    if [[ -f "${SETUP_SRC}.blockmap" ]]; then
+      cp "${SETUP_SRC}.blockmap" "$RELEASE_DIR/$WIN_SETUP_REL.blockmap"
+    fi
+    SETUP_SRC="$RELEASE_DIR/$WIN_SETUP_REL"
+  fi
+fi
+
+if [[ ! -f "$PORTABLE_SRC" ]]; then
+  PORTABLE_ALT="$(find "$RELEASE_DIR" -maxdepth 1 -type f -name 'OpenTicket-Portable-*.exe' | head -n1 || true)"
+  if [[ -n "$PORTABLE_ALT" ]]; then
+    PORTABLE_SRC="$PORTABLE_ALT"
+  fi
+fi
 
 if [[ ! -f "$SETUP_SRC" ]]; then
   echo "Brak pliku instalatora: $SETUP_SRC"
@@ -62,12 +86,41 @@ if [[ -f "$PORTABLE_SRC" ]]; then
   cp "$PORTABLE_SRC" "$PORTABLE_OUT"
 fi
 
+log "Kopiowanie artefaktów auto-update Windows (latest.yml + pliki wskazane)"
+if [[ -f "$WIN_UPDATE_YML" ]]; then
+  cp "$WIN_UPDATE_YML" "$MOJ_DIR/latest.yml"
+  while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    if [[ -f "$RELEASE_DIR/$rel" ]]; then
+      cp "$RELEASE_DIR/$rel" "$MOJ_DIR/$rel"
+    fi
+    if [[ -f "$RELEASE_DIR/$rel.blockmap" ]]; then
+      cp "$RELEASE_DIR/$rel.blockmap" "$MOJ_DIR/$rel.blockmap"
+    fi
+  done < <(
+    awk '
+      /^path:[[:space:]]*/ { print $2 }
+      /^[[:space:]]*-[[:space:]]*url:[[:space:]]*/ { print $3 }
+    ' "$WIN_UPDATE_YML" | tr -d '"' | sort -u
+  )
+else
+  log "UWAGA: brak $WIN_UPDATE_YML (auto-update Windows może nie działać)"
+fi
+
 (
   cd "$MOJ_DIR"
   shasum -a 256 "$(basename "$EXE_OUT")" > "OpenTicket-Installer.exe.sha256"
   if [[ -f "$PORTABLE_OUT" ]]; then
     shasum -a 256 "$(basename "$PORTABLE_OUT")" > "OpenTicket-Portable.exe.sha256"
   fi
+  if [[ -f "latest.yml" ]]; then
+    shasum -a 256 "latest.yml" > "latest.yml.sha256"
+  fi
+  for f in OpenTicket-Setup-*.exe OpenTicket-Setup-*.exe.blockmap OpenTicket-Portable-*.exe OpenTicket-Portable-*.exe.blockmap; do
+    if [[ -f "$f" ]]; then
+      shasum -a 256 "$f" > "$f.sha256"
+    fi
+  done
 )
 
 if [[ -x "$README_LINK_UPDATER" ]]; then

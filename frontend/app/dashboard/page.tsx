@@ -495,6 +495,12 @@ export default function DashboardPage() {
     [isAdmin],
   );
 
+  useEffect(() => {
+    if (!isAdmin && (activeNav === 'vat' || activeNav === 'server')) {
+      setActiveNav('tickets');
+    }
+  }, [activeNav, isAdmin]);
+
   const activeNavTitle =
     activeNav === 'tickets'
       ? isPolish
@@ -3704,49 +3710,55 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  <form className="mt-4 grid gap-2" onSubmit={handleCreateAppUser}>
-                    <input
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      placeholder="Email"
-                      value={newUser.email}
-                      onChange={(event) => setNewUser((prev) => ({ ...prev, email: event.target.value }))}
-                      required
-                    />
-                    <input
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      placeholder="Imię i nazwisko"
-                      value={newUser.name}
-                      onChange={(event) => setNewUser((prev) => ({ ...prev, name: event.target.value }))}
-                    />
-                    <div className="grid grid-cols-2 gap-2">
-                      <select
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        value={newUser.role}
-                        onChange={(event) => setNewUser((prev) => ({ ...prev, role: event.target.value }))}
-                      >
-                        <option value="AGENT">Technik</option>
-                        <option value="ADMIN">Admin</option>
-                        <option value="REPORTER">Reporter</option>
-                        <option value="VIEWER">Viewer</option>
-                      </select>
+                  {isAdmin ? (
+                    <form className="mt-4 grid gap-2" onSubmit={handleCreateAppUser}>
                       <input
                         className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                        placeholder="Telefon"
-                        value={newUser.phone}
-                        onChange={(event) => setNewUser((prev) => ({ ...prev, phone: event.target.value }))}
+                        placeholder="Email"
+                        value={newUser.email}
+                        onChange={(event) => setNewUser((prev) => ({ ...prev, email: event.target.value }))}
+                        required
                       />
-                    </div>
-                    <input
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      placeholder="Hasło"
-                      type="password"
-                      value={newUser.password}
-                      onChange={(event) => setNewUser((prev) => ({ ...prev, password: event.target.value }))}
-                    />
-                    <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" type="submit">
-                      Dodaj użytkownika
-                    </button>
-                  </form>
+                      <input
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        placeholder="Imię i nazwisko"
+                        value={newUser.name}
+                        onChange={(event) => setNewUser((prev) => ({ ...prev, name: event.target.value }))}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          value={newUser.role}
+                          onChange={(event) => setNewUser((prev) => ({ ...prev, role: event.target.value }))}
+                        >
+                          <option value="AGENT">Technik</option>
+                          <option value="ADMIN">Admin</option>
+                          <option value="REPORTER">Reporter</option>
+                          <option value="VIEWER">Viewer</option>
+                        </select>
+                        <input
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                          placeholder="Telefon"
+                          value={newUser.phone}
+                          onChange={(event) => setNewUser((prev) => ({ ...prev, phone: event.target.value }))}
+                        />
+                      </div>
+                      <input
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        placeholder="Hasło"
+                        type="password"
+                        value={newUser.password}
+                        onChange={(event) => setNewUser((prev) => ({ ...prev, password: event.target.value }))}
+                      />
+                      <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700" type="submit">
+                        Dodaj użytkownika
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      Tylko administrator może dodawać i edytować konta użytkowników.
+                    </p>
+                  )}
                 </div>
 
                 <div className="ticket-surface rounded-xl border border-slate-100 p-5">
@@ -3785,7 +3797,7 @@ export default function DashboardPage() {
                           Dodaj notatkę
                         </button>
                       </form>
-                      {editingUser && (
+                      {isAdmin && editingUser && (
                         <form className="mt-4 space-y-2 border-t border-slate-200 pt-3" onSubmit={handleSaveUserEdit}>
                           <h3 className="text-sm font-semibold text-slate-800">Edycja danych użytkownika</h3>
                           <input

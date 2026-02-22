@@ -41,6 +41,8 @@ cd "$ROOT_DIR"
 
 log "Czyszczenie poprzednich artefaktów"
 rm -f "$PKG_OUT" "$DMG_OUT" "$ZIP_OUT" "$MOJ_DIR"/*.sha256
+rm -f "$MOJ_DIR"/latest-mac.yml "$MOJ_DIR"/OpenTicket-*.zip "$MOJ_DIR"/OpenTicket-*.zip.blockmap \
+  "$MOJ_DIR"/OpenTicket-*.dmg "$MOJ_DIR"/OpenTicket-*.dmg.blockmap
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
 
@@ -130,6 +132,28 @@ if [[ -n "$ZIP_SRC" ]]; then
   cp "$ZIP_SRC" "$ZIP_OUT"
 fi
 
+log "Kopiowanie artefaktów auto-update macOS (latest-mac.yml + pliki wskazane)"
+MAC_UPDATE_YML="$RELEASE_DIR/latest-mac.yml"
+if [[ -f "$MAC_UPDATE_YML" ]]; then
+  cp "$MAC_UPDATE_YML" "$MOJ_DIR/latest-mac.yml"
+  while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    if [[ -f "$RELEASE_DIR/$rel" ]]; then
+      cp "$RELEASE_DIR/$rel" "$MOJ_DIR/$rel"
+    fi
+    if [[ -f "$RELEASE_DIR/$rel.blockmap" ]]; then
+      cp "$RELEASE_DIR/$rel.blockmap" "$MOJ_DIR/$rel.blockmap"
+    fi
+  done < <(
+    awk '
+      /^path:[[:space:]]*/ { print $2 }
+      /^[[:space:]]*-[[:space:]]*url:[[:space:]]*/ { print $3 }
+    ' "$MAC_UPDATE_YML" | tr -d '"' | sort -u
+  )
+else
+  log "UWAGA: brak $MAC_UPDATE_YML (auto-update macOS może nie działać)"
+fi
+
 (
   cd "$MOJ_DIR"
   shasum -a 256 "$(basename "$PKG_OUT")" > "OpenTicket-Installer.pkg.sha256"
@@ -139,6 +163,14 @@ fi
   if [[ -f "$ZIP_OUT" ]]; then
     shasum -a 256 "$(basename "$ZIP_OUT")" > "OpenTicket-Installer.zip.sha256"
   fi
+  if [[ -f "latest-mac.yml" ]]; then
+    shasum -a 256 "latest-mac.yml" > "latest-mac.yml.sha256"
+  fi
+  for f in OpenTicket-*.zip OpenTicket-*.zip.blockmap OpenTicket-*.dmg OpenTicket-*.dmg.blockmap; do
+    if [[ -f "$f" ]]; then
+      shasum -a 256 "$f" > "$f.sha256"
+    fi
+  done
 )
 
 if [[ -x "$README_LINK_UPDATER" ]]; then
