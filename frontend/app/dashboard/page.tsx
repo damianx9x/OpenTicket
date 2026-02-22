@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarChart3,
   Bell,
@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Flame,
   Folder,
+  GripHorizontal,
   Image as ImageIcon,
   LogOut,
   Mail,
@@ -446,7 +447,8 @@ export default function DashboardPage() {
     active: true,
   });
   const [selectedCatalogId, setSelectedCatalogId] = useState('');
-  const [quickPresetName, setQuickPresetName] = useState('');
+  const [selectedPresetName, setSelectedPresetName] = useState('');
+  const [newPresetName, setNewPresetName] = useState('');
   const [testEmailTo, setTestEmailTo] = useState('');
   const [testSmsTo, setTestSmsTo] = useState('');
   const [serverInfo, setServerInfo] = useState<SystemInfo | null>(null);
@@ -481,6 +483,8 @@ export default function DashboardPage() {
     | 'repair'
     | 'logs'
     | 'diagnostics'
+    | 'permissions'
+    | 'factory-reset'
     | 'update-check'
     | 'update-download'
     | 'update-install'
@@ -495,6 +499,9 @@ export default function DashboardPage() {
   const [commentBody, setCommentBody] = useState('');
   const [commentInternal, setCommentInternal] = useState(false);
   const [costForm, setCostForm] = useState(emptyCostForm);
+  const [ticketModalOffset, setTicketModalOffset] = useState({ x: 0, y: 0 });
+  const [ticketModalDragging, setTicketModalDragging] = useState(false);
+  const ticketModalDragCleanupRef = useRef<(() => void) | null>(null);
 
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTER_STATE);
   const [statisticsFilters, setStatisticsFilters] = useState({
@@ -898,6 +905,41 @@ export default function DashboardPage() {
     setShowTicketModal(false);
   };
 
+  const startTicketModalDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    const target = event.target as HTMLElement;
+    if (target.closest('button, input, textarea, select, label, a')) {
+      return;
+    }
+
+    event.preventDefault();
+    ticketModalDragCleanupRef.current?.();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const origin = { ...ticketModalOffset };
+    setTicketModalDragging(true);
+
+    const onMove = (moveEvent: MouseEvent) => {
+      setTicketModalOffset({
+        x: origin.x + (moveEvent.clientX - startX),
+        y: origin.y + (moveEvent.clientY - startY),
+      });
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      ticketModalDragCleanupRef.current = null;
+      setTicketModalDragging(false);
+    };
+
+    ticketModalDragCleanupRef.current = onUp;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   const handleOpenTicketDetails = async (ticketId: string) => {
     if (showTicketModal && selectedTicketId && selectedTicketId !== ticketId && hasTicketDraftChanges) {
       const shouldSaveBeforeSwitch = window.confirm(
@@ -926,6 +968,7 @@ export default function DashboardPage() {
     }
 
     clearAttachmentPreview();
+    setTicketModalOffset({ x: 0, y: 0 });
     setSelectedTicketId(ticketId);
     setShowTicketModal(true);
   };
@@ -963,16 +1006,23 @@ export default function DashboardPage() {
       createdTo: filter.createdTo || '',
       sort: filter.sort || prev.sort,
     }));
-    setQuickPresetName(filter.name);
+    setSelectedPresetName(filter.name);
+    setNewPresetName(filter.name);
   };
 
-  const addCurrentFilterToSaved = async () => {
-    const name = window.prompt(isPolish ? 'Nazwa filtra (np. "Pilne Apple")' : 'Filter name (for example: "Urgent Apple")');
-    if (!name) return;
-    const normalizedName = name.trim();
+  const addCurrentFilterToSaved = async (preferredName?: string) => {
+    let normalizedName = (preferredName || newPresetName).trim();
+    if (!normalizedName) {
+      const promptedName = window.prompt(
+        isPolish ? 'Nazwa filtra (np. "Pilne Apple")' : 'Filter name (for example: "Urgent Apple")',
+      );
+      if (!promptedName) return;
+      normalizedName = promptedName.trim();
+    }
     if (!normalizedName) {
       return;
     }
+
     const normalizedMinAge = Number(filters.minAgeDays);
     const nextPreset: SavedFilterPreset = {
       name: normalizedName,
@@ -997,7 +1047,27 @@ export default function DashboardPage() {
       savedFilters: [...deduped, nextPreset],
     };
     await savePrefs(next);
-    setQuickPresetName(normalizedName);
+    setSelectedPresetName(normalizedName);
+    setNewPresetName(normalizedName);
+  };
+
+  const applyInfoCardFilter = (target: 'all' | 'waiting' | 'closed') => {
+    setSelectedPresetName('');
+    if (target === 'all') {
+      setFilters((prev) => ({ ...prev, status: '' }));
+      return;
+    }
+    if (target === 'waiting') {
+      setFilters((prev) => ({
+        ...prev,
+        status: prev.status === 'WAITING_FOR_APPROVAL' ? 'WAITING_FOR_CUSTOMER' : 'WAITING_FOR_APPROVAL',
+      }));
+      return;
+    }
+    setFilters((prev) => ({
+      ...prev,
+      status: prev.status === 'CLOSED' ? 'ARCHIVED' : 'CLOSED',
+    }));
   };
 
   const loadStatistics = async () => {
@@ -1404,6 +1474,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     return () => {
+      ticketModalDragCleanupRef.current?.();
+      ticketModalDragCleanupRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
       if (attachmentPreview?.url) {
         window.URL.revokeObjectURL(attachmentPreview.url);
       }
@@ -1741,29 +1818,55 @@ export default function DashboardPage() {
     await handleSaveCostCatalog(next, 'Pozycja została usunięta z katalogu.');
   };
 
-  const handleResetSetup = async () => {
+  const handleReinstallSystem = async (source: 'settings' | 'server') => {
     if (!isElectron) {
-      notify({ type: 'error', text: 'Reset setup jest dostępny tylko w aplikacji desktop.' });
+      notify({ type: 'error', text: 'Reinstal systemu jest dostępny tylko w aplikacji desktop.' });
       return;
     }
 
-    if (!confirm('Na pewno zresetować konfigurację setup?')) {
+    const confirmText = isPolish
+      ? 'Reinstalacja systemu usunie lokalną bazę, konfigurację i wymusi ponowny setup. Kontynuować?'
+      : 'System reinstall will remove local database/configuration and restart setup. Continue?';
+    if (!window.confirm(confirmText)) {
       return;
     }
 
+    setServiceBusy('factory-reset');
     try {
       const bridge = getElectron();
-      const result = await bridge.resetSetup();
+      const result = bridge.factoryReset
+        ? await bridge.factoryReset()
+        : ({ success: false, message: 'Brak funkcji factory reset w tej wersji aplikacji.' } as const);
       if (result.success) {
-        notify({ type: 'success', text: result.message || 'Setup został zresetowany.' });
+        const sourceLabel = source === 'settings' ? 'konfiguracja' : 'serwer';
+        const successText =
+          result.message ||
+          (isPolish
+            ? 'Reinstalacja zakończona. Uruchamiam kreator konfiguracji od nowa.'
+            : 'Reinstall completed. Opening setup wizard again.');
+        setServiceInfo(`${successText} (${sourceLabel})`);
+        notify({ type: 'success', text: successText });
+        try {
+          if (typeof window !== 'undefined') {
+            window.localStorage.removeItem('ts_auth_token');
+            window.localStorage.removeItem('ts_auth_user');
+          }
+        } catch {
+          // ignore
+        }
+        window.setTimeout(() => {
+          window.location.href = '/setup?source=installer&reinstall=1';
+        }, 900);
       } else {
-        notify({ type: 'error', text: result.message || 'Reset setup nie powiódł się.' });
+        notify({ type: 'error', text: result.message || 'Reinstal systemu nie powiódł się.' });
       }
     } catch (error) {
       notify({
         type: 'error',
-        text: `Reset setup nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+        text: `Reinstal systemu nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
       });
+    } finally {
+      setServiceBusy(null);
     }
   };
 
@@ -1816,8 +1919,11 @@ export default function DashboardPage() {
       ...dashboardPrefs,
       savedFilters: next,
     });
-    if (quickPresetName === name) {
-      setQuickPresetName('');
+    if (selectedPresetName === name) {
+      setSelectedPresetName('');
+    }
+    if (newPresetName === name) {
+      setNewPresetName('');
     }
   };
 
@@ -2571,7 +2677,7 @@ export default function DashboardPage() {
   };
 
   const runEngineAction = async (
-    action: 'restart' | 'repair' | 'logs' | 'diagnostics',
+    action: 'restart' | 'repair' | 'logs' | 'diagnostics' | 'permissions',
     runner: (bridge: ElectronBridge) => Promise<any>,
   ) => {
     const bridge = getElectron();
@@ -2585,8 +2691,12 @@ export default function DashboardPage() {
       const result = await runner(bridge);
       const message = result?.message || 'Akcja wykonana.';
       setServiceInfo(message);
-      await loadServerStatus();
-      notify({ type: 'success', text: message });
+      if (result?.success === false) {
+        notify({ type: 'error', text: message });
+      } else {
+        await loadServerStatus();
+        notify({ type: 'success', text: message });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Nieznany błąd.';
       setServiceInfo(message);
@@ -2787,28 +2897,6 @@ export default function DashboardPage() {
                   </option>
                 ))}
               </select>
-              {activeNav === 'tickets' && savedPresetOptions.length > 0 && (
-                <select
-                  className="max-w-48 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
-                  value={quickPresetName}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setQuickPresetName(value);
-                    const selected = savedPresetOptions.find((item) => item.name === value);
-                    if (selected) {
-                      applySavedFilter(selected);
-                    }
-                  }}
-                  title={isPolish ? 'Szybka zmiana filtra' : 'Quick filter switch'}
-                >
-                  <option value="">{isPolish ? 'Szybki preset filtra' : 'Quick filter preset'}</option>
-                  {savedPresetOptions.map((preset) => (
-                    <option key={preset.name} value={preset.name}>
-                      {preset.name}
-                    </option>
-                  ))}
-                </select>
-              )}
               <div className="relative">
                 <button
                   type="button"
@@ -2898,16 +2986,6 @@ export default function DashboardPage() {
                 <ExternalLink className="h-3.5 w-3.5" />
                 WebUI
               </button>
-
-              {isElectron && (
-                <button
-                  type="button"
-                  onClick={() => void handleResetSetup()}
-                  className="rounded-md border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 transition hover:bg-amber-50"
-                >
-                  Reset setup (DEV)
-                </button>
-              )}
 
               {activeNav === 'tickets' && (
                 <button
@@ -3010,27 +3088,81 @@ export default function DashboardPage() {
                 <section className="ticket-surface mb-5 rounded-xl border border-slate-100 p-5">
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-lg font-semibold text-slate-900">Informacje</h2>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        className="min-w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
+                        value={selectedPresetName}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSelectedPresetName(value);
+                          const selected = savedPresetOptions.find((item) => item.name === value);
+                          if (selected) {
+                            applySavedFilter(selected);
+                          }
+                        }}
+                        title={isPolish ? 'Szybka zmiana filtra' : 'Quick filter switch'}
+                      >
+                        <option value="">{isPolish ? 'Wczytaj zapisany filtr' : 'Load saved filter'}</option>
+                        {savedPresetOptions.map((preset) => (
+                          <option key={preset.name} value={preset.name}>
+                            {preset.name}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={newPresetName}
+                        onChange={(event) => setNewPresetName(event.target.value)}
+                        className="min-w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
+                        placeholder={isPolish ? 'Nazwa nowego filtra' : 'New filter name'}
+                      />
                       <button
                         type="button"
-                        onClick={() => void addCurrentFilterToSaved()}
+                        onClick={() => void addCurrentFilterToSaved(newPresetName)}
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
                       >
                         <ArrowDownUp className="h-3.5 w-3.5" />
-                        Zapisz filtr
+                        {isPolish ? 'Zapisz filtr' : 'Save filter'}
                       </button>
                     </div>
                   </div>
                   <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                    <button
+                      type="button"
+                      onClick={() => applyInfoCardFilter('all')}
+                      className={`rounded-lg border p-4 text-left text-sm transition ${
+                        !filters.status
+                          ? 'border-blue-300 bg-blue-100 text-blue-900 shadow-sm'
+                          : 'border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100'
+                      }`}
+                      title={isPolish ? 'Pokaż wszystkie statusy' : 'Show all statuses'}
+                    >
                       <strong>Razem zgłoszeń:</strong> {stats.total}
-                    </div>
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyInfoCardFilter('waiting')}
+                      className={`rounded-lg border p-4 text-left text-sm transition ${
+                        filters.status === 'WAITING_FOR_APPROVAL' || filters.status === 'WAITING_FOR_CUSTOMER'
+                          ? 'border-amber-300 bg-amber-100 text-amber-900 shadow-sm'
+                          : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                      }`}
+                      title={isPolish ? 'Filtr: oczekujące na klienta' : 'Filter: waiting for customer'}
+                    >
                       <strong>Czekające na klienta:</strong> {stats.waitingForCustomer}
-                    </div>
-                    <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-800">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyInfoCardFilter('closed')}
+                      className={`rounded-lg border p-4 text-left text-sm transition ${
+                        filters.status === 'CLOSED' || filters.status === 'ARCHIVED'
+                          ? 'border-violet-300 bg-violet-100 text-violet-900 shadow-sm'
+                          : 'border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100'
+                      }`}
+                      title={isPolish ? 'Filtr: zgłoszenia zamknięte' : 'Filter: closed tickets'}
+                    >
                       <strong>Zamknięte razem:</strong> {stats.closedAll}
-                    </div>
+                    </button>
                   </div>
 
                   {(dashboardPrefs.savedFilters || []).length > 0 && (
@@ -3204,7 +3336,8 @@ export default function DashboardPage() {
                         type="button"
                         onClick={() => {
                           setFilters({ ...DEFAULT_FILTER_STATE });
-                          setQuickPresetName('');
+                          setSelectedPresetName('');
+                          setNewPresetName('');
                         }}
                         className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-100"
                       >
@@ -3317,10 +3450,20 @@ export default function DashboardPage() {
                     onClick={() => void handleRequestCloseTicketModal()}
                   >
                     <section
-                      className="ticket-surface modal-panel flex max-h-[95vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-100"
+                      className="ticket-surface modal-panel flex max-h-[95vh] w-full max-w-[1180px] flex-col overflow-hidden rounded-2xl border border-slate-100 shadow-2xl md:resize"
+                      style={{
+                        transform: `translate(${ticketModalOffset.x}px, ${ticketModalOffset.y}px)`,
+                        minHeight: '560px',
+                        minWidth: 'min(760px, 94vw)',
+                      }}
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4">
+                      <div
+                        className={`flex items-center justify-between border-b border-slate-200 bg-white/95 px-5 py-4 ${
+                          ticketModalDragging ? 'cursor-grabbing' : 'cursor-grab'
+                        }`}
+                        onMouseDown={startTicketModalDrag}
+                      >
                         <div>
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                             {isPolish ? 'Szczegóły zgłoszenia' : 'Ticket details'}
@@ -3330,6 +3473,10 @@ export default function DashboardPage() {
                           </h3>
                         </div>
                         <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+                            <GripHorizontal className="h-3.5 w-3.5" />
+                            {isPolish ? 'Przeciągnij / Skaluj' : 'Drag / Resize'}
+                          </span>
                           {hasTicketDraftChanges && (
                             <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
                               {isPolish ? 'Niezapisane zmiany' : 'Unsaved changes'}
@@ -3347,7 +3494,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="overflow-y-auto px-5 py-5">
                         <div className="space-y-4">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <h3 className="text-base font-semibold text-slate-900">
                             #{selectedTicket.number} - {selectedTicket.title}
@@ -3364,7 +3511,7 @@ export default function DashboardPage() {
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{selectedTicket.description}</p>
 
-                        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <h4 className="text-sm font-semibold text-slate-900">Etap zgłoszenia</h4>
                             <span className="text-xs text-slate-500">
@@ -3411,8 +3558,8 @@ export default function DashboardPage() {
                         </div>
                       </div>
 
-                      <div className="grid gap-4 xl:grid-cols-[1.35fr_1fr]">
-                        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                      <div className="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+                        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                           <h4 className="text-sm font-semibold text-slate-900">{isPolish ? 'Opis usterki' : 'Issue description'}</h4>
                           <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
                             <p className="whitespace-pre-wrap text-sm text-slate-700">
@@ -3449,7 +3596,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+                        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                           <div className="flex items-center justify-between">
                             <h4 className="text-sm font-semibold text-slate-900">{isPolish ? 'Zdjęcia' : 'Photos'}</h4>
                             <span className="text-xs text-slate-500">
@@ -3514,7 +3661,7 @@ export default function DashboardPage() {
                       ) : (
                         <>
                         <div className="grid gap-4 xl:grid-cols-3">
-                          <div className="rounded-xl border border-slate-200 p-4">
+                          <div className="min-h-[210px] resize-y overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
                             <h4 className="text-sm font-semibold text-slate-900">Historia klienta</h4>
                             {customerHistoryLoading ? (
                               <p className="mt-2 text-xs text-slate-500">Ładowanie historii klienta...</p>
@@ -3538,7 +3685,7 @@ export default function DashboardPage() {
                               </div>
                             )}
                           </div>
-                          <div className="rounded-xl border border-slate-200 p-4">
+                          <div className="min-h-[210px] resize-y overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
                             <h4 className="text-sm font-semibold text-slate-900">Historia etapów</h4>
                             {ticketStatusHistory.length === 0 ? (
                               <p className="mt-2 text-xs text-slate-500">Brak historii zmian statusu.</p>
@@ -3561,7 +3708,7 @@ export default function DashboardPage() {
                               </div>
                             )}
                           </div>
-                          <div className="rounded-xl border border-slate-200 p-4">
+                          <div className="min-h-[210px] resize-y overflow-hidden rounded-xl border border-slate-200 bg-white p-4">
                             <h4 className="text-sm font-semibold text-slate-900">Komentarze</h4>
                             <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
                               {comments.length === 0 ? (
@@ -3581,7 +3728,7 @@ export default function DashboardPage() {
                             </div>
                           </div>
                         </div>
-                        <div className="mt-4 space-y-3 rounded-xl border border-slate-200 p-4">
+                        <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                             <h4 className="text-sm font-semibold text-slate-900">Koszty</h4>
                             <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50 p-2">
                               {costItems.length === 0 ? (
@@ -5210,6 +5357,31 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+
+                {isElectron && (
+                  <div className="ticket-surface rounded-xl border border-red-200 bg-red-50/70 p-5">
+                    <h2 className="text-lg font-semibold text-red-900">{isPolish ? 'Reinstal systemu' : 'System reinstall'}</h2>
+                    <p className="mt-2 text-sm text-red-800">
+                      {isPolish
+                        ? 'Użyj tylko przy poważnych problemach. Operacja czyści lokalną bazę, konfigurację i logowania, a następnie uruchamia setup od nowa.'
+                        : 'Use only for severe issues. This clears local database, configuration and sessions, then starts setup again.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleReinstallSystem('settings')}
+                      disabled={serviceBusy !== null}
+                      className="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {serviceBusy === 'factory-reset'
+                        ? isPolish
+                          ? 'Reinstaluję...'
+                          : 'Reinstalling...'
+                        : isPolish
+                          ? 'Reinstal systemu (setup od nowa)'
+                          : 'Reinstall system (setup from scratch)'}
+                    </button>
+                  </div>
+                )}
               </section>
             )}
 
@@ -5228,7 +5400,7 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   {isElectron && (
-                    <div className="mb-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="mb-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                       <button
                         type="button"
                         onClick={() => void runEngineAction('restart', (bridge) => bridge.restartEngine())}
@@ -5260,6 +5432,20 @@ export default function DashboardPage() {
                         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
                       >
                         {serviceBusy === 'diagnostics' ? 'Tworzę raport...' : 'Raport diagnostyczny'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void runEngineAction('permissions', (bridge) =>
+                            bridge.requestDesktopPermissions
+                              ? bridge.requestDesktopPermissions()
+                              : Promise.resolve({ success: false, message: 'Brak asystenta uprawnień w tej wersji.' }),
+                          )
+                        }
+                        disabled={serviceBusy !== null}
+                        className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                      >
+                        {serviceBusy === 'permissions' ? 'Sprawdzam...' : 'Sprawdź zgody macOS'}
                       </button>
                     </div>
                   )}
@@ -5436,6 +5622,31 @@ export default function DashboardPage() {
                     <pre className="max-h-[340px] overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 text-xs text-slate-100">
                       {JSON.stringify(serverDiagnostics, null, 2)}
                     </pre>
+                  </div>
+                )}
+
+                {isElectron && (
+                  <div className="ticket-surface rounded-xl border border-red-200 bg-red-50/70 p-5">
+                    <h2 className="text-lg font-semibold text-red-900">{isPolish ? 'Reinstal systemu' : 'System reinstall'}</h2>
+                    <p className="mt-2 text-sm text-red-800">
+                      {isPolish
+                        ? 'Ta operacja przywróci aplikację do stanu po instalacji: wyczyści bazę, pliki i konfigurację, a następnie uruchomi setup.'
+                        : 'This operation restores the app to post-install state: database, files and configuration are wiped, then setup starts.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleReinstallSystem('server')}
+                      disabled={serviceBusy !== null}
+                      className="mt-3 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {serviceBusy === 'factory-reset'
+                        ? isPolish
+                          ? 'Reinstaluję...'
+                          : 'Reinstalling...'
+                        : isPolish
+                          ? 'Reinstal systemu (setup od nowa)'
+                          : 'Reinstall system (setup from scratch)'}
+                    </button>
                   </div>
                 )}
               </section>

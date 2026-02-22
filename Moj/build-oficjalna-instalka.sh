@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOJ_DIR="$ROOT_DIR/Moj"
 RELEASE_DIR="${RELEASE_DIR:-$ROOT_DIR/desktop/release-user}"
 PKG_OUT="$MOJ_DIR/OpenTicket-Installer.pkg"
+UNINSTALLER_PKG_OUT="$MOJ_DIR/OpenTicket-Uninstaller.pkg"
 DMG_OUT="$MOJ_DIR/OpenTicket-Installer.dmg"
 ZIP_OUT="$MOJ_DIR/OpenTicket-Installer.zip"
 UNINSTALLER_SOURCE="$ROOT_DIR/scripts/uninstall-ticket-system.sh"
@@ -40,7 +41,7 @@ require_cmd pkgbuild
 cd "$ROOT_DIR"
 
 log "Czyszczenie poprzednich artefaktów"
-rm -f "$PKG_OUT" "$DMG_OUT" "$ZIP_OUT" "$MOJ_DIR"/*.sha256
+rm -f "$PKG_OUT" "$UNINSTALLER_PKG_OUT" "$DMG_OUT" "$ZIP_OUT" "$MOJ_DIR"/*.sha256
 rm -f "$MOJ_DIR"/latest-mac.yml "$MOJ_DIR"/OpenTicket-*.zip "$MOJ_DIR"/OpenTicket-*.zip.blockmap \
   "$MOJ_DIR"/OpenTicket-*.dmg "$MOJ_DIR"/OpenTicket-*.dmg.blockmap
 rm -rf "$RELEASE_DIR"
@@ -76,7 +77,9 @@ log "Tworzenie instalatora .pkg z kompletnym deinstalatorem"
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 PKG_STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openticket-pkg-root.XXXXXX")"
 PKG_SCRIPTS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openticket-pkg-scripts.XXXXXX")"
-trap 'rm -rf "$PKG_STAGE_ROOT" "$PKG_SCRIPTS_DIR"' EXIT
+UNINSTALL_PKG_STAGE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/openticket-uninstall-root.XXXXXX")"
+UNINSTALL_PKG_SCRIPTS_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openticket-uninstall-scripts.XXXXXX")"
+trap 'rm -rf "$PKG_STAGE_ROOT" "$PKG_SCRIPTS_DIR" "$UNINSTALL_PKG_STAGE_ROOT" "$UNINSTALL_PKG_SCRIPTS_DIR"' EXIT
 
 mkdir -p "$PKG_STAGE_ROOT/Applications"
 mkdir -p "$PKG_STAGE_ROOT/Library/Application Support/OpenTicket"
@@ -130,7 +133,7 @@ if [[ -z "$CONSOLE_UID" ]]; then
 fi
 
 # Start setup assistant immediately after installation (without browser flow).
-/bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open -a "$APP_PATH" --args --setup-assistant >/dev/null 2>&1 || true
+/bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open -a "$APP_PATH" --args --setup-assistant --permissions-assistant >/dev/null 2>&1 || true
 exit 0
 EOF
 chmod 755 "$PKG_SCRIPTS_DIR/postinstall"
@@ -147,6 +150,34 @@ COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 pkgbuild \
   --identifier "com.openticket.installer" \
   --version "$PKG_VERSION" \
   "$PKG_OUT"
+
+log "Tworzenie pakietu deinstalatora (.pkg)"
+mkdir -p "$UNINSTALL_PKG_STAGE_ROOT/private/tmp/openticket-uninstall"
+cp -f "$UNINSTALLER_SOURCE" "$UNINSTALL_PKG_STAGE_ROOT/private/tmp/openticket-uninstall/uninstall-ticket-system.sh"
+chmod 755 "$UNINSTALL_PKG_STAGE_ROOT/private/tmp/openticket-uninstall/uninstall-ticket-system.sh"
+
+cat > "$UNINSTALL_PKG_SCRIPTS_DIR/postinstall" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+UNINSTALLER="/private/tmp/openticket-uninstall/uninstall-ticket-system.sh"
+if [[ ! -x "$UNINSTALLER" ]]; then
+  echo "Brak deinstalatora: $UNINSTALLER" >&2
+  exit 1
+fi
+
+"$UNINSTALLER" --yes
+rm -rf /private/tmp/openticket-uninstall >/dev/null 2>&1 || true
+exit 0
+EOF
+chmod 755 "$UNINSTALL_PKG_SCRIPTS_DIR/postinstall"
+
+COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 pkgbuild \
+  --root "$UNINSTALL_PKG_STAGE_ROOT" \
+  --scripts "$UNINSTALL_PKG_SCRIPTS_DIR" \
+  --identifier "com.openticket.uninstaller" \
+  --version "$PKG_VERSION" \
+  "$UNINSTALLER_PKG_OUT"
 
 log "Kopiowanie .dmg/.zip do Moj"
 DMG_SRC="$(find "$RELEASE_DIR" -maxdepth 2 -type f -name '*.dmg' | head -n 1 || true)"
@@ -190,6 +221,7 @@ fi
 (
   cd "$MOJ_DIR"
   shasum -a 256 "$(basename "$PKG_OUT")" > "OpenTicket-Installer.pkg.sha256"
+  shasum -a 256 "$(basename "$UNINSTALLER_PKG_OUT")" > "OpenTicket-Uninstaller.pkg.sha256"
   if [[ -f "$DMG_OUT" ]]; then
     shasum -a 256 "$(basename "$DMG_OUT")" > "OpenTicket-Installer.dmg.sha256"
   fi

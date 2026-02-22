@@ -50,6 +50,11 @@ declare global {
       message: string;
       reportPath: string;
     }>;
+    requestDesktopPermissions: () => Promise<{
+      success: boolean;
+      message: string;
+      details: Record<string, string>;
+    }>;
     getUpdateStatus: () => Promise<UpdateStatus>;
     checkForUpdates: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;
     downloadUpdate: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;

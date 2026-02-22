@@ -82,6 +82,14 @@ const api = {
     return ipcRenderer.invoke("engine-diagnose");
   },
 
+  requestDesktopPermissions: async (): Promise<{
+    success: boolean;
+    message: string;
+    details: Record<string, string>;
+  }> => {
+    return ipcRenderer.invoke("request-desktop-permissions");
+  },
+
   getUpdateStatus: async (): Promise<{
     supported: boolean;
     state: string;

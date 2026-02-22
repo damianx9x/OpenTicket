@@ -6,7 +6,7 @@ import * as net from "net";
 import * as fs from "fs";
 import { autoUpdater } from "electron-updater";
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = electron;
+const { app, BrowserWindow, dialog, ipcMain, shell, systemPreferences } = electron;
 
 let mainWindow: electron.BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -32,6 +32,7 @@ const BACKEND_MONITOR_FAIL_THRESHOLD = 3;
 const isPackaged = app.isPackaged;
 const isUiDevMode = !isPackaged || process.argv.includes("--dev");
 const forceSetupAssistant = process.argv.includes("--setup-assistant");
+const forcePermissionsAssistant = process.argv.includes("--permissions-assistant");
 
 type UpdateState =
   | "disabled"
@@ -1245,6 +1246,61 @@ async function writeEngineDiagnosisReport(): Promise<{
   };
 }
 
+async function requestDesktopPermissions(): Promise<{
+  success: boolean;
+  message: string;
+  details: Record<string, string>;
+}> {
+  if (process.platform !== "darwin") {
+    return {
+      success: true,
+      message: "Asystent uprawnień działa tylko na macOS.",
+      details: { platform: process.platform },
+    };
+  }
+
+  const details: Record<string, string> = {};
+  try {
+    const camera = await systemPreferences.askForMediaAccess("camera");
+    details.camera = camera ? "granted" : "denied";
+  } catch (error: any) {
+    details.camera = `error:${error?.message || "unknown"}`;
+  }
+
+  try {
+    const microphone = await systemPreferences.askForMediaAccess("microphone");
+    details.microphone = microphone ? "granted" : "denied";
+  } catch (error: any) {
+    details.microphone = `error:${error?.message || "unknown"}`;
+  }
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      const notificationPermission = await mainWindow.webContents.executeJavaScript(
+        "typeof Notification !== 'undefined' && Notification.requestPermission ? Notification.requestPermission() : 'unsupported'",
+      );
+      details.notifications = String(notificationPermission || "unknown");
+    } catch (error: any) {
+      details.notifications = `error:${error?.message || "unknown"}`;
+    }
+  } else {
+    details.notifications = "window-unavailable";
+  }
+
+  const denied = Object.entries(details)
+    .filter(([_, status]) => /denied|error/.test(status))
+    .map(([key]) => key);
+
+  return {
+    success: denied.length === 0,
+    message:
+      denied.length === 0
+        ? "Uprawnienia macOS sprawdzone."
+        : `Część uprawnień wymaga ręcznej akceptacji: ${denied.join(", ")}.`,
+    details,
+  };
+}
+
 /**
  * Create or show main window
  */
@@ -1301,6 +1357,42 @@ app.on("ready", async () => {
     // Create window
     await createWindow(port);
     emitUpdateStatus();
+    const permissionsMarkerPath = path.join(userDataPath, "config", "permissions-assistant-v1.json");
+    const shouldRunPermissionsAssistant = forcePermissionsAssistant || !fs.existsSync(permissionsMarkerPath);
+    if (shouldRunPermissionsAssistant) {
+      setTimeout(() => {
+        void requestDesktopPermissions().then((result) => {
+          try {
+            fs.mkdirSync(path.dirname(permissionsMarkerPath), { recursive: true });
+            fs.writeFileSync(
+              permissionsMarkerPath,
+              JSON.stringify(
+                {
+                  executedAt: new Date().toISOString(),
+                  forced: forcePermissionsAssistant,
+                  success: result.success,
+                  details: result.details,
+                },
+                null,
+                2,
+              ),
+              "utf-8",
+            );
+          } catch {
+            // ignore marker write failures
+          }
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            dialog.showMessageBox(mainWindow, {
+              type: result.success ? "info" : "warning",
+              title: "OpenTicket - uprawnienia systemowe",
+              message: result.message,
+              detail: JSON.stringify(result.details, null, 2),
+              buttons: ["OK"],
+            }).catch(() => undefined);
+          }
+        });
+      }, 1200);
+    }
 
     // IPC handlers
     ipcMain.handle("select-folder", async () => {
@@ -1437,6 +1529,10 @@ app.on("ready", async () => {
 
     ipcMain.handle("engine-diagnose", async () => {
       return writeEngineDiagnosisReport();
+    });
+
+    ipcMain.handle("request-desktop-permissions", async () => {
+      return requestDesktopPermissions();
     });
 
     ipcMain.handle("update-get-status", async () => {

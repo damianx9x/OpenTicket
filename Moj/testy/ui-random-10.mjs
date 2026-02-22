@@ -143,12 +143,18 @@ async function runRandomActions(page) {
     },
     async () => {
       await menuButton('Zgłoszenia').click();
-      const selects = page.locator('select');
+      const selects = page.locator('section').locator('select');
       const count = await selects.count();
-      if (count > 0) {
-        await selects.nth(Math.min(1, count - 1)).selectOption({ index: 1 });
+      let changed = false;
+      for (let idx = 0; idx < count; idx += 1) {
+        const optionCount = await selects.nth(idx).locator('option').count();
+        if (optionCount > 1) {
+          await selects.nth(idx).selectOption({ index: 1 });
+          changed = true;
+          break;
+        }
       }
-      return 'change_filter';
+      return changed ? 'change_filter' : 'change_filter_skipped';
     },
     async () => {
       await menuButton('Zgłoszenia').click();

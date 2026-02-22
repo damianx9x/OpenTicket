@@ -34,6 +34,7 @@ Moj/TicketSystem-Installer.zip
 Moj/OpenTicket-Installer.pkg
 Moj/OpenTicket-Installer.dmg
 Moj/OpenTicket-Installer.zip
+Moj/OpenTicket-Uninstaller.pkg
 Moj/OpenTicket-Setup-*.exe
 Moj/OpenTicket-Setup-*.exe.blockmap
 Moj/OpenTicket-Portable-*.exe
@@ -127,4 +128,5 @@ final/
 
 # local electron-builder output fallback
 desktop/release-user/
+desktop/release-user-*/
 desktop/release-win/

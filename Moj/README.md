@@ -8,6 +8,7 @@ cd <repo-root>
 
 Po buildzie dostaniesz w tym folderze:
 - `OpenTicket-Installer.pkg` (główny instalator)
+- `OpenTicket-Uninstaller.pkg` (deinstalator 1-klik, czyści cały system)
 - `OpenTicket-Installer.dmg` (opcjonalny backup)
 - `OpenTicket-Installer.zip` (opcjonalny backup)
 - pliki `*.sha256`
@@ -56,6 +57,9 @@ Dodatkowo działa watchdog zdrowia silnika:
 - aplikacja sama monitoruje backend i bazę,
 - gdy healthcheck przestaje odpowiadać, wykonuje automatyczny restart silnika.
 
+Po pierwszym starcie z instalatora aplikacja uruchamia asystenta uprawnień macOS
+(notyfikacje + dostępy wymagające akceptacji użytkownika).
+
 Rejestracja technika nie jest już publiczna na ekranie logowania.
 Dodawanie techników odbywa się po zalogowaniu jako `ADMIN` w zakładce `Użytkownicy`.
 
@@ -74,6 +78,10 @@ to użyj nowego `.pkg` z tego folderu i przeinstaluj aplikację (stary build by�
 ## 3) Odinstaluj
 ```bash
 ./Moj/deinstaluj-openticket.sh
+```
+albo uruchom paczkę:
+```bash
+open ./Moj/OpenTicket-Uninstaller.pkg
 ```
 albo bezpośrednio po instalacji:
 ```bash
