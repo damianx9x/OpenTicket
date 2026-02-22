@@ -6,12 +6,26 @@ import { applyRuntimeApiBaseFromSetupStatus, checkSetupStatus } from '@/lib/setu
 import type { SetupResponse } from '@/lib/setup-client';
 import { requestData } from '@/lib/api-base';
 
+type DesktopBridge = {
+  factoryReset?: () => Promise<{ success: boolean; message?: string }>;
+};
+
+function getDesktopBridge(): DesktopBridge | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  return ((window as any).electron || (window as any).electronAPI || null) as DesktopBridge | null;
+}
+
 /**
  * Setup Page
  * Entry point for system initialization
  * Automatically redirects to dashboard if system is already configured
  */
 export default function SetupPage() {
+  const desktopBridge = getDesktopBridge();
+  const isDesktopApp = Boolean(desktopBridge?.factoryReset);
+
   const [setupStatus, setSetupStatus] = useState<{
     isSetup: boolean;
     defaultDataPath: string;
@@ -94,6 +108,50 @@ export default function SetupPage() {
     }
   };
 
+  const handleFactoryReset = async () => {
+    if (!desktopBridge?.factoryReset) {
+      return;
+    }
+
+    const confirmation = window.prompt(
+      'To usunie lokalną bazę, pliki i konfigurację oraz uruchomi setup od nowa. Wpisz RESET aby potwierdzić.',
+      '',
+    );
+    if (confirmation !== 'RESET') {
+      setSetupStatus((prev) => ({ ...prev, resetting: false, error: 'Reset anulowany.' }));
+      return;
+    }
+
+    setSetupStatus((prev) => ({ ...prev, resetting: true, error: null }));
+    try {
+      const result = await desktopBridge.factoryReset();
+      if (!result?.success) {
+        setSetupStatus((prev) => ({
+          ...prev,
+          resetting: false,
+          error: result?.message || 'Reset systemu nie powiódł się.',
+        }));
+        return;
+      }
+
+      window.location.href = '/setup?fresh=1';
+    } catch (error) {
+      setSetupStatus((prev) => ({
+        ...prev,
+        resetting: false,
+        error: `Reset systemu nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      }));
+    }
+  };
+
+  const handleReset = async () => {
+    if (isDesktopApp) {
+      await handleFactoryReset();
+      return;
+    }
+    await handleDevReset();
+  };
+
   if (setupStatus.loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -124,7 +182,9 @@ export default function SetupPage() {
             .
           </p>
           <p className="mt-2 text-sm text-gray-700">
-            Jeśli testujesz lokalnie i chcesz przejść setup od początku, użyj resetu DEV.
+            {isDesktopApp
+              ? 'Aby uruchomić setup od początku, użyj resetu systemu (czyści lokalną bazę i konfigurację).'
+              : 'Jeśli testujesz lokalnie i chcesz przejść setup od początku, użyj resetu DEV.'}
           </p>
 
           {setupStatus.error && (
@@ -145,11 +205,19 @@ export default function SetupPage() {
             </button>
             <button
               type="button"
-              className="rounded border border-amber-300 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-60"
-              onClick={() => void handleDevReset()}
+              className={`rounded border px-4 py-2 text-sm font-medium disabled:opacity-60 ${
+                isDesktopApp
+                  ? 'border-red-300 text-red-800 hover:bg-red-50'
+                  : 'border-amber-300 text-amber-800 hover:bg-amber-50'
+              }`}
+              onClick={() => void handleReset()}
               disabled={setupStatus.resetting}
             >
-              {setupStatus.resetting ? 'Resetowanie...' : 'Reset konfiguracji (DEV) i uruchom setup'}
+              {setupStatus.resetting
+                ? 'Resetowanie...'
+                : isDesktopApp
+                  ? 'Reset systemu (setup od nowa)'
+                  : 'Reset konfiguracji (DEV) i uruchom setup'}
             </button>
           </div>
         </div>
