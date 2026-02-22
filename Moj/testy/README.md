@@ -106,6 +106,20 @@ Raport:
 ./Moj/testy/runtime/reports/backup-ui-smoke-*.json
 ```
 
+## Test drukowania raportu statystyk (bez popup-blockera)
+```bash
+./Moj/testy/print-report-smoke.sh
+```
+Zakres:
+- wejście do zakładki `Statystyki`,
+- klik `Raport PDF`,
+- weryfikacja, że nie pojawia się błąd blokady popupu.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/print-report-smoke-*.json
+```
+
 ## Test backupu przy niestandardowej ścieżce (Application Support)
 ```bash
 ./Moj/testy/custom-path-backup-smoke.sh

@@ -2548,12 +2548,6 @@ export default function DashboardPage() {
       )
       .join('');
 
-    const win = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=900');
-    if (!win) {
-      notify({ type: 'error', text: 'Przeglądarka zablokowała okno eksportu PDF.' });
-      return;
-    }
-
     const printedAt = formatDate(new Date().toISOString());
     const html = `
 <!doctype html>
@@ -2606,13 +2600,88 @@ export default function DashboardPage() {
 </body>
 </html>`;
 
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    window.setTimeout(() => {
-      win.print();
-    }, 350);
+    const fileName = `openticket-raport-${new Date().toISOString().slice(0, 10)}.html`;
+    const downloadFallback = (reason?: string) => {
+      try {
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1500);
+        notify({
+          type: 'success',
+          text: reason
+            ? `Druk bezpośredni był niedostępny (${reason}). Pobrano raport do wydruku: ${fileName}.`
+            : `Pobrano raport do wydruku: ${fileName}.`,
+        });
+      } catch (error) {
+        notify({
+          type: 'error',
+          text: `Nie udało się wygenerować raportu: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+        });
+      }
+    };
+
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('title', 'OpenTicket print frame');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.style.opacity = '0';
+      iframe.style.pointerEvents = 'none';
+
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) {
+          return;
+        }
+        cleaned = true;
+        iframe.remove();
+      };
+
+      iframe.onload = () => {
+        const frameWindow = iframe.contentWindow;
+        if (!frameWindow) {
+          cleanup();
+          downloadFallback('brak okna wydruku');
+          return;
+        }
+
+        frameWindow.focus();
+        frameWindow.addEventListener(
+          'afterprint',
+          () => {
+            cleanup();
+          },
+          { once: true },
+        );
+
+        window.setTimeout(() => {
+          try {
+            frameWindow.print();
+            // Safari czasem nie wywołuje afterprint dla iframe.
+            window.setTimeout(cleanup, 4000);
+          } catch {
+            cleanup();
+            downloadFallback('błąd wywołania print()');
+          }
+        }, 200);
+      };
+
+      document.body.appendChild(iframe);
+      iframe.srcdoc = html;
+    } catch {
+      downloadFallback('błąd inicjalizacji wydruku');
+    }
   };
 
   const handleAssignSelectedTicket = async () => {
