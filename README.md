@@ -230,6 +230,34 @@ Windows local build alternatywnie: `powershell -ExecutionPolicy Bypass -File .\\
 - [ ] Etap 8: hardening (auth/rate-limit/CORS/CI gates)
 
 ## Postęp
+### 2026-02-22 (hotfix: reset/setup-rate-limit + auto-naprawa auth_sessions)
+- Naprawiono scenariusz „klikam reset i nic się nie dzieje”:
+  - ekran `/setup` w instalce desktop wykonuje `factory reset` przez IPC (`window.electron/window.electronAPI`) i restartuje setup od zera.
+- Naprawiono błąd „Za wiele żądań” na setup:
+  - rozdzielono limity rate-limit dla setup (`init/client-only/dev-reset` vs `discover/validate`),
+  - `POST /api/v1/setup/status` nie wpada już w limit krytyczny,
+  - endpoint `POST /api/v1/setup/status` zwraca teraz HTTP `200` (nie `201`).
+- Dodano samonaprawę logowania po starym/niepełnym imporcie bazy:
+  - gdy brakuje tabeli `auth_sessions`, backend automatycznie odtwarza schemat sesji i retry logowania,
+  - eliminuje to częsty `Internal server error` po imporcie backupu/starszej bazy.
+- Retest:
+  - `./Moj/testy/smoke.sh` = PASS,
+  - `./Moj/testy/setup-state-regression-smoke.sh` = PASS,
+  - `ITERATIONS=10 ./Moj/testy/fresh-10x-smoke.sh` = PASS (`10/10`),
+  - test naprawczy „DROP TABLE auth_sessions -> login” = PASS.
+
+### 2026-02-22 (hotfix: reset setup w instalce + limit setup/status)
+- Naprawiono ekran `/setup` dla zainstalowanej aplikacji desktop:
+  - przycisk resetu używa teraz `factory reset` przez bridge Electron (działa bez `APP_ENV=DEV_LOCAL`),
+  - uproszczono potwierdzenie resetu (`confirm`), żeby akcja była jednoznaczna dla użytkownika.
+- Zmniejszono ryzyko błędu `429 Too many requests` podczas pracy:
+  - rate-limit nie obejmuje już `POST /api/v1/setup/status`,
+  - osobne limity dla endpointów krytycznych setup (`init/client-only/dev-reset`) i narzędzi (`discover/validate`).
+- Desktop watchdog nie odpytuje już agresywnie `setup/status` gdy `health` jest OK.
+- Retest:
+  - `./Moj/testy/smoke.sh` = PASS,
+  - test przeciążeniowy `setup/status` 180 żądań = brak `429`.
+
 ### 2026-02-22 (hotfix: utrata logowania po restarcie/reset + setupMode)
 - Naprawiono krytyczny scenariusz z logów klienta:
   - po `import backupu` i `clearCache` backend potrafił błędnie uznać, że jest w setupie i przyjmował `POST /api/v1/setup/client-only`,

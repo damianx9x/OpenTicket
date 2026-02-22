@@ -87,15 +87,38 @@ export class AuthService {
         },
       });
     } catch (error) {
-      if (this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error)) {
+      const repaired = await this.tryRepairAuthSessionStorage(error);
+      if (repaired) {
+        try {
+          await this.prisma.authSession.create({
+            data: {
+              userId,
+              tokenHash,
+              userAgent: metadata.userAgent || null,
+              ip: metadata.ip || null,
+              expiresAt,
+            },
+          });
+        } catch (retryError) {
+          this.logger.error(
+            `Cannot create auth session after repair: ${
+              retryError instanceof Error ? retryError.message : String(retryError)
+            }`,
+          );
+          throw new ServiceUnavailableException(
+            'Silnik sesji logowania nie jest gotowy. Użyj „Szybka naprawa” albo „Reset systemu”, a następnie zaloguj ponownie.',
+          );
+        }
+      } else if (this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error)) {
         this.logger.error(
           `Cannot create auth session: ${error instanceof Error ? error.message : String(error)}`,
         );
         throw new ServiceUnavailableException(
           'Silnik sesji logowania nie jest gotowy. Użyj „Szybka naprawa” albo „Reset systemu”, a następnie zaloguj ponownie.',
         );
+      } else {
+        throw error;
       }
-      throw error;
     }
 
     const user = await this.getSafeUserById(userId);
@@ -140,13 +163,40 @@ export class AuthService {
         },
       });
     } catch (error) {
-      if (this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error)) {
+      const repaired = await this.tryRepairAuthSessionStorage(error);
+      if (repaired) {
+        try {
+          session = await this.prisma.authSession.findUnique({
+            where: { tokenHash },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  name: true,
+                  role: true,
+                  phone: true,
+                  disabledAt: true,
+                },
+              },
+            },
+          });
+        } catch (retryError) {
+          this.logger.warn(
+            `Session lookup skipped after repair attempt: ${
+              retryError instanceof Error ? retryError.message : String(retryError)
+            }`,
+          );
+          return null;
+        }
+      } else if (this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error)) {
         this.logger.warn(
           `Session lookup skipped (database not ready): ${error instanceof Error ? error.message : String(error)}`,
         );
         return null;
+      } else {
+        throw error;
       }
-      throw error;
     }
 
     if (!session) {
@@ -186,18 +236,20 @@ export class AuthService {
     }
 
     const tokenHash = hashAccessToken(token);
-    await this.prisma.authSession.deleteMany({ where: { tokenHash } }).catch((error) => {
+    await this.prisma.authSession.deleteMany({ where: { tokenHash } }).catch(async (error) => {
       if (!this.isSchemaMismatchError(error)) {
         throw error;
       }
+      await this.tryRepairAuthSessionStorage(error);
     });
   }
 
   async logoutEverywhere(userId: string): Promise<void> {
-    await this.prisma.authSession.deleteMany({ where: { userId } }).catch((error) => {
+    await this.prisma.authSession.deleteMany({ where: { userId } }).catch(async (error) => {
       if (!this.isSchemaMismatchError(error)) {
         throw error;
       }
+      await this.tryRepairAuthSessionStorage(error);
     });
   }
 
@@ -254,5 +306,64 @@ export class AuthService {
 
     const message = (error as any)?.message?.toString?.().toLowerCase?.() || '';
     return message.includes('table') && message.includes('does not exist');
+  }
+
+  /**
+   * Auto-heal for old/partially migrated SQLite databases (common after import/reset on older builds).
+   * We repair only auth_sessions storage; other schema issues are still surfaced to diagnostics.
+   */
+  private async tryRepairAuthSessionStorage(error: unknown): Promise<boolean> {
+    if (!(this.isSchemaMismatchError(error) || this.isDatabaseUnavailableError(error))) {
+      return false;
+    }
+
+    const databaseUrl = this.prisma.getDatabaseUrl() || process.env.DATABASE_URL || '';
+    if (!databaseUrl.startsWith('file:')) {
+      return false;
+    }
+
+    try {
+      await this.prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "auth_sessions" (
+          "id" TEXT NOT NULL PRIMARY KEY,
+          "user_id" TEXT NOT NULL,
+          "token_hash" TEXT NOT NULL,
+          "user_agent" TEXT,
+          "ip" TEXT,
+          "created_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "expires_at" DATETIME NOT NULL,
+          "last_used_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "auth_sessions_user_id_fkey"
+            FOREIGN KEY ("user_id") REFERENCES "users" ("id")
+            ON DELETE CASCADE ON UPDATE CASCADE
+        )
+      `);
+      await this.prisma.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS "auth_sessions_token_hash_key" ON "auth_sessions"("token_hash")`,
+      );
+      await this.prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "auth_sessions_user_id_expires_at_idx" ON "auth_sessions"("user_id", "expires_at")`,
+      );
+
+      const tableInfo = await this.prisma.$queryRawUnsafe<Array<{ name?: string }>>(
+        `PRAGMA table_info('auth_sessions')`,
+      );
+      const columns = new Set((tableInfo || []).map((item) => (item?.name || '').toLowerCase()));
+      if (!columns.has('last_used_at')) {
+        await this.prisma.$executeRawUnsafe(
+          `ALTER TABLE "auth_sessions" ADD COLUMN "last_used_at" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP`,
+        );
+      }
+
+      this.logger.warn('Auth session storage schema auto-repaired for SQLite runtime.');
+      return true;
+    } catch (repairError) {
+      this.logger.error(
+        `Auth session storage auto-repair failed: ${
+          repairError instanceof Error ? repairError.message : String(repairError)
+        }`,
+      );
+      return false;
+    }
   }
 }

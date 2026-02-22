@@ -338,15 +338,19 @@ async function probeBackendHealth(port: number): Promise<{
     errorMessage = error instanceof Error ? error.message : String(error);
   }
 
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/v1/setup/status`, {
-      method: "POST",
-      signal: AbortSignal.timeout(2000),
-    });
-    setupReachable = response.ok;
-  } catch (error) {
-    if (!errorMessage) {
-      errorMessage = error instanceof Error ? error.message : String(error);
+  if (healthy) {
+    setupReachable = true;
+  } else {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/v1/setup/status`, {
+        method: "POST",
+        signal: AbortSignal.timeout(2000),
+      });
+      setupReachable = response.ok;
+    } catch (error) {
+      if (!errorMessage) {
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
     }
   }
 

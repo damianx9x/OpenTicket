@@ -113,11 +113,10 @@ export default function SetupPage() {
       return;
     }
 
-    const confirmation = window.prompt(
-      'To usunie lokalną bazę, pliki i konfigurację oraz uruchomi setup od nowa. Wpisz RESET aby potwierdzić.',
-      '',
+    const confirmation = window.confirm(
+      'To usunie lokalną bazę, pliki i konfigurację oraz uruchomi setup od nowa. Czy na pewno kontynuować?',
     );
-    if (confirmation !== 'RESET') {
+    if (!confirmation) {
       setSetupStatus((prev) => ({ ...prev, resetting: false, error: 'Reset anulowany.' }));
       return;
     }

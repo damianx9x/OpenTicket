@@ -169,10 +169,16 @@ async function bootstrap() {
       message: 'Zbyt wiele prób logowania. Spróbuj ponownie za kilka minut.',
     },
     {
-      pattern: /^\/api\/v1\/setup\//,
+      pattern: /^\/api\/v1\/setup\/(init|client-only|dev-reset)$/,
       windowMs: 10 * 60 * 1000,
-      limit: 40,
-      message: 'Zbyt wiele żądań setup. Odczekaj chwilę i spróbuj ponownie.',
+      limit: 80,
+      message: 'Zbyt wiele żądań krytycznych setup. Odczekaj chwilę i spróbuj ponownie.',
+    },
+    {
+      pattern: /^\/api\/v1\/setup\/(validate-path|discover-local-data|discover-servers|validate-remote)$/,
+      windowMs: 10 * 60 * 1000,
+      limit: 300,
+      message: 'Zbyt wiele żądań narzędzi setup. Odczekaj chwilę i spróbuj ponownie.',
     },
     {
       pattern: /^\/api\/v1\/tickets\/status\/.+/,

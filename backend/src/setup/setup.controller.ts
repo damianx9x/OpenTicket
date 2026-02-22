@@ -6,6 +6,8 @@ import {
   Logger,
   ForbiddenException,
   Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { SetupService } from './setup.service';
 import {
@@ -48,6 +50,7 @@ export class SetupController {
   }
 
   @Post('status')
+  @HttpCode(HttpStatus.OK)
   async getSetupStatus() {
     return this.setupService.getSetupStatus();
   }
