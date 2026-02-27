@@ -67,12 +67,11 @@ if [[ -f "$MOJ_DIR/latest.yml" ]]; then
   )
 fi
 
-# Deduplikacja i odfiltrowanie brakujących.
-readarray -t upload_files < <(
-  printf '%s\n' "${assets[@]}" | awk '!seen[$0]++' | while read -r f; do
-    [[ -f "$f" ]] && echo "$f"
-  done
-)
+# Deduplikacja i odfiltrowanie brakujących (bash 3 compatible).
+upload_files=()
+while IFS= read -r f; do
+  [[ -f "$f" ]] && upload_files+=("$f")
+done < <(printf '%s\n' "${assets[@]}" | awk '!seen[$0]++')
 
 if gh release view "$TAG" >/dev/null 2>&1; then
   echo "Release $TAG istnieje -> aktualizuję assety"
