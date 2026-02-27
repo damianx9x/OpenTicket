@@ -9,6 +9,7 @@ import {
   applyRuntimeApiBaseFromSetupStatus,
   initializeClientOnlyMode,
   InstallationMode,
+  SetupBootstrapMode,
   SetupRequest,
   SetupResponse,
 } from '@/lib/setup-client';
@@ -18,9 +19,10 @@ export interface SetupWizardState {
   installationMode: InstallationMode;
   dataPath: string;
   remoteApiBaseUrl: string;
-  bootstrapMode: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapMode: SetupBootstrapMode;
   existingDatabasePath: string;
   existingBackupArchivePath: string;
+  demoTicketCount: number;
   adminEmail: string;
   adminPassword: string;
   organizationName: string;
@@ -50,6 +52,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     bootstrapMode: 'fresh',
     existingDatabasePath: '',
     existingBackupArchivePath: '',
+    demoTicketCount: 200,
     adminEmail: '',
     adminPassword: '',
     organizationName: '',
@@ -78,9 +81,10 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     installationMode: InstallationMode;
     dataPath: string;
     remoteApiBaseUrl?: string;
-    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+    bootstrapMode?: SetupBootstrapMode;
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
+    demoTicketCount?: number;
   }) => {
     setState((prev) => ({
       ...prev,
@@ -90,6 +94,10 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
       bootstrapMode: payload.bootstrapMode || 'fresh',
       existingDatabasePath: payload.existingDatabasePath || '',
       existingBackupArchivePath: payload.existingBackupArchivePath || '',
+      demoTicketCount:
+        payload.bootstrapMode === 'demo_dataset'
+          ? Math.max(20, Math.min(1000, Math.floor(payload.demoTicketCount || 200)))
+          : 200,
       currentStep: payload.installationMode === 'client_only' ? 3 : 2,
       error: null,
     }));
@@ -125,6 +133,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
           bootstrapMode: state.bootstrapMode,
           existingDatabasePath: state.existingDatabasePath || undefined,
           existingBackupArchivePath: state.existingBackupArchivePath || undefined,
+          demoTicketCount: state.bootstrapMode === 'demo_dataset' ? state.demoTicketCount : undefined,
         };
         result = await initializeSystem(request);
       }
@@ -200,6 +209,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
       bootstrapMode: 'fresh',
       existingDatabasePath: '',
       existingBackupArchivePath: '',
+      demoTicketCount: 200,
       adminEmail: '',
       adminPassword: '',
       organizationName: '',
@@ -272,6 +282,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
                 bootstrapMode: state.bootstrapMode,
                 existingDatabasePath: state.existingDatabasePath,
                 existingBackupArchivePath: state.existingBackupArchivePath,
+                demoTicketCount: state.demoTicketCount,
                 adminEmail: state.adminEmail,
                 organizationName: state.organizationName,
               }}

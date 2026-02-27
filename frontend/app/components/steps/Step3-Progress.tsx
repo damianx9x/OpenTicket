@@ -10,9 +10,10 @@ interface Step3Props {
     installationMode: 'server_client' | 'client_only';
     dataPath: string;
     remoteApiBaseUrl?: string;
-    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive' | 'demo_dataset';
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
+    demoTicketCount?: number;
     adminEmail: string;
     organizationName?: string;
   };
@@ -90,7 +91,9 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
                   ? 'Import istniejącej bazy app.db'
                   : summary.bootstrapMode === 'backup_archive'
                     ? 'Import backupu (.tar.gz)'
-                    : 'Nowa, czysta baza'}
+                    : summary.bootstrapMode === 'demo_dataset'
+                      ? `Nowa baza + demo (${summary.demoTicketCount || 200} zgłoszeń)`
+                      : 'Nowa, czysta baza'}
               </p>
               {summary.bootstrapMode === 'existing_db' && summary.existingDatabasePath ? (
                 <p className="mt-1 font-mono text-xs text-gray-600">{summary.existingDatabasePath}</p>
@@ -134,6 +137,8 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
                     ? 'Import i walidacja istniejącej bazy (app.db)'
                     : summary.bootstrapMode === 'backup_archive'
                       ? 'Import backupu (.tar.gz) + odtworzenie danych'
+                      : summary.bootstrapMode === 'demo_dataset'
+                        ? 'Nowa baza + seed realistycznych zgłoszeń demo'
                       : 'SQLite database (app.db)'}
                 </li>
                 <li>✓ Configuration file (config.json)</li>

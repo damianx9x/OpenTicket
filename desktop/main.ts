@@ -4,6 +4,7 @@ import { spawn, spawnSync, type ChildProcess } from "child_process";
 import * as os from "os";
 import * as net from "net";
 import * as fs from "fs";
+import * as https from "https";
 import { autoUpdater } from "electron-updater";
 
 const { app, BrowserWindow, dialog, ipcMain, shell, systemPreferences } = electron;
@@ -57,6 +58,9 @@ type DesktopUpdateStatus = {
   downloadedFile: string | null;
   lastCheckedAt: string | null;
   lastBackupPath: string | null;
+  manualMode: boolean;
+  manualDownloadUrl: string | null;
+  manualReleasePageUrl: string | null;
 };
 
 type DesktopRuntimePaths = {
@@ -88,7 +92,13 @@ const updateStatus: DesktopUpdateStatus = {
   downloadedFile: null,
   lastCheckedAt: null,
   lastBackupPath: null,
+  manualMode: false,
+  manualDownloadUrl: null,
+  manualReleasePageUrl: null,
 };
+
+const UPDATE_REPO_OWNER = process.env.TICKET_SYSTEM_UPDATE_OWNER || "damianx9x";
+const UPDATE_REPO_NAME = process.env.TICKET_SYSTEM_UPDATE_REPO || "OpenTicket";
 
 type BackendRunnerCandidate = {
   command: string;
@@ -401,6 +411,42 @@ function getLocalIp(): string {
   return "127.0.0.1";
 }
 
+function ensureCanonicalUserDataPath(): void {
+  const appDataPath = app.getPath("appData");
+  const canonicalPath = path.join(appDataPath, "OpenTicket");
+  const currentUserDataPath = app.getPath("userData");
+  const legacyCandidates = [
+    path.join(appDataPath, "openticket-desktop"),
+    path.join(appDataPath, "Ticket System"),
+    path.join(appDataPath, "TicketSystem"),
+  ].filter((candidate) => candidate !== canonicalPath);
+
+  if (!fs.existsSync(canonicalPath)) {
+    const legacySource = legacyCandidates.find((candidate) => {
+      if (!fs.existsSync(candidate)) {
+        return false;
+      }
+      const configPath = path.join(candidate, "config", "config.json");
+      const dbPath = path.join(candidate, "data", "app.db");
+      return fs.existsSync(configPath) || fs.existsSync(dbPath);
+    });
+
+    if (legacySource) {
+      try {
+        fs.mkdirSync(path.dirname(canonicalPath), { recursive: true });
+        fs.cpSync(legacySource, canonicalPath, { recursive: true });
+        console.log(`Migrated legacy userData from ${legacySource} to ${canonicalPath}`);
+      } catch (error) {
+        console.warn(`Failed to migrate legacy userData from ${legacySource}`, error);
+      }
+    }
+  }
+
+  if (currentUserDataPath !== canonicalPath) {
+    app.setPath("userData", canonicalPath);
+  }
+}
+
 function isAutoUpdateSupported(): boolean {
   return isPackaged && (process.platform === "darwin" || process.platform === "win32");
 }
@@ -471,6 +517,288 @@ function nowStamp(): string {
 
 function sanitizeReason(reason: string): string {
   return reason.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+type GithubReleaseAsset = {
+  name?: string;
+  browser_download_url?: string;
+  size?: number;
+};
+
+type GithubLatestRelease = {
+  tag_name?: string;
+  name?: string;
+  html_url?: string;
+  published_at?: string;
+  assets?: GithubReleaseAsset[];
+};
+
+function normalizeVersion(version: string): string {
+  return version.replace(/^v/i, "").trim();
+}
+
+function compareSemverLoose(leftRaw: string, rightRaw: string): number {
+  const left = normalizeVersion(leftRaw).split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const right = normalizeVersion(rightRaw).split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const length = Math.max(left.length, right.length);
+  for (let i = 0; i < length; i += 1) {
+    const diff = (left[i] || 0) - (right[i] || 0);
+    if (diff !== 0) {
+      return diff;
+    }
+  }
+  return 0;
+}
+
+function isMissingUpdateMetadataError(message: string): boolean {
+  const normalized = (message || "").toLowerCase();
+  return (
+    normalized.includes("latest-mac.yml") ||
+    normalized.includes("latest.yml") ||
+    normalized.includes("cannot find latest") ||
+    normalized.includes("404") ||
+    normalized.includes("release artifacts")
+  );
+}
+
+function requestTextWithRedirects(url: string, redirectCount = 0): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          "User-Agent": "OpenTicketDesktopUpdater",
+          Accept: "application/vnd.github+json,application/json",
+        },
+      },
+      (response) => {
+        const statusCode = response.statusCode || 0;
+        const location = response.headers.location;
+        if (statusCode >= 300 && statusCode < 400 && location) {
+          response.resume();
+          if (redirectCount > 5) {
+            reject(new Error("Too many redirects while checking updates."));
+            return;
+          }
+          const nextUrl = location.startsWith("http") ? location : new URL(location, url).toString();
+          requestTextWithRedirects(nextUrl, redirectCount + 1).then(resolve).catch(reject);
+          return;
+        }
+
+        if (statusCode < 200 || statusCode >= 300) {
+          response.resume();
+          reject(new Error(`HTTP ${statusCode} while requesting ${url}`));
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        response.on("error", reject);
+        response.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+      },
+    );
+
+    request.on("error", reject);
+  });
+}
+
+function downloadFileWithRedirects(url: string, destinationPath: string, redirectCount = 0): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = https.get(
+      url,
+      {
+        headers: {
+          "User-Agent": "OpenTicketDesktopUpdater",
+          Accept: "*/*",
+        },
+      },
+      (response) => {
+        const statusCode = response.statusCode || 0;
+        const location = response.headers.location;
+        if (statusCode >= 300 && statusCode < 400 && location) {
+          response.resume();
+          if (redirectCount > 8) {
+            reject(new Error("Too many redirects while downloading update package."));
+            return;
+          }
+          const nextUrl = location.startsWith("http") ? location : new URL(location, url).toString();
+          downloadFileWithRedirects(nextUrl, destinationPath, redirectCount + 1).then(resolve).catch(reject);
+          return;
+        }
+
+        if (statusCode < 200 || statusCode >= 300) {
+          response.resume();
+          reject(new Error(`Download failed with HTTP ${statusCode}`));
+          return;
+        }
+
+        fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+        const writer = fs.createWriteStream(destinationPath, { flags: "w", mode: 0o644 });
+        response.pipe(writer);
+        writer.on("finish", () => {
+          writer.close();
+          resolve();
+        });
+        writer.on("error", (error) => {
+          writer.close();
+          fs.rmSync(destinationPath, { force: true });
+          reject(error);
+        });
+        response.on("error", (error) => {
+          writer.close();
+          fs.rmSync(destinationPath, { force: true });
+          reject(error);
+        });
+      },
+    );
+
+    request.on("error", reject);
+  });
+}
+
+function pickManualInstallerAsset(release: GithubLatestRelease): GithubReleaseAsset | null {
+  const assets = release.assets || [];
+  if (assets.length === 0) {
+    return null;
+  }
+
+  const byName = (predicate: (name: string) => boolean) =>
+    assets.find((asset) => predicate((asset.name || "").toLowerCase()));
+
+  if (process.platform === "darwin") {
+    return (
+      byName((name) => name === "openticket-installer.pkg") ||
+      byName((name) => name.endsWith(".pkg")) ||
+      byName((name) => name.includes("openticket-") && name.endsWith(".zip")) ||
+      null
+    );
+  }
+
+  if (process.platform === "win32") {
+    return (
+      byName((name) => name === "openticket-installer.exe") ||
+      byName((name) => name.includes("setup") && name.endsWith(".exe")) ||
+      byName((name) => name.endsWith(".exe")) ||
+      null
+    );
+  }
+
+  return null;
+}
+
+async function checkForUpdatesViaGithubFallback(triggerReason?: string): Promise<{
+  success: boolean;
+  message: string;
+  status: DesktopUpdateStatus;
+}> {
+  try {
+    const apiUrl = `https://api.github.com/repos/${UPDATE_REPO_OWNER}/${UPDATE_REPO_NAME}/releases/latest`;
+    const raw = await requestTextWithRedirects(apiUrl);
+    const release = JSON.parse(raw) as GithubLatestRelease;
+    const releaseVersion = normalizeVersion(release.tag_name || "");
+    const currentVersion = normalizeVersion(app.getVersion());
+
+    if (!releaseVersion || compareSemverLoose(releaseVersion, currentVersion) <= 0) {
+      setUpdateStatus({
+        state: "not-available",
+        message: "Masz najnowszą wersję aplikacji (fallback GitHub).",
+        releaseName: release.name || null,
+        releaseVersion: releaseVersion || null,
+        releaseDate: release.published_at || null,
+        manualMode: false,
+        manualDownloadUrl: null,
+        manualReleasePageUrl: release.html_url || null,
+      });
+      return {
+        success: true,
+        message: "Aktualizacja nie jest wymagana.",
+        status: { ...updateStatus },
+      };
+    }
+
+    const installerAsset = pickManualInstallerAsset(release);
+    const manualDownloadUrl = installerAsset?.browser_download_url || null;
+
+    setUpdateStatus({
+      state: "available",
+      message: triggerReason
+        ? `Automatyczne metadane update są niedostępne (${triggerReason}). Wykryto wersję ${releaseVersion} w GitHub Releases.`
+        : `Wykryto aktualizację ${releaseVersion} (fallback GitHub Releases).`,
+      releaseName: release.name || null,
+      releaseVersion,
+      releaseDate: release.published_at || null,
+      manualMode: true,
+      manualDownloadUrl,
+      manualReleasePageUrl: release.html_url || null,
+      progressPercent: null,
+      bytesPerSecond: null,
+      downloadedFile: null,
+    });
+
+    if (!manualDownloadUrl) {
+      return {
+        success: false,
+        message: "W release nie znaleziono pliku instalatora (.pkg/.exe).",
+        status: { ...updateStatus },
+      };
+    }
+
+    return {
+      success: true,
+      message: `Znaleziono aktualizację ${releaseVersion}.`,
+      status: { ...updateStatus },
+    };
+  } catch (error: any) {
+    const reason = error?.message || String(error);
+    setUpdateStatus({
+      state: "error",
+      message: `Nie udało się pobrać informacji o release z GitHub: ${reason}`,
+      manualMode: false,
+      manualDownloadUrl: null,
+    });
+    return {
+      success: false,
+      message: updateStatus.message,
+      status: { ...updateStatus },
+    };
+  }
+}
+
+async function downloadManualUpdatePackage(downloadUrl: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const parsed = new URL(downloadUrl);
+    const fileNameFromUrl = path.basename(parsed.pathname) || `OpenTicket-update-${app.getVersion()}.pkg`;
+    const safeFileName =
+      fileNameFromUrl.endsWith(".pkg") || fileNameFromUrl.endsWith(".exe") || fileNameFromUrl.endsWith(".zip")
+        ? fileNameFromUrl
+        : `OpenTicket-update-${app.getVersion()}.pkg`;
+    const targetDir = path.join(app.getPath("downloads"), "OpenTicket-updates");
+    const targetPath = path.join(targetDir, safeFileName);
+
+    await downloadFileWithRedirects(downloadUrl, targetPath);
+    setUpdateStatus({
+      state: "downloaded",
+      message: `Pobrano instalator aktualizacji: ${targetPath}`,
+      downloadedFile: targetPath,
+      progressPercent: 100,
+      manualMode: true,
+      manualDownloadUrl: downloadUrl,
+    });
+
+    return {
+      success: true,
+      message: "Pobrano pakiet aktualizacji.",
+    };
+  } catch (error: any) {
+    setUpdateStatus({
+      state: "error",
+      message: `Nie udało się pobrać aktualizacji (fallback): ${error?.message || String(error)}`,
+    });
+    return {
+      success: false,
+      message: updateStatus.message,
+    };
+  }
 }
 
 async function createPreUpdateBackup(reason = "manual-update"): Promise<{
@@ -616,6 +944,9 @@ function configureAutoUpdater(): void {
       supported: false,
       state: "disabled",
       message: "Auto-update działa tylko w instalatorze macOS/Windows.",
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
     return;
   }
@@ -624,6 +955,9 @@ function configureAutoUpdater(): void {
     supported: true,
     state: "idle",
     message: "Aktualizacje gotowe. Kliknij „Sprawdź aktualizacje”.",
+    manualMode: false,
+    manualDownloadUrl: null,
+    manualReleasePageUrl: null,
   });
 
   autoUpdater.autoDownload = false;
@@ -637,6 +971,9 @@ function configureAutoUpdater(): void {
       progressPercent: null,
       bytesPerSecond: null,
       downloadedFile: null,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
   });
 
@@ -647,6 +984,9 @@ function configureAutoUpdater(): void {
       releaseName: info?.releaseName || null,
       releaseVersion: info?.version || null,
       releaseDate: info?.releaseDate || null,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
   });
 
@@ -660,6 +1000,9 @@ function configureAutoUpdater(): void {
       progressPercent: null,
       bytesPerSecond: null,
       downloadedFile: null,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
   });
 
@@ -681,13 +1024,24 @@ function configureAutoUpdater(): void {
       releaseDate: info?.releaseDate || updateStatus.releaseDate,
       downloadedFile: info?.downloadedFile || null,
       progressPercent: 100,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
   });
 
   autoUpdater.on("error", (error: Error) => {
+    const reason = error?.message || "unknown";
+    if (isMissingUpdateMetadataError(reason)) {
+      void checkForUpdatesViaGithubFallback(reason);
+      return;
+    }
     setUpdateStatus({
       state: "error",
-      message: `Błąd auto-update: ${error.message}`,
+      message: `Błąd auto-update: ${reason}`,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
   });
 }
@@ -709,9 +1063,16 @@ async function checkForUpdates(): Promise<{ success: boolean; message: string; s
       status: { ...updateStatus },
     };
   } catch (error: any) {
+    const reason = error?.message || String(error);
+    if (isMissingUpdateMetadataError(reason)) {
+      return checkForUpdatesViaGithubFallback(reason);
+    }
     setUpdateStatus({
       state: "error",
-      message: `Nie udało się sprawdzić aktualizacji: ${error?.message || String(error)}`,
+      message: `Nie udało się sprawdzić aktualizacji: ${reason}`,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
     return {
       success: false,
@@ -734,6 +1095,26 @@ async function downloadUpdatePackage(): Promise<{
     };
   }
 
+  if (updateStatus.manualMode && updateStatus.manualDownloadUrl) {
+    const manual = await downloadManualUpdatePackage(updateStatus.manualDownloadUrl);
+    return {
+      success: manual.success,
+      message: manual.message,
+      status: { ...updateStatus },
+    };
+  }
+
+  if (updateStatus.manualMode && !updateStatus.manualDownloadUrl) {
+    return {
+      success: false,
+      message:
+        updateStatus.manualReleasePageUrl
+          ? `W release nie ma bezpośredniego assetu instalatora. Otwórz release: ${updateStatus.manualReleasePageUrl}`
+          : "W release nie znaleziono pliku instalatora.",
+      status: { ...updateStatus },
+    };
+  }
+
   try {
     await autoUpdater.downloadUpdate();
     return {
@@ -745,6 +1126,9 @@ async function downloadUpdatePackage(): Promise<{
     setUpdateStatus({
       state: "error",
       message: `Nie udało się pobrać aktualizacji: ${error?.message || String(error)}`,
+      manualMode: false,
+      manualDownloadUrl: null,
+      manualReleasePageUrl: null,
     });
     return {
       success: false,
@@ -765,6 +1149,43 @@ async function installDownloadedUpdate(): Promise<{
       message: "Auto-update działa tylko w buildzie instalatora.",
       status: { ...updateStatus },
     };
+  }
+
+  if (updateStatus.manualMode) {
+    if (updateStatus.downloadedFile && fs.existsSync(updateStatus.downloadedFile)) {
+      const openResult = await shell.openPath(updateStatus.downloadedFile);
+      if (openResult !== "") {
+        return {
+          success: false,
+          message: `Nie udało się uruchomić instalatora aktualizacji: ${openResult}`,
+          status: { ...updateStatus },
+        };
+      }
+      return {
+        success: true,
+        message: "Uruchomiono instalator aktualizacji. Po instalacji uruchom ponownie OpenTicket.",
+        status: { ...updateStatus },
+      };
+    }
+
+    if (updateStatus.manualDownloadUrl) {
+      const openResult = await shell.openExternal(updateStatus.manualDownloadUrl).then(
+        () => "",
+        (error: any) => error?.message || String(error),
+      );
+      if (openResult !== "") {
+        return {
+          success: false,
+          message: `Nie udało się otworzyć linku do aktualizacji: ${openResult}`,
+          status: { ...updateStatus },
+        };
+      }
+      return {
+        success: true,
+        message: "Otwarto link do ręcznej aktualizacji.",
+        status: { ...updateStatus },
+      };
+    }
   }
 
   if (updateStatus.state !== "downloaded") {
@@ -1340,6 +1761,7 @@ async function createWindow(port: number): Promise<void> {
  */
 app.on("ready", async () => {
   try {
+    ensureCanonicalUserDataPath();
     configureAutoUpdater();
     const userDataPath = app.getPath("userData");
     const configFilePath = path.join(userDataPath, "config", "config.json");

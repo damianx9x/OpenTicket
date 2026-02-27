@@ -5614,6 +5614,11 @@ export default function DashboardPage() {
                         <p>
                           <strong>Status:</strong> {updateStatus?.message || 'Brak danych'}
                         </p>
+                        {updateStatus?.manualMode && (
+                          <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800">
+                            Tryb fallback: release bez metadanych auto-update (`latest-mac.yml` / `latest.yml`).
+                          </p>
+                        )}
                         <p>
                           <strong>Dostępna wersja:</strong> {updateStatus?.releaseVersion || '-'}
                         </p>
@@ -5629,6 +5634,19 @@ export default function DashboardPage() {
                         <p>
                           <strong>Ostatni backup update:</strong> {updateStatus?.lastBackupPath || '-'}
                         </p>
+                        {updateStatus?.manualDownloadUrl && (
+                          <p>
+                            <strong>Link instalatora:</strong>{' '}
+                            <a
+                              href={updateStatus.manualDownloadUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-600 hover:underline"
+                            >
+                              Pobierz release z GitHub
+                            </a>
+                          </p>
+                        )}
                       </div>
 
                       <div className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm">
@@ -5647,7 +5665,11 @@ export default function DashboardPage() {
                             disabled={serviceBusy !== null}
                             className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {serviceBusy === 'update-download' ? 'Pobieranie...' : 'Pobierz aktualizację'}
+                            {serviceBusy === 'update-download'
+                              ? 'Pobieranie...'
+                              : updateStatus?.manualMode
+                                ? 'Pobierz instalator'
+                                : 'Pobierz aktualizację'}
                           </button>
                           <button
                             type="button"
@@ -5655,7 +5677,11 @@ export default function DashboardPage() {
                             disabled={serviceBusy !== null}
                             className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {serviceBusy === 'update-install' ? 'Instalowanie...' : 'Zainstaluj aktualizację'}
+                            {serviceBusy === 'update-install'
+                              ? 'Instalowanie...'
+                              : updateStatus?.manualMode
+                                ? 'Uruchom instalator'
+                                : 'Zainstaluj aktualizację'}
                           </button>
                           <button
                             type="button"

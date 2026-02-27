@@ -5,6 +5,7 @@
 export type DatabaseMode = 'sqlite' | 'postgresql';
 export type StorageMode = 'local' | 's3';
 export type InstallationMode = 'server_client' | 'client_only';
+export type SetupBootstrapMode = 'fresh' | 'existing_db' | 'backup_archive' | 'demo_dataset';
 
 export interface AppConfig {
   // Database
@@ -46,9 +47,10 @@ export interface SetupRequest {
   adminEmail: string;
   adminPassword: string;
   organizationName?: string;
-  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapMode?: SetupBootstrapMode;
   existingDatabasePath?: string;
   existingBackupArchivePath?: string;
+  demoTicketCount?: number;
 }
 
 export interface DiscoverLocalDataResponse {
@@ -110,6 +112,7 @@ export interface SetupResponse {
   adminEmail?: string;
   installationMode?: InstallationMode;
   remoteApiBaseUrl?: string;
-  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapMode?: SetupBootstrapMode;
   bootstrapSourcePath?: string;
+  demoTicketCount?: number;
 }

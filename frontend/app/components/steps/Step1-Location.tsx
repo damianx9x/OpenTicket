@@ -8,6 +8,7 @@ import {
   discoverSetupServers,
   type DiscoveredSetupServer,
   type InstallationMode,
+  type SetupBootstrapMode,
   validateDataPath as validateDataPathRequest,
   validateRemoteApiBase,
 } from '@/lib/setup-client';
@@ -17,9 +18,10 @@ interface Step1Props {
     installationMode: InstallationMode;
     dataPath: string;
     remoteApiBaseUrl?: string;
-    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+    bootstrapMode?: SetupBootstrapMode;
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
+    demoTicketCount?: number;
   }) => void;
   defaultValue: string;
 }
@@ -43,9 +45,10 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   const resolvedDefaultPath = defaultValue?.trim().length > 0 ? defaultValue : getPlatformDefaultPath();
   const [installationMode, setInstallationMode] = useState<InstallationMode>('server_client');
   const [dataPath, setDataPath] = useState(resolvedDefaultPath);
-  const [bootstrapMode, setBootstrapMode] = useState<'fresh' | 'existing_db' | 'backup_archive'>('fresh');
+  const [bootstrapMode, setBootstrapMode] = useState<SetupBootstrapMode>('fresh');
   const [existingDatabasePath, setExistingDatabasePath] = useState('');
   const [existingBackupArchivePath, setExistingBackupArchivePath] = useState('');
+  const [demoTicketCount, setDemoTicketCount] = useState<number>(200);
   const [remoteApiBaseUrl, setRemoteApiBaseUrl] = useState('http://127.0.0.1:3200');
   const [useDefault, setUseDefault] = useState(true);
   const [checkingPath, setCheckingPath] = useState(false);
@@ -348,12 +351,24 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       return;
     }
 
+    if (bootstrapMode === 'demo_dataset') {
+      const normalized = Number(demoTicketCount);
+      if (!Number.isFinite(normalized) || normalized < 20 || normalized > 1000) {
+        setPathFeedback({
+          type: 'error',
+          text: 'Dla bazy demo podaj liczbę zgłoszeń od 20 do 1000.',
+        });
+        return;
+      }
+    }
+
     onContinue({
       installationMode,
       dataPath: validatedPath,
       bootstrapMode,
       existingDatabasePath: existingDatabasePath.trim() || undefined,
       existingBackupArchivePath: existingBackupArchivePath.trim() || undefined,
+      demoTicketCount: bootstrapMode === 'demo_dataset' ? Math.floor(Number(demoTicketCount) || 200) : undefined,
     });
   };
 
@@ -524,6 +539,39 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                 <div>
                   <p className="font-medium text-slate-800">Nowa baza (czysta instalacja)</p>
                   <p className="text-xs text-slate-600">Utworzy świeżą bazę `app.db` i strukturę katalogów.</p>
+                </div>
+              </label>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50">
+                <input
+                  type="radio"
+                  checked={bootstrapMode === 'demo_dataset'}
+                  onChange={() => {
+                    setBootstrapMode('demo_dataset');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div className="w-full">
+                  <p className="font-medium text-slate-800">Wczytaj bazę demo (realistyczne zgłoszenia)</p>
+                  <p className="text-xs text-slate-600">
+                    Tworzy nową bazę i automatycznie dodaje dane testowe do podglądu pełnego UI.
+                  </p>
+                  {bootstrapMode === 'demo_dataset' && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <label className="text-xs font-semibold uppercase text-slate-600">Liczba zgłoszeń demo</label>
+                      <input
+                        type="number"
+                        min={20}
+                        max={1000}
+                        step={10}
+                        value={demoTicketCount}
+                        onChange={(event) => setDemoTicketCount(Number(event.target.value))}
+                        className="w-36 rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+                      />
+                      <p className="text-xs text-slate-500">Zakres: 20-1000 (zalecane: 200)</p>
+                    </div>
+                  )}
                 </div>
               </label>
 

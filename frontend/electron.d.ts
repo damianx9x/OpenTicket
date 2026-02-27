@@ -32,6 +32,9 @@ declare global {
     downloadedFile: string | null;
     lastCheckedAt: string | null;
     lastBackupPath: string | null;
+    manualMode: boolean;
+    manualDownloadUrl: string | null;
+    manualReleasePageUrl: string | null;
   }
 
   interface ElectronBridge {

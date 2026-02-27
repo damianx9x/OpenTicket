@@ -9,8 +9,8 @@ cd <repo-root>
 Po buildzie dostaniesz w tym folderze:
 - `OpenTicket-Installer.pkg` (główny instalator)
 - `OpenTicket-Uninstaller.pkg` (deinstalator 1-klik, czyści cały system)
-- `OpenTicket-Installer.dmg` (opcjonalny backup)
-- `OpenTicket-Installer.zip` (opcjonalny backup)
+- `OpenTicket-Installer.dmg` (nośnik z plikami `.pkg`)
+- `OpenTicket-Installer.zip` (archiwum z plikami `.pkg`)
 - pliki `*.sha256`
 
 ## 1b) Zbuduj instalator Windows
@@ -31,6 +31,11 @@ Po buildzie dostaniesz:
 - `OpenTicket-Portable.exe` (wersja portable, opcjonalnie),
 - pliki `*.sha256`.
 
+Publikacja release na GitHub (z metadanymi auto-update):
+```bash
+./Moj/publish-release.sh
+```
+
 ## 2) Zainstaluj (test "na żywym organizmie")
 ```bash
 ./Moj/install-local.sh
@@ -39,6 +44,12 @@ Po buildzie dostaniesz:
 Po pierwszym uruchomieniu, w kreatorze setup (krok 1) wybierasz:
 - `Serwer + klient` (pełna instalacja lokalna),
 - `Sam klient` (łączenie z już działającym serwerem przez URL API).
+
+Źródło danych przy pierwszym uruchomieniu (krok 1):
+- `Nowa baza` (czysta instalacja),
+- `Import istniejącej bazy app.db`,
+- `Import backupu .tar.gz`,
+- `Baza demo` (automatyczny seed realistycznych zgłoszeń, np. 200).
 
 W trybie `Sam klient`:
 - przycisk `Wyszukaj w LAN` automatycznie szuka serwera w sieci lokalnej,
@@ -92,7 +103,8 @@ Skrypt usuwa:
 - wbudowany deinstalator z `/Applications/Odinstaluj OpenTicket.command`,
 - dane i logi z `~/Library/Application Support`, `~/Library/Logs`, `~/Library/Caches`,
 - preferencje i saved state,
-- launch agents i receipts pakietu (jeśli obecne).
+- launch agents i receipts pakietu (jeśli obecne),
+- legacy katalogi (`openticket-desktop`) oraz custom ścieżki danych odczytane z `config.json`.
 
 ## 4) Test bez instalacji (`Moj/testy`)
 ```bash

@@ -37,6 +37,8 @@ require_cmd() {
 require_cmd node
 require_cmd npm
 require_cmd pkgbuild
+require_cmd hdiutil
+require_cmd ditto
 
 cd "$ROOT_DIR"
 
@@ -179,19 +181,26 @@ COPYFILE_DISABLE=1 COPY_EXTENDED_ATTRIBUTES_DISABLE=1 pkgbuild \
   --version "$PKG_VERSION" \
   "$UNINSTALLER_PKG_OUT"
 
-log "Kopiowanie .dmg/.zip do Moj"
-DMG_SRC="$(find "$RELEASE_DIR" -maxdepth 2 -type f -name '*.dmg' | head -n 1 || true)"
-ZIP_SRC="$(find "$RELEASE_DIR" -maxdepth 2 -type f -name '*.zip' | head -n 1 || true)"
+log "Tworzenie paczki instalacyjnej DMG/ZIP (zawiera plik .pkg)"
+INSTALLER_STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/openticket-installer-media.XXXXXX")"
+trap 'rm -rf "$PKG_STAGE_ROOT" "$PKG_SCRIPTS_DIR" "$UNINSTALL_PKG_STAGE_ROOT" "$UNINSTALL_PKG_SCRIPTS_DIR" "$INSTALLER_STAGE_DIR"' EXIT
+cp -f "$PKG_OUT" "$INSTALLER_STAGE_DIR/"
+cp -f "$UNINSTALLER_PKG_OUT" "$INSTALLER_STAGE_DIR/"
+cat > "$INSTALLER_STAGE_DIR/README.txt" <<'EOF'
+OpenTicket Installer
+===================
 
-if [[ -n "$DMG_SRC" ]]; then
-  if ! cp "$DMG_SRC" "$DMG_OUT"; then
-    log "UWAGA: nie udało się skopiować DMG (prawdopodobnie brak miejsca na dysku). Instalator .pkg jest dostępny."
-  fi
+1) Uruchom OpenTicket-Installer.pkg
+2) Po instalacji aplikacja jest w /Applications/OpenTicket.app
+3) Deinstalator: OpenTicket-Uninstaller.pkg
+EOF
+
+if ! hdiutil create -volname "OpenTicket Installer" -srcfolder "$INSTALLER_STAGE_DIR" -ov -format UDZO "$DMG_OUT" >/dev/null; then
+  log "UWAGA: nie udało się utworzyć DMG z instalatorem."
 fi
-if [[ -n "$ZIP_SRC" ]]; then
-  if ! cp "$ZIP_SRC" "$ZIP_OUT"; then
-    log "UWAGA: nie udało się skopiować ZIP (prawdopodobnie brak miejsca na dysku). Instalator .pkg jest dostępny."
-  fi
+
+if ! (cd "$INSTALLER_STAGE_DIR" && ditto -c -k --sequesterRsrc --keepParent . "$ZIP_OUT"); then
+  log "UWAGA: nie udało się utworzyć ZIP z instalatorem."
 fi
 
 log "Kopiowanie artefaktów auto-update macOS (latest-mac.yml + pliki wskazane)"

@@ -12,15 +12,17 @@ import {
 export { buildApiUrl } from '@/lib/api-base';
 
 export type InstallationMode = 'server_client' | 'client_only';
+export type SetupBootstrapMode = 'fresh' | 'existing_db' | 'backup_archive' | 'demo_dataset';
 
 export interface SetupRequest {
   dataPath: string;
   adminEmail: string;
   adminPassword: string;
   organizationName?: string;
-  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapMode?: SetupBootstrapMode;
   existingDatabasePath?: string;
   existingBackupArchivePath?: string;
+  demoTicketCount?: number;
 }
 
 export interface ClientOnlySetupRequest {
@@ -36,8 +38,9 @@ export interface SetupResponse {
   adminEmail?: string;
   installationMode?: InstallationMode;
   remoteApiBaseUrl?: string;
-  bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive';
+  bootstrapMode?: SetupBootstrapMode;
   bootstrapSourcePath?: string;
+  demoTicketCount?: number;
 }
 
 export interface SetupStatus {

@@ -7,6 +7,7 @@ import {
   DiscoverServersRequest,
   DiscoverServersResponse,
   DiscoveredServerInfo,
+  SetupBootstrapMode,
   SetupRequest,
   SetupResponse,
   ValidateRemoteServerResponse,
@@ -19,6 +20,7 @@ import * as os from 'os';
 import { spawnSync } from 'child_process';
 import { hashPassword } from '../common/security/password';
 import { PrismaService } from '../prisma/prisma.service';
+import { DemoService } from '../demo/demo.service';
 
 export interface DataPathValidationResult {
   ok: boolean;
@@ -37,6 +39,7 @@ export class SetupService {
   constructor(
     private readonly configLoader: ConfigLoaderService,
     private readonly prismaService: PrismaService,
+    private readonly demoService: DemoService,
   ) {}
 
   /**
@@ -65,6 +68,7 @@ export class SetupService {
       const bootstrapMode = this.normalizeBootstrapMode(request.bootstrapMode);
       const existingDatabasePath = this.resolveOptionalAbsolutePath(request.existingDatabasePath);
       const existingBackupArchivePath = this.resolveOptionalAbsolutePath(request.existingBackupArchivePath);
+      const demoTicketCount = this.normalizeDemoTicketCount(request.demoTicketCount);
 
       if (bootstrapMode === 'existing_db' && !existingDatabasePath) {
         throw new Error('Wybrano import istniejącej bazy, ale nie podano ścieżki do pliku app.db.');
@@ -91,7 +95,7 @@ export class SetupService {
       // We hard-disconnect before touching database file and reconnect lazily after setup.
       await this.refreshRuntimePrisma('before sqlite reset');
 
-      if (bootstrapMode === 'fresh') {
+      if (bootstrapMode === 'fresh' || bootstrapMode === 'demo_dataset') {
         // Setup should always start from a clean sqlite file.
         // This avoids partial schema artifacts after interrupted setup attempts.
         if (fs.existsSync(dbPath)) {
@@ -140,6 +144,13 @@ export class SetupService {
 
       await prisma.$disconnect();
 
+      if (bootstrapMode === 'demo_dataset') {
+        await this.demoService.loadDemoDataset({
+          count: demoTicketCount,
+          reset: false,
+        });
+      }
+
       const config: AppConfig = {
         databaseMode: 'sqlite',
         databaseUrl: migrations.databaseUrl,
@@ -172,6 +183,7 @@ export class SetupService {
             : bootstrapMode === 'backup_archive'
               ? existingBackupArchivePath || undefined
               : undefined,
+        demoTicketCount: bootstrapMode === 'demo_dataset' ? demoTicketCount : undefined,
       };
     } catch (error: any) {
       this.logger.error(`Initialization failed: ${error.message}`, error.stack);
@@ -758,14 +770,24 @@ export class SetupService {
     return this.configLoader.getDefaultDataDirectoryPath();
   }
 
-  private normalizeBootstrapMode(
-    rawMode?: string,
-  ): 'fresh' | 'existing_db' | 'backup_archive' {
+  private normalizeBootstrapMode(rawMode?: string): SetupBootstrapMode {
     const normalized = (rawMode || 'fresh').trim().toLowerCase();
-    if (normalized === 'existing_db' || normalized === 'backup_archive') {
+    if (
+      normalized === 'existing_db' ||
+      normalized === 'backup_archive' ||
+      normalized === 'demo_dataset'
+    ) {
       return normalized;
     }
     return 'fresh';
+  }
+
+  private normalizeDemoTicketCount(rawCount?: number): number {
+    const parsed = Number(rawCount ?? 200);
+    if (!Number.isFinite(parsed)) {
+      return 200;
+    }
+    return Math.min(1000, Math.max(20, Math.floor(parsed)));
   }
 
   private resolveOptionalAbsolutePath(inputPath?: string): string | null {

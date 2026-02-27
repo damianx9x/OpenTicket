@@ -103,6 +103,9 @@ const api = {
     downloadedFile: string | null;
     lastCheckedAt: string | null;
     lastBackupPath: string | null;
+    manualMode: boolean;
+    manualDownloadUrl: string | null;
+    manualReleasePageUrl: string | null;
   }> => {
     return ipcRenderer.invoke("update-get-status");
   },
