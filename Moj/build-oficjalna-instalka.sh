@@ -58,10 +58,12 @@ npm --prefix frontend run build
 log "Budowa desktop main"
 npm --prefix desktop run build:electron
 
-log "Budowa artefaktów macOS (.dmg/.zip + .app)"
+log "Budowa artefaktów macOS (zip + .app)"
 (
   cd "$ROOT_DIR/desktop"
-  npx electron-builder --mac --publish never --config.directories.output="$RELEASE_DIR"
+  # Build only zip target here (dmg in electron-builder is flaky on some macOS hosts due hdiutil resize race).
+  # We generate user-facing DMG from installer payload later in this script.
+  npx electron-builder --mac zip --publish never --config.directories.output="$RELEASE_DIR"
 )
 
 APP_BUNDLE="$(find_app_bundle || true)"

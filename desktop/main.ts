@@ -310,24 +310,40 @@ async function findFreePort(start = 3000, end = 3100): Promise<number> {
 }
 
 /**
- * Wait for backend to be ready
+ * Wait for backend to be ready.
+ * Packaged apps (especially Windows first start) can need more time for setup/migrations.
  */
-async function waitForBackend(port: number, maxAttempts = 30): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
+async function waitForBackend(
+  port: number,
+  timeoutMs = Number(
+    process.env.TICKET_SYSTEM_BACKEND_START_TIMEOUT_MS ||
+      (isPackaged ? "60000" : "15000"),
+  ),
+): Promise<void> {
+  const startedAt = Date.now();
+  const pollIntervalMs = 500;
+
+  while (Date.now() - startedAt < timeoutMs) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/v1/setup/status`, {
         method: "POST",
+        signal: AbortSignal.timeout(1500),
       });
       if (response.ok) {
         console.log(`✓ Backend ready on port ${port}`);
         return;
       }
-    } catch (_) {
+    } catch {
       // Not ready yet
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
-  throw new Error("Backend did not start in time");
+
+  const tail = backendLogFilePath ? readTailLines(backendLogFilePath, 25).join("\n") : "";
+  if (tail) {
+    throw new Error(`Backend did not start in time (${timeoutMs} ms). Last log lines:\n${tail}`);
+  }
+  throw new Error(`Backend did not start in time (${timeoutMs} ms).`);
 }
 
 async function probeBackendHealth(port: number): Promise<{
