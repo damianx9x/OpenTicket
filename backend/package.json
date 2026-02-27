@@ -1,6 +1,6 @@
 {
   "name": "openticket-backend",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
