@@ -1743,6 +1743,10 @@ async function requestDesktopPermissions(): Promise<{
  */
 async function createWindow(port: number): Promise<void> {
   const preloadPath = path.join(__dirname, "preload.js");
+  const localOrigin = `http://127.0.0.1:${port}`;
+  const isAllowedAppUrl = (rawUrl: string): boolean => {
+    return rawUrl.startsWith(localOrigin);
+  };
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -1762,6 +1766,42 @@ async function createWindow(port: number): Promise<void> {
 
   console.log(`Loading ${startUrl}`);
   mainWindow.loadURL(startUrl);
+
+  // Electron security hardening: block unexpected navigation/popups.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isAllowedAppUrl(url)) {
+      return { action: "allow" };
+    }
+    void shell.openExternal(url).catch(() => undefined);
+    return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (isAllowedAppUrl(url)) {
+      return;
+    }
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url).catch(() => undefined);
+    }
+  });
+
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const requestOrigin = (() => {
+      try {
+        return new URL(details.requestingUrl).origin;
+      } catch {
+        return "";
+      }
+    })();
+    const fromAppOrigin = requestOrigin === localOrigin;
+    if (!fromAppOrigin) {
+      callback(false);
+      return;
+    }
+    const allowed = permission === "notifications";
+    callback(allowed);
+  });
 
   if (isUiDevMode) {
     mainWindow.webContents.openDevTools();

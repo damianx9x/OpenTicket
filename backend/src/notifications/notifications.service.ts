@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
+import * as net from 'net';
+import { promises as dns } from 'dns';
 
 @Injectable()
 export class NotificationsService {
@@ -16,7 +18,8 @@ export class NotificationsService {
     }
 
     if (emailCfg.mode === 'webhook' && emailCfg.webhookUrl) {
-      const response = await fetch(emailCfg.webhookUrl, {
+      const webhookUrl = await this.validateWebhookUrl(emailCfg.webhookUrl, 'email');
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -51,7 +54,8 @@ export class NotificationsService {
     }
 
     if (smsCfg.mode === 'webhook' && smsCfg.webhookUrl) {
-      const response = await fetch(smsCfg.webhookUrl, {
+      const webhookUrl = await this.validateWebhookUrl(smsCfg.webhookUrl, 'sms');
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -105,5 +109,114 @@ export class NotificationsService {
     // Stub: integrate with push provider (APNs/FCM)
     this.logger.log(`sendPush user=${userId} payload=${JSON.stringify(payload)}`);
     return { ok: true };
+  }
+
+  private async validateWebhookUrl(rawUrl: string, channel: 'email' | 'sms'): Promise<string> {
+    const allowInsecureHttp =
+      process.env.TICKET_SYSTEM_ALLOW_INSECURE_WEBHOOKS === '1' || process.env.APP_ENV === 'DEV_LOCAL';
+    const allowLoopback =
+      process.env.TICKET_SYSTEM_ALLOW_LOOPBACK_WEBHOOKS === '1' || process.env.APP_ENV === 'DEV_LOCAL';
+    const allowPrivateLan =
+      process.env.TICKET_SYSTEM_ALLOW_PRIVATE_WEBHOOKS === '1' || process.env.APP_ENV === 'DEV_LOCAL';
+
+    let parsed: URL;
+    try {
+      parsed = new URL(rawUrl.trim());
+    } catch {
+      throw new BadRequestException(`Niepoprawny adres webhook (${channel}).`);
+    }
+
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new BadRequestException(`Webhook (${channel}) musi używać http:// albo https://.`);
+    }
+    if (parsed.protocol === 'http:' && !allowInsecureHttp) {
+      throw new BadRequestException(`Webhook (${channel}) przez HTTP jest zablokowany. Użyj HTTPS.`);
+    }
+    if (parsed.username || parsed.password) {
+      throw new BadRequestException(`Webhook (${channel}) nie może zawierać danych logowania w URL.`);
+    }
+
+    await this.assertHostAllowed(parsed.hostname, {
+      allowLoopback,
+      allowPrivateLan,
+      channel,
+    });
+
+    return parsed.toString();
+  }
+
+  private async assertHostAllowed(
+    host: string,
+    opts: { allowLoopback: boolean; allowPrivateLan: boolean; channel: 'email' | 'sms' },
+  ): Promise<void> {
+    const normalized = host.trim().toLowerCase();
+    if (!normalized) {
+      throw new BadRequestException(`Webhook (${opts.channel}) ma pusty host.`);
+    }
+
+    if (normalized === 'localhost') {
+      if (opts.allowLoopback) {
+        return;
+      }
+      throw new BadRequestException(`Webhook (${opts.channel}) do localhost jest zablokowany.`);
+    }
+
+    const directIpType = net.isIP(normalized);
+    if (directIpType) {
+      this.assertIpAllowed(normalized, opts);
+      return;
+    }
+
+    let records: Array<{ address: string }> = [];
+    try {
+      records = await dns.lookup(normalized, { all: true, verbatim: true });
+    } catch (error) {
+      // DNS can be unavailable in offline installations. We log warning and allow hostname.
+      this.logger.warn(
+        `Webhook host DNS lookup skipped (${normalized}): ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
+
+    for (const record of records) {
+      this.assertIpAllowed(record.address, opts);
+    }
+  }
+
+  private assertIpAllowed(
+    ip: string,
+    opts: { allowLoopback: boolean; allowPrivateLan: boolean; channel: 'email' | 'sms' },
+  ): void {
+    if (this.isLoopbackOrLinkLocalIp(ip) && !opts.allowLoopback) {
+      throw new BadRequestException(`Webhook (${opts.channel}) do loopback/link-local jest zablokowany.`);
+    }
+    if (this.isPrivateLanIp(ip) && !opts.allowPrivateLan) {
+      throw new BadRequestException(`Webhook (${opts.channel}) do sieci prywatnej jest zablokowany.`);
+    }
+  }
+
+  private isLoopbackOrLinkLocalIp(ip: string): boolean {
+    if (net.isIP(ip) === 4) {
+      return ip.startsWith('127.') || ip.startsWith('169.254.');
+    }
+    const normalized = ip.toLowerCase();
+    return normalized === '::1' || normalized.startsWith('fe80:');
+  }
+
+  private isPrivateLanIp(ip: string): boolean {
+    if (net.isIP(ip) === 4) {
+      if (ip.startsWith('10.')) {
+        return true;
+      }
+      if (ip.startsWith('192.168.')) {
+        return true;
+      }
+      const parts = ip.split('.').map((part) => Number(part));
+      return parts.length === 4 && parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31;
+    }
+    const normalized = ip.toLowerCase();
+    return normalized.startsWith('fc') || normalized.startsWith('fd');
   }
 }

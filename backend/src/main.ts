@@ -38,6 +38,23 @@ function resolveCorsAllowedOrigins(): Set<string> {
   return set;
 }
 
+function isPrivateLanCorsAllowed(): boolean {
+  if (process.env.CORS_ALLOW_PRIVATE_LAN === '1') {
+    return true;
+  }
+  return process.env.APP_ENV === 'DEV_LOCAL';
+}
+
+function isSwaggerEnabled(): boolean {
+  if (process.env.SWAGGER_ENABLED === '1') {
+    return true;
+  }
+  if (process.env.SWAGGER_ENABLED === '0') {
+    return false;
+  }
+  return process.env.APP_ENV === 'DEV_LOCAL';
+}
+
 function resolvePrismaCommand(backendRoot: string): {
   command: string;
   argsPrefix: string[];
@@ -140,6 +157,7 @@ async function bootstrap() {
 
   // Enable CORS
   const corsAllowlist = resolveCorsAllowedOrigins();
+  const allowPrivateLanCors = isPrivateLanCorsAllowed();
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) {
@@ -147,7 +165,12 @@ async function bootstrap() {
         return;
       }
 
-      if (corsAllowlist.has(origin) || isLoopbackOrigin(origin) || isPrivateLanOrigin(origin)) {
+      if (corsAllowlist.has(origin) || isLoopbackOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowPrivateLanCors && isPrivateLanOrigin(origin)) {
         callback(null, true);
         return;
       }
@@ -155,7 +178,7 @@ async function bootstrap() {
       logger.warn(`CORS blocked origin: ${origin}`);
       callback(null, false);
     },
-    credentials: true,
+    credentials: false,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     preflightContinue: false,
     optionsSuccessStatus: 204,
@@ -202,12 +225,7 @@ async function bootstrap() {
     }
 
     const now = Date.now();
-    const ip =
-      (Array.isArray(req.headers['x-forwarded-for'])
-        ? req.headers['x-forwarded-for'][0]
-        : req.headers['x-forwarded-for']) ||
-      req.socket.remoteAddress ||
-      'unknown';
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const key = `${matchedRule.pattern.source}:${ip}`;
     const current = buckets.get(key);
 
@@ -246,15 +264,19 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api/v1');
 
-  // Swagger Configuration
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('OpenTicket API')
-    .setDescription('API documentation for OpenTicket')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  if (isSwaggerEnabled()) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('OpenTicket API')
+      .setDescription('API documentation for OpenTicket')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+    logger.log('Swagger enabled at /api/docs');
+  } else {
+    logger.log('Swagger disabled (set SWAGGER_ENABLED=1 to enable).');
+  }
 
   const port = config.port || preloadConfig.port || 3000;
   const bindHost = process.env.BIND_HOST || '127.0.0.1';
@@ -267,7 +289,9 @@ async function bootstrap() {
     logger.log('✅ Configuration loaded from file');
   }
   logger.log(`✅ Application is running on: ${baseUrl}`);
-  logger.log(`📚 Swagger docs available at: ${baseUrl}/api/docs`);
+  if (isSwaggerEnabled()) {
+    logger.log(`📚 Swagger docs available at: ${baseUrl}/api/docs`);
+  }
   logger.log(`🎯 API is available at: ${baseUrl}/api/v1`);
   
   if (config.setupMode) {

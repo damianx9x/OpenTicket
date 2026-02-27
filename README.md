@@ -80,6 +80,9 @@ Zrobione:
 # runtime tests
 ./Moj/testy/diagnose.sh
 
+# security baseline check (dependency audit + build + risky pattern scan)
+./scripts/security-check.sh
+
 # stop / reset środowiska testowego
 ./Moj/testy/stop.sh
 APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
@@ -92,3 +95,7 @@ APP_ENV=DEV_LOCAL ./Moj/testy/reset.sh
 - Każda wersja jest tagowana semver (`v0.x.y`).
 - Release zawiera zawsze: installer, uninstaller i metadane updatera (`latest-mac.yml`, `latest.yml`).
 - Linki do instalatorów są aktualizowane automatycznie w tym README.
+
+## Security
+- Raport wdrożeń bezpieczeństwa: `docs/SECURITY_AGENT_REPORT_2026-02-27.md`
+- Plan testów security: `docs/SECURITY_TEST_PLAN.md`

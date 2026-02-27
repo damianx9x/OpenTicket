@@ -1,15 +1,28 @@
-import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { hashAccessToken, generateAccessToken } from '../common/security/token';
-import { verifyPassword } from '../common/security/password';
+import { hashPassword, needsPasswordRehash, verifyPassword } from '../common/security/password';
 import { AuthSessionResult, AuthenticatedUser } from './auth.types';
 
-const DEFAULT_SESSION_DAYS = 30;
+const DEFAULT_SESSION_DAYS = 14;
+const MIN_SESSION_DAYS = 1;
+const MAX_SESSION_DAYS = 90;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
 
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private readonly failedLoginBuckets = new Map<string, { count: number; windowStartAt: number; lockUntil: number }>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -20,6 +33,7 @@ export class AuthService {
     ip?: string;
   }): Promise<AuthSessionResult> {
     const email = params.email.trim().toLowerCase();
+    this.enforceLoginThrottle(email, params.ip);
     let user:
       | {
           id: string;
@@ -55,11 +69,31 @@ export class AuthService {
     }
 
     if (!user || user.disabledAt) {
+      this.registerFailedLogin(email, params.ip);
       throw new UnauthorizedException('Niepoprawny e-mail lub hasło.');
     }
 
     if (!user.passwordHash || !verifyPassword(params.password, user.passwordHash)) {
+      this.registerFailedLogin(email, params.ip);
       throw new UnauthorizedException('Niepoprawny e-mail lub hasło.');
+    }
+
+    this.clearFailedLogin(email, params.ip);
+
+    if (user.passwordHash && needsPasswordRehash(user.passwordHash)) {
+      const upgradedHash = hashPassword(params.password);
+      this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: { passwordHash: upgradedHash },
+        })
+        .catch((error) => {
+          this.logger.warn(
+            `Password hash upgrade skipped for user ${user.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
     }
 
     return this.createSession(user.id, {
@@ -74,7 +108,8 @@ export class AuthService {
   ): Promise<AuthSessionResult> {
     const token = generateAccessToken(32);
     const tokenHash = hashAccessToken(token);
-    const expiresAt = new Date(Date.now() + DEFAULT_SESSION_DAYS * 24 * 60 * 60 * 1000);
+    const sessionDays = this.resolveSessionDays();
+    const expiresAt = new Date(Date.now() + sessionDays * 24 * 60 * 60 * 1000);
 
     try {
       await this.prisma.authSession.create({
@@ -306,6 +341,61 @@ export class AuthService {
 
     const message = (error as any)?.message?.toString?.().toLowerCase?.() || '';
     return message.includes('table') && message.includes('does not exist');
+  }
+
+  private resolveSessionDays(): number {
+    const parsed = Number(process.env.AUTH_SESSION_DAYS || DEFAULT_SESSION_DAYS);
+    if (!Number.isFinite(parsed)) {
+      return DEFAULT_SESSION_DAYS;
+    }
+    return Math.max(MIN_SESSION_DAYS, Math.min(MAX_SESSION_DAYS, Math.floor(parsed)));
+  }
+
+  private loginBucketKey(email: string, ip?: string): string {
+    return `${email}:${(ip || 'unknown').trim().toLowerCase()}`;
+  }
+
+  private enforceLoginThrottle(email: string, ip?: string): void {
+    const now = Date.now();
+    const key = this.loginBucketKey(email, ip);
+    const bucket = this.failedLoginBuckets.get(key);
+    if (!bucket) {
+      return;
+    }
+    if (bucket.lockUntil > now) {
+      throw new HttpException(
+        'Zbyt wiele nieudanych prób logowania. Spróbuj ponownie za kilka minut.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    if (now - bucket.windowStartAt > LOGIN_WINDOW_MS) {
+      this.failedLoginBuckets.delete(key);
+      return;
+    }
+  }
+
+  private registerFailedLogin(email: string, ip?: string): void {
+    const now = Date.now();
+    const key = this.loginBucketKey(email, ip);
+    const existing = this.failedLoginBuckets.get(key);
+    if (!existing || now - existing.windowStartAt > LOGIN_WINDOW_MS) {
+      this.failedLoginBuckets.set(key, {
+        count: 1,
+        windowStartAt: now,
+        lockUntil: 0,
+      });
+      return;
+    }
+
+    existing.count += 1;
+    if (existing.count >= LOGIN_MAX_FAILURES) {
+      existing.lockUntil = now + LOGIN_LOCK_MS;
+      this.logger.warn(`Login throttled for key=${key} until=${new Date(existing.lockUntil).toISOString()}`);
+    }
+  }
+
+  private clearFailedLogin(email: string, ip?: string): void {
+    this.failedLoginBuckets.delete(this.loginBucketKey(email, ip));
   }
 
   /**

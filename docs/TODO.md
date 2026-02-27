@@ -4,6 +4,9 @@
 1. Uporządkować release pipeline: automatyczne uploady wszystkich assetów (`pkg`, `exe`, `latest-mac.yml`, `latest.yml`, blockmapy).
 2. Domknąć test reinstalacji na czystym koncie użytkownika (instalacja -> konfiguracja -> restart -> login -> deinstalacja -> reinstall).
 3. Dodać walidację release przed publikacją (`make release-check`) blokującą brakujące pliki updatera.
+4. Zredukować pozostałe `high` z `npm audit`:
+   - frontend: plan migracji do `next@16`,
+   - backend: plan migracji `@nestjs/serve-static` major.
 
 ## Priorytet P1
 1. Dokończyć migrację UI z `frontend/strona-test` do głównego `frontend/app` i usunąć martwe ścieżki.

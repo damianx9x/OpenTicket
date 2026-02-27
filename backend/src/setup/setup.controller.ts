@@ -28,8 +28,9 @@ export class SetupController {
   constructor(private setupService: SetupService) {}
 
   @Post('init')
-  async initializeSystem(@Body() request: SetupRequest): Promise<SetupResponse> {
+  async initializeSystem(@Body() request: SetupRequest, @Req() req: Request): Promise<SetupResponse> {
     this.logger.log('Setup initialization requested');
+    this.assertLoopbackRequest(req);
 
     try {
       // Validate request
@@ -111,7 +112,8 @@ export class SetupController {
   }
 
   @Post('dev-reset')
-  async resetForDev() {
+  async resetForDev(@Req() req: Request) {
+    this.assertLoopbackRequest(req);
     return this.setupService.resetForDev();
   }
 

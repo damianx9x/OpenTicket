@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOJ_DIR="$ROOT_DIR/Moj"
 RELEASE_DIR="${RELEASE_DIR:-$ROOT_DIR/desktop/release-user}"
+ORIGINAL_RELEASE_DIR="$RELEASE_DIR"
 PKG_OUT="$MOJ_DIR/OpenTicket-Installer.pkg"
 UNINSTALLER_PKG_OUT="$MOJ_DIR/OpenTicket-Uninstaller.pkg"
 DMG_OUT="$MOJ_DIR/OpenTicket-Installer.dmg"
@@ -15,6 +16,16 @@ mkdir -p "$MOJ_DIR" "$ROOT_DIR/.runtime/logs"
 
 log() {
   echo "[Moj/build] $*"
+}
+
+prepare_release_dir() {
+  if [[ -e "$RELEASE_DIR" ]] && ! rm -rf "$RELEASE_DIR" 2>/dev/null; then
+    local fallback="$ROOT_DIR/desktop/release-user-$(date +%Y%m%d-%H%M%S)"
+    log "UWAGA: brak uprawnień do czyszczenia $RELEASE_DIR. Używam fallback: $fallback"
+    RELEASE_DIR="$fallback"
+  fi
+  rm -rf "$RELEASE_DIR"
+  mkdir -p "$RELEASE_DIR"
 }
 
 find_app_bundle() {
@@ -46,8 +57,7 @@ log "Czyszczenie poprzednich artefaktów"
 rm -f "$PKG_OUT" "$UNINSTALLER_PKG_OUT" "$DMG_OUT" "$ZIP_OUT" "$MOJ_DIR"/*.sha256
 rm -f "$MOJ_DIR"/latest-mac.yml "$MOJ_DIR"/OpenTicket-*.zip "$MOJ_DIR"/OpenTicket-*.zip.blockmap \
   "$MOJ_DIR"/OpenTicket-*.dmg "$MOJ_DIR"/OpenTicket-*.dmg.blockmap
-rm -rf "$RELEASE_DIR"
-mkdir -p "$RELEASE_DIR"
+prepare_release_dir
 
 log "Budowa backend"
 npm --prefix backend run build
@@ -255,6 +265,9 @@ fi
 
 log "Gotowe artefakty:"
 ls -lh "$MOJ_DIR" | awk '{print "[Moj/build] " $0}'
+if [[ "$RELEASE_DIR" != "$ORIGINAL_RELEASE_DIR" ]]; then
+  log "INFO: build output utworzony w fallback katalogu: $RELEASE_DIR"
+fi
 
 log "Instalacja testowa: ./Moj/install-local.sh"
 log "Deinstalacja: ./Moj/deinstaluj-openticket.sh"

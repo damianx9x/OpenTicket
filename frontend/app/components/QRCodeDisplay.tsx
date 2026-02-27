@@ -14,7 +14,7 @@ interface QRCodeDisplayProps {
  * Shows QR code for iOS pairing
  */
 export default function QRCodeDisplay({ data }: QRCodeDisplayProps) {
-  const [qrSvg, setQrSvg] = useState<string>('');
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -23,8 +23,7 @@ export default function QRCodeDisplay({ data }: QRCodeDisplayProps) {
       try {
         const QRCode = (await import('qrcode')).default;
         const qrString = JSON.stringify(data);
-        const svg = await QRCode.toString(qrString, {
-          type: 'svg',
+        const dataUrl = await QRCode.toDataURL(qrString, {
           width: 300,
           margin: 2,
           color: {
@@ -32,7 +31,7 @@ export default function QRCodeDisplay({ data }: QRCodeDisplayProps) {
             light: '#ffffff',
           },
         });
-        setQrSvg(svg);
+        setQrDataUrl(dataUrl);
       } catch (error) {
         console.error('Failed to generate QR code:', error);
       } finally {
@@ -54,10 +53,15 @@ export default function QRCodeDisplay({ data }: QRCodeDisplayProps) {
           <p className="text-gray-500">Generating QR code...</p>
         </div>
       ) : (
-        <div
-          className="bg-white p-4 rounded-lg border-2 border-gray-200"
-          dangerouslySetInnerHTML={{ __html: qrSvg }}
-        />
+        <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
+          {qrDataUrl ? (
+            <img src={qrDataUrl} alt="QR code for iPhone pairing" className="w-[300px] h-[300px] object-contain" />
+          ) : (
+            <div className="w-[300px] h-[300px] flex items-center justify-center text-sm text-gray-500">
+              QR generation failed
+            </div>
+          )}
+        </div>
       )}
 
       <div className="text-center text-sm text-gray-600 max-w-md">

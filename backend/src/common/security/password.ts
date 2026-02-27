@@ -1,6 +1,8 @@
 import * as crypto from 'crypto';
 
-const PBKDF2_ITERATIONS = 120_000;
+// OWASP Password Storage Cheat Sheet (2026): PBKDF2 is acceptable fallback when Argon2id isn't available.
+// We use a stronger baseline for sha512 and auto-upgrade hashes on successful login.
+const PBKDF2_ITERATIONS = 210_000;
 const PBKDF2_KEY_LENGTH = 64;
 const PBKDF2_DIGEST = 'sha512';
 
@@ -41,4 +43,16 @@ export function verifyPassword(password: string, encodedHash: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function needsPasswordRehash(encodedHash: string): boolean {
+  const parts = encodedHash.split('$');
+  if (parts.length !== 4 || parts[0] !== 'pbkdf2') {
+    return true;
+  }
+  const iterations = Number(parts[1]);
+  if (!Number.isFinite(iterations) || iterations <= 0) {
+    return true;
+  }
+  return iterations < PBKDF2_ITERATIONS;
 }

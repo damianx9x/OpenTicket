@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOJ_DIR="$ROOT_DIR/Moj"
 RELEASE_DIR="${RELEASE_DIR:-$ROOT_DIR/desktop/release-win}"
+ORIGINAL_RELEASE_DIR="$RELEASE_DIR"
 EXE_OUT="$MOJ_DIR/OpenTicket-Installer.exe"
 PORTABLE_OUT="$MOJ_DIR/OpenTicket-Portable.exe"
 README_LINK_UPDATER="$ROOT_DIR/scripts/update-readme-installer-link.sh"
@@ -12,6 +13,16 @@ mkdir -p "$MOJ_DIR"
 
 log() {
   echo "[Moj/build-win] $*"
+}
+
+prepare_release_dir() {
+  if [[ -e "$RELEASE_DIR" ]] && ! rm -rf "$RELEASE_DIR" 2>/dev/null; then
+    local fallback="$ROOT_DIR/desktop/release-win-$(date +%Y%m%d-%H%M%S)"
+    log "UWAGA: brak uprawnień do czyszczenia $RELEASE_DIR. Używam fallback: $fallback"
+    RELEASE_DIR="$fallback"
+  fi
+  rm -rf "$RELEASE_DIR"
+  mkdir -p "$RELEASE_DIR"
 }
 
 require_cmd() {
@@ -31,8 +42,7 @@ log "Czyszczenie poprzednich artefaktów Windows"
 rm -f "$EXE_OUT" "$PORTABLE_OUT" "$MOJ_DIR"/OpenTicket-Installer.exe.sha256 "$MOJ_DIR"/OpenTicket-Portable.exe.sha256
 rm -f "$MOJ_DIR"/latest.yml "$MOJ_DIR"/OpenTicket-Setup-*.exe "$MOJ_DIR"/OpenTicket-Setup-*.exe.blockmap \
   "$MOJ_DIR"/OpenTicket-Portable-*.exe "$MOJ_DIR"/OpenTicket-Portable-*.exe.blockmap
-rm -rf "$RELEASE_DIR"
-mkdir -p "$RELEASE_DIR"
+prepare_release_dir
 
 log "Budowa backend"
 npm --prefix backend run build
@@ -129,3 +139,6 @@ fi
 
 log "Gotowe artefakty Windows:"
 ls -lh "$MOJ_DIR" | awk '{print "[Moj/build-win] " $0}'
+if [[ "$RELEASE_DIR" != "$ORIGINAL_RELEASE_DIR" ]]; then
+  log "INFO: build output utworzony w fallback katalogu: $RELEASE_DIR"
+fi
