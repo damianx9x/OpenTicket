@@ -1,0 +1,27 @@
+{
+  "name": "backup-ui-smoke",
+  "createdAt": "2026-02-28T19:31:38.065Z",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "login",
+      "ok": true,
+      "detail": "dashboard opened"
+    },
+    {
+      "name": "open-settings-backup-section",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backup-export-notice",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "backup-file-created",
+      "ok": true,
+      "detail": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/state/data/backups/ticket-backup-20260228-203138.tar.gz"
+    }
+  ]
+}

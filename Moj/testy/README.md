@@ -158,6 +158,43 @@ Opcjonalnie inna przeglądarka:
 BROWSER=webkit ./Moj/testy/fresh-10x-smoke.sh
 ```
 
+## Pełny test instalacji i użycia (setup + demo + motywy + logo + filtry)
+```bash
+./Moj/testy/full-install-usage-smoke.sh
+```
+Zakres:
+- pełny setup wizard na czysto z trybem `demo_dataset`,
+- automatyczne przejście do dashboardu po setupie,
+- zapis i wczytanie presetu filtrów,
+- przełączenie motywów (`graphite`, `emerald`, `cupertino`),
+- upload i zapis własnego logo firmy,
+- weryfikacja zakładki `Serwer`.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/full-install-usage-smoke-*.json
+```
+
+Screenshoty:
+- `docs/screenshots/v0.3/setup-step1-demo.png`
+- `docs/screenshots/v0.3/setup-step2-admin.png`
+- `docs/screenshots/v0.3/setup-step3-review.png`
+- `docs/screenshots/v0.3/setup-step4-complete.png`
+- `docs/screenshots/v0.3/dashboard-theme-graphite.png`
+- `docs/screenshots/v0.3/dashboard-theme-emerald.png`
+- `docs/screenshots/v0.3/dashboard-theme-cupertino.png`
+- `docs/screenshots/v0.3/settings-logo-custom.png`
+- `docs/screenshots/v0.3/dashboard-filters-preset.png`
+
+## Pełna macierz regresji (archiwizuje logi i raporty)
+```bash
+./Moj/testy/full-regression-suite.sh
+```
+Wynik zapisuje się do:
+```bash
+docs/test-reports/full-regression-<timestamp>/SUMMARY.md
+```
+
 ## Aktualizacja screenshotów release (demo 200)
 ```bash
 ./Moj/testy/capture-release-screenshots.sh

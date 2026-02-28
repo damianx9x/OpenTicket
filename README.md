@@ -51,16 +51,31 @@ Po buildzie:
 ## Screenshoty UI (aktualne)
 - Dashboard (demo): `docs/screenshots/v0.3/dashboard-chromium.png`
 - Dashboard (Cupertino Glass): `docs/screenshots/v0.3/dashboard-cupertino-chromium.png`
+- Dashboard (theme: Graphite): `docs/screenshots/v0.3/dashboard-theme-graphite.png`
+- Dashboard (theme: Emerald): `docs/screenshots/v0.3/dashboard-theme-emerald.png`
+- Dashboard (theme: Cupertino): `docs/screenshots/v0.3/dashboard-theme-cupertino.png`
+- Dashboard (demo po setup): `docs/screenshots/v0.3/dashboard-demo-helpdesk.png`
+- Setup krok 1 (demo dataset): `docs/screenshots/v0.3/setup-step1-demo.png`
+- Setup krok 2 (admin): `docs/screenshots/v0.3/setup-step2-admin.png`
+- Setup krok 3 (review/init): `docs/screenshots/v0.3/setup-step3-review.png`
+- Setup krok 4 (complete): `docs/screenshots/v0.3/setup-step4-complete.png`
 - Ticket modal: `docs/screenshots/v0.3/ticket-modal-chromium.png`
 - Statystyki: `docs/screenshots/v0.3/statistics-chromium.png`
 - Użytkownicy: `docs/screenshots/v0.3/users-chromium.png`
 - Konfiguracja: `docs/screenshots/v0.3/settings-chromium.png`
+- Konfiguracja (logo custom): `docs/screenshots/v0.3/settings-logo-custom.png`
+- Presety filtrów: `docs/screenshots/v0.3/dashboard-filters-preset.png`
 - Serwer/diagnostyka: `docs/screenshots/v0.3/server-chromium.png`
+- Serwer po świeżej instalacji: `docs/screenshots/v0.3/server-status-after-install.png`
 
 ![Dashboard](docs/screenshots/v0.3/dashboard-chromium.png)
 ![Dashboard Cupertino](docs/screenshots/v0.3/dashboard-cupertino-chromium.png)
+![Setup Step 1 Demo](docs/screenshots/v0.3/setup-step1-demo.png)
+![Setup Step 4 Complete](docs/screenshots/v0.3/setup-step4-complete.png)
 ![Ticket modal](docs/screenshots/v0.3/ticket-modal-chromium.png)
 ![Konfiguracja](docs/screenshots/v0.3/settings-chromium.png)
+![Konfiguracja Logo](docs/screenshots/v0.3/settings-logo-custom.png)
+![Filtry Preset](docs/screenshots/v0.3/dashboard-filters-preset.png)
 
 ## Status (v0.3.6)
 Zrobione:
@@ -70,7 +85,47 @@ Zrobione:
 - auto-update: fallback do GitHub Releases, gdy release nie ma `latest-mac.yml` / `latest.yml`,
 - normalizacja `userData` do `~/Library/Application Support/OpenTicket` z migracją legacy,
 - nowy motyw dashboardu: `Cupertino Glass Pro` (Apple-inspired),
-- deep dependency check: `./scripts/dependency-deep-check.sh` (audit + outdated + transitive summary).
+- deep dependency check: `./scripts/dependency-deep-check.sh` (audit + outdated + transitive summary),
+- pełny test flow instalacji i użycia: setup demo (200) + motywy + logo + filtry + backup + security.
+
+## Pełna deinstalacja (macOS)
+Wersja kompletna (usuwa app + dane + cache + launch agents + receipts):
+```bash
+sudo "/Library/Application Support/OpenTicket/uninstall-openticket.sh" --yes
+```
+
+Fallback z repo:
+```bash
+cd /Users/icex/Projekty/git_repos/OpenTicket-clean
+sudo ./scripts/uninstall-ticket-system.sh --yes
+```
+
+Uwaga:
+- bez `sudo` nie da się usunąć plików root w `/Applications` i `/Library`.
+- po deinstalacji instalacja startuje od czystego setupu.
+
+## Pełny test E2E (instalacja + użycie)
+```bash
+cd /Users/icex/Projekty/git_repos/OpenTicket-clean
+./Moj/testy/full-install-usage-smoke.sh
+```
+
+Co waliduje:
+- setup wizard z opcją demo dataset (200 zgłoszeń),
+- przejście do dashboardu po setupie,
+- zapis i przełączanie presetów filtrów,
+- zmianę 3 motywów (`graphite`, `emerald`, `cupertino`),
+- upload logo firmy i zapis konfiguracji,
+- otwarcie zakładki serwera i diagnostyki.
+
+## Matryca regresji (zarchiwizowana)
+Pełny przebieg 13 kroków:
+- `docs/test-reports/full-regression-20260228-202901/SUMMARY.md`
+
+Zawiera:
+- log per krok (setup, auth, import, backup, profile, random-ui, print, security, dependency, 10x fresh),
+- raporty JSON/MD z każdego testu,
+- wynik końcowy: `PASS`.
 
 ## TODO (najbliższe kroki)
 1. Zamknąć pełną migrację UI `strona-test` -> główny WebUI i usunąć duplikaty komponentów.
