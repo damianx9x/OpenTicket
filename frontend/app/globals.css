@@ -7,11 +7,13 @@
     color-scheme: light;
     --ts-bg: #f3f5fa;
     --ts-panel: #ffffff;
+    --ts-panel-alt: #f8fafc;
     --ts-sidebar: #081a36;
     --ts-sidebar-border: #142a52;
     --ts-text: #0f172a;
     --ts-muted: #64748b;
     --ts-primary: #2463eb;
+    --ts-surface-border: #e2e8f0;
     --ts-bg-grad-start: #e8eefc;
     --ts-bg-grad-mid: #f3f5fa;
     --ts-bg-grad-end: #eef2ff;
@@ -21,11 +23,13 @@
   :root[data-ts-theme='helpdesk-blue'] {
     --ts-bg: #f3f5fa;
     --ts-panel: #ffffff;
+    --ts-panel-alt: #f8fafc;
     --ts-sidebar: #081a36;
     --ts-sidebar-border: #142a52;
     --ts-text: #0f172a;
     --ts-muted: #64748b;
     --ts-primary: #2463eb;
+    --ts-surface-border: #e2e8f0;
     --ts-bg-grad-start: #e8eefc;
     --ts-bg-grad-mid: #f3f5fa;
     --ts-bg-grad-end: #eef2ff;
@@ -35,11 +39,13 @@
   :root[data-ts-theme='graphite-noir'] {
     --ts-bg: #eceff3;
     --ts-panel: #ffffff;
+    --ts-panel-alt: #f3f5f8;
     --ts-sidebar: #0f1727;
     --ts-sidebar-border: #1f2a3f;
     --ts-text: #0f172a;
     --ts-muted: #5f6b82;
     --ts-primary: #0f766e;
+    --ts-surface-border: #d6dde7;
     --ts-bg-grad-start: #dfe5ee;
     --ts-bg-grad-mid: #eceff3;
     --ts-bg-grad-end: #e7edf7;
@@ -49,15 +55,33 @@
   :root[data-ts-theme='emerald-flow'] {
     --ts-bg: #edf7f2;
     --ts-panel: #ffffff;
+    --ts-panel-alt: #f2fbf7;
     --ts-sidebar: #06493a;
     --ts-sidebar-border: #0f6451;
     --ts-text: #06261f;
     --ts-muted: #3f6f60;
     --ts-primary: #0f9f6e;
+    --ts-surface-border: #d7eee4;
     --ts-bg-grad-start: #dff2ea;
     --ts-bg-grad-mid: #edf7f2;
     --ts-bg-grad-end: #e7f3ee;
     --ts-card-shadow: 0 14px 32px -22px rgba(6, 70, 54, 0.35);
+  }
+
+  :root[data-ts-theme='cupertino-glass'] {
+    --ts-bg: #eef2f8;
+    --ts-panel: rgba(255, 255, 255, 0.76);
+    --ts-panel-alt: rgba(250, 252, 255, 0.8);
+    --ts-sidebar: #1f2937;
+    --ts-sidebar-border: rgba(255, 255, 255, 0.18);
+    --ts-text: #111827;
+    --ts-muted: #64748b;
+    --ts-primary: #0a84ff;
+    --ts-surface-border: rgba(255, 255, 255, 0.55);
+    --ts-bg-grad-start: #f6f8fc;
+    --ts-bg-grad-mid: #eef2f8;
+    --ts-bg-grad-end: #dde7fb;
+    --ts-card-shadow: 0 30px 70px -42px rgba(15, 23, 42, 0.62);
   }
 
   html,
@@ -78,6 +102,7 @@
 @layer components {
   .ticket-surface {
     background: var(--ts-panel);
+    border-color: var(--ts-surface-border);
     box-shadow: var(--ts-card-shadow);
   }
 
@@ -88,6 +113,41 @@
   .modal-panel {
     animation: ts-modal-up 220ms cubic-bezier(0.2, 0.65, 0.2, 1) both;
   }
+}
+
+:root[data-ts-theme='cupertino-glass'] body {
+  background:
+    radial-gradient(1150px 380px at 0% -10%, rgba(10, 132, 255, 0.18) 0%, transparent 54%),
+    radial-gradient(900px 420px at 100% 0%, rgba(168, 85, 247, 0.14) 0%, transparent 52%),
+    linear-gradient(180deg, #f3f6fb 0%, #e9eef7 100%);
+}
+
+:root[data-ts-theme='cupertino-glass'] .ticket-surface {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(247, 250, 255, 0.7));
+  backdrop-filter: blur(18px) saturate(175%);
+  -webkit-backdrop-filter: blur(18px) saturate(175%);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+}
+
+:root[data-ts-theme='cupertino-glass'] .modal-overlay {
+  backdrop-filter: blur(7px) saturate(135%);
+  -webkit-backdrop-filter: blur(7px) saturate(135%);
+}
+
+:root[data-ts-theme='cupertino-glass'] .modal-panel {
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+:root[data-ts-theme='cupertino-glass'] input,
+:root[data-ts-theme='cupertino-glass'] select,
+:root[data-ts-theme='cupertino-glass'] textarea {
+  background-color: rgba(255, 255, 255, 0.82);
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+:root[data-ts-theme='cupertino-glass'] button[class*='bg-blue-600'] {
+  background: linear-gradient(135deg, #0a84ff 0%, #1464f4 100%);
+  border-color: transparent;
 }
 
 body.ts-compact .ticket-surface {

@@ -94,6 +94,21 @@ async function main() {
     await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(outDir, 'dashboard-chromium.png'), fullPage: true });
 
+    await page.getByRole('button', { name: /Mój interfejs|My UI/i }).click();
+    await Promise.race([
+      page.waitForSelector('text=Mój profil interfejsu', { timeout: 12000 }),
+      page.waitForSelector('text=My interface profile', { timeout: 12000 }),
+    ]);
+    await page
+      .locator('label:has-text("Motyw kolorystyczny") select, label:has-text("Color theme") select')
+      .first()
+      .selectOption('cupertino-glass');
+    await page.waitForTimeout(650);
+    await page.getByRole('button', { name: /Zgłoszenia|Tickets/i }).click();
+    await page.waitForSelector('tbody tr', { timeout: 12000 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: path.join(outDir, 'dashboard-cupertino-chromium.png'), fullPage: true });
+
     await page.locator('tbody tr').first().click();
     await page.waitForSelector('text=Szczegóły zgłoszenia', { timeout: 12000 });
     await page.waitForTimeout(400);

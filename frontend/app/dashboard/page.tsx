@@ -219,7 +219,9 @@ type NavItemId = (typeof NAV_ITEMS)[number]['id'];
 
 type DashboardWidgetKey = 'open' | 'urgent' | 'inProgress' | 'closedToday';
 type DashboardWidgetSize = 'sm' | 'md' | 'lg';
-type DashboardTheme = 'helpdesk-blue' | 'graphite-noir' | 'emerald-flow';
+const DASHBOARD_THEME_VALUES = ['helpdesk-blue', 'graphite-noir', 'emerald-flow', 'cupertino-glass'] as const;
+type DashboardTheme = (typeof DASHBOARD_THEME_VALUES)[number];
+const DEFAULT_DASHBOARD_THEME: DashboardTheme = 'helpdesk-blue';
 
 const DASHBOARD_WIDGET_ORDER_DEFAULT: DashboardWidgetKey[] = ['open', 'urgent', 'inProgress', 'closedToday'];
 const DASHBOARD_WIDGET_SIZES_DEFAULT: Record<DashboardWidgetKey, DashboardWidgetSize> = {
@@ -232,7 +234,17 @@ const DASHBOARD_THEMES: Array<{ value: DashboardTheme; label: string }> = [
   { value: 'helpdesk-blue', label: 'Nordic Blue Pro' },
   { value: 'graphite-noir', label: 'Graphite Noir Pro' },
   { value: 'emerald-flow', label: 'Emerald Focus Pro' },
+  { value: 'cupertino-glass', label: 'Cupertino Glass Pro' },
 ];
+
+function normalizeDashboardTheme(value: unknown): DashboardTheme {
+  if (typeof value !== 'string') {
+    return DEFAULT_DASHBOARD_THEME;
+  }
+  return (DASHBOARD_THEME_VALUES as readonly string[]).includes(value)
+    ? (value as DashboardTheme)
+    : DEFAULT_DASHBOARD_THEME;
+}
 
 type FilterState = {
   search: string;
@@ -259,6 +271,29 @@ type FilterState = {
     | 'status_desc'
     | 'status_asc';
 };
+
+const FILTER_SORT_VALUES = [
+  'createdAt_desc',
+  'createdAt_asc',
+  'updatedAt_desc',
+  'updatedAt_asc',
+  'priority_desc',
+  'priority_asc',
+  'number_desc',
+  'number_asc',
+  'status_desc',
+  'status_asc',
+] as const;
+type FilterSort = (typeof FILTER_SORT_VALUES)[number];
+
+function normalizeFilterSort(value: unknown, fallback: FilterSort = 'createdAt_desc'): FilterSort {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  return (FILTER_SORT_VALUES as readonly string[]).includes(value)
+    ? (value as FilterSort)
+    : fallback;
+}
 
 type SavedFilterPreset = {
   name: string;
@@ -312,7 +347,7 @@ const DEFAULT_FILTER_STATE: FilterState = {
   hasComments: '',
   createdFrom: '',
   createdTo: '',
-  sort: 'createdAt_desc',
+  sort: normalizeFilterSort('createdAt_desc'),
 };
 
 function formatDate(value: string): string {
@@ -399,7 +434,7 @@ export default function DashboardPage() {
     widgetSizes: DASHBOARD_WIDGET_SIZES_DEFAULT,
     savedFilters: [],
     compactMode: false,
-    theme: 'helpdesk-blue',
+    theme: DEFAULT_DASHBOARD_THEME,
   });
   const [draggingWidget, setDraggingWidget] = useState<DashboardWidgetKey | null>(null);
 
@@ -974,10 +1009,16 @@ export default function DashboardPage() {
   };
 
   const savePrefs = async (next: DashboardPreferences) => {
-    setDashboardPrefs(next);
+    const previous = dashboardPrefs;
+    const sanitized: DashboardPreferences = {
+      ...next,
+      theme: normalizeDashboardTheme(next.theme),
+    };
+    setDashboardPrefs(sanitized);
     try {
-      await saveMyPreferences(next as Record<string, unknown>);
+      await saveMyPreferences(sanitized as Record<string, unknown>);
     } catch (error) {
+      setDashboardPrefs(previous);
       notify({
         type: 'error',
         text: `Nie udało się zapisać preferencji UI: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
@@ -1004,7 +1045,7 @@ export default function DashboardPage() {
       hasComments: typeof filter.hasComments === 'boolean' ? (filter.hasComments ? 'yes' : 'no') : '',
       createdFrom: filter.createdFrom || '',
       createdTo: filter.createdTo || '',
-      sort: filter.sort || prev.sort,
+      sort: normalizeFilterSort(filter.sort, normalizeFilterSort(prev.sort)),
     }));
     setSelectedPresetName(filter.name);
     setNewPresetName(filter.name);
@@ -1356,7 +1397,7 @@ export default function DashboardPage() {
             (prefObject.widgetSizes as DashboardPreferences['widgetSizes']) || prev.widgetSizes,
           savedFilters:
             (prefObject.savedFilters as DashboardPreferences['savedFilters']) || prev.savedFilters,
-          theme: prefObject.theme || prev.theme,
+          theme: normalizeDashboardTheme(prefObject.theme || prev.theme),
           defaultFilters:
             (prefObject.defaultFilters as DashboardPreferences['defaultFilters']) || prev.defaultFilters,
         }));
@@ -1391,7 +1432,7 @@ export default function DashboardPage() {
                 : prev.hasComments,
             createdFrom: prefObject.defaultFilters?.createdFrom || prev.createdFrom,
             createdTo: prefObject.defaultFilters?.createdTo || prev.createdTo,
-            sort: prefObject.defaultFilters?.sort || prev.sort,
+            sort: normalizeFilterSort(prefObject.defaultFilters?.sort, normalizeFilterSort(prev.sort)),
           }));
         }
 
@@ -1497,7 +1538,7 @@ export default function DashboardPage() {
     if (typeof document === 'undefined') {
       return;
     }
-    const theme = dashboardPrefs.theme || 'helpdesk-blue';
+    const theme = normalizeDashboardTheme(dashboardPrefs.theme);
     document.documentElement.setAttribute('data-ts-theme', theme);
     document.body.classList.toggle('ts-compact', Boolean(dashboardPrefs.compactMode));
     return () => {
@@ -4484,11 +4525,11 @@ export default function DashboardPage() {
                         {isPolish ? 'Motyw kolorystyczny' : 'Color theme'}
                         <select
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                          value={dashboardPrefs.theme || 'helpdesk-blue'}
+                          value={normalizeDashboardTheme(dashboardPrefs.theme)}
                           onChange={(event) =>
                             void savePrefs({
                               ...dashboardPrefs,
-                              theme: event.target.value as DashboardTheme,
+                              theme: normalizeDashboardTheme(event.target.value),
                             })
                           }
                         >
@@ -4499,11 +4540,12 @@ export default function DashboardPage() {
                           ))}
                         </select>
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
                         {[
                           { key: 'helpdesk-blue', swatch: 'from-blue-500 to-indigo-700' },
                           { key: 'graphite-noir', swatch: 'from-slate-700 to-slate-900' },
                           { key: 'emerald-flow', swatch: 'from-emerald-500 to-teal-700' },
+                          { key: 'cupertino-glass', swatch: 'from-slate-100 via-blue-200 to-indigo-200' },
                         ].map((themeCard) => (
                           <button
                             key={themeCard.key}
@@ -4511,11 +4553,11 @@ export default function DashboardPage() {
                             onClick={() =>
                               void savePrefs({
                                 ...dashboardPrefs,
-                                theme: themeCard.key as DashboardTheme,
+                                theme: normalizeDashboardTheme(themeCard.key),
                               })
                             }
                             className={`rounded-lg border p-2 text-left text-[11px] ${
-                              (dashboardPrefs.theme || 'helpdesk-blue') === themeCard.key
+                              normalizeDashboardTheme(dashboardPrefs.theme) === themeCard.key
                                 ? 'border-blue-400 ring-2 ring-blue-100'
                                 : 'border-slate-200'
                             }`}
@@ -4719,7 +4761,7 @@ export default function DashboardPage() {
                                   : '',
                               createdFrom: dashboardPrefs.defaultFilters?.createdFrom || '',
                               createdTo: dashboardPrefs.defaultFilters?.createdTo || '',
-                              sort: dashboardPrefs.defaultFilters?.sort || 'createdAt_desc',
+                              sort: normalizeFilterSort(dashboardPrefs.defaultFilters?.sort, 'createdAt_desc'),
                             }))
                           }
                           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
