@@ -1,0 +1,60 @@
+{
+  "browser": "chromium",
+  "baseUrl": "http://127.0.0.1:3200",
+  "iterations": 10,
+  "startedAt": "2026-02-28T19:52:48.376Z",
+  "success": true,
+  "actions": [
+    {
+      "step": 1,
+      "action": "search_tickets",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 2,
+      "action": "search_tickets",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 3,
+      "action": "open_ui_personalization",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 4,
+      "action": "open_close_new_ticket_modal",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 5,
+      "action": "open_config",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 6,
+      "action": "open_tickets",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 7,
+      "action": "open_statistics",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 8,
+      "action": "open_users",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 9,
+      "action": "open_close_new_ticket_modal",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 10,
+      "action": "open_ui_personalization",
+      "url": "http://127.0.0.1:3200/dashboard"
+    }
+  ],
+  "error": null
+}

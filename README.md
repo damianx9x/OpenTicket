@@ -2,9 +2,9 @@
 <!-- INSTALLER_LINK:START -->
 ## Installers (macOS + Windows)
 - macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- macOS PKG (v0.3.6): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.6/OpenTicket-Installer.pkg)
+- macOS PKG (v0.3.7): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.7/OpenTicket-Installer.pkg)
 - Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
-- Windows EXE (v0.3.6): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.6/OpenTicket-Installer.exe)
+- Windows EXE (v0.3.7): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.3.7/OpenTicket-Installer.exe)
 <!-- INSTALLER_LINK:END -->
 
 OpenTicket to lokalny system ticketowy dla serwisów elektroniki: backend + WebUI + aplikacja desktop (macOS/Windows), z naciskiem na stabilną pracę offline w warsztacie.
@@ -77,7 +77,7 @@ Po buildzie:
 ![Konfiguracja Logo](docs/screenshots/v0.3/settings-logo-custom.png)
 ![Filtry Preset](docs/screenshots/v0.3/dashboard-filters-preset.png)
 
-## Status (v0.3.6)
+## Status (v0.3.7)
 Zrobione:
 - setup wizard: dodany wariant „baza demo” przy pierwszej konfiguracji,
 - deinstalator: rozszerzone czyszczenie legacy i custom data paths,
@@ -120,7 +120,7 @@ Co waliduje:
 
 ## Matryca regresji (zarchiwizowana)
 Pełny przebieg 13 kroków:
-- `docs/test-reports/full-regression-20260228-202901/SUMMARY.md`
+- `docs/test-reports/full-regression-20260228-204433/SUMMARY.md`
 
 Zawiera:
 - log per krok (setup, auth, import, backup, profile, random-ui, print, security, dependency, 10x fresh),

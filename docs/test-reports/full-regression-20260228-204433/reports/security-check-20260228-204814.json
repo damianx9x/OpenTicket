@@ -1,0 +1,35 @@
+{
+  "generatedAt": "2026-02-28T19:48:30.071Z",
+  "audits": {
+    "backend": {
+      "critical": 0,
+      "high": 2,
+      "moderate": 4,
+      "low": 20,
+      "total": 26
+    },
+    "frontend": {
+      "critical": 0,
+      "high": 1,
+      "moderate": 0,
+      "low": 0,
+      "total": 1
+    },
+    "desktop": {
+      "critical": 0,
+      "high": 0,
+      "moderate": 0,
+      "low": 0,
+      "total": 0
+    }
+  },
+  "riskyPatternMatches": 1302,
+  "goNoGo": {
+    "dependencies": true,
+    "codeScan": true
+  },
+  "notes": [
+    "Critical vulnerabilities should be resolved before release.",
+    "Review risky-patterns report manually for each release candidate."
+  ]
+}
