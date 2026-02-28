@@ -8,6 +8,7 @@ REPORT_DIR="$RUNTIME_DIR/reports"
 PID_DIR="$RUNTIME_DIR/pids"
 ENV_FILE="$RUNTIME_DIR/env"
 FALLBACK_TEST_LOG_DIR="$ROOT_DIR/Moj/testy/runtime/logs"
+FALLBACK_TEST_ENV_FILE="$ROOT_DIR/Moj/testy/runtime/env"
 mkdir -p "$REPORT_DIR" "$LOG_DIR" "$PID_DIR"
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -15,7 +16,7 @@ if [[ -f "$ENV_FILE" ]]; then
   source "$ENV_FILE"
 fi
 
-BACKEND_PORT="${BACKEND_PORT:-3000}"
+BACKEND_PORT="${BACKEND_PORT:-}"
 FRONTEND_PORT="${FRONTEND_PORT:-3001}"
 BACKEND_HEALTH_HOST="${BACKEND_HEALTH_HOST:-127.0.0.1}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@local.test}"
@@ -48,6 +49,42 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+probe_health_port() {
+  local host="$1"
+  shift
+  local candidate
+  for candidate in "$@"; do
+    [[ -z "$candidate" ]] && continue
+    if curl -sS --max-time 2 "http://${host}:${candidate}/api/v1/health" >/dev/null 2>&1; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+resolve_backend_port() {
+  if [[ -n "$BACKEND_PORT" ]]; then
+    echo "$BACKEND_PORT"
+    return 0
+  fi
+
+  if [[ -f "$FALLBACK_TEST_ENV_FILE" ]]; then
+    local test_port
+    test_port="$(awk -F= '/^PORT=/{print $2}' "$FALLBACK_TEST_ENV_FILE" | tail -n 1)"
+    if [[ -n "$test_port" ]]; then
+      BACKEND_PORT="$test_port"
+    fi
+  fi
+
+  if [[ -z "$BACKEND_PORT" ]]; then
+    BACKEND_PORT="$(probe_health_port "$BACKEND_HEALTH_HOST" 3000 3200 3001 || true)"
+  fi
+
+  BACKEND_PORT="${BACKEND_PORT:-3000}"
+  echo "$BACKEND_PORT"
+}
+
 safe_cmd() {
   local title="$1"
   shift
@@ -64,6 +101,8 @@ safe_cmd() {
   echo "root=$ROOT_DIR"
 } > "$REPORT_FILE"
 
+BACKEND_PORT="$(resolve_backend_port)"
+
 safe_cmd "System" uname -a
 safe_cmd "Node version" node -v
 safe_cmd "NPM version" npm -v
@@ -79,12 +118,35 @@ safe_cmd "Setup status" curl -i -sS -X POST "http://${BACKEND_HEALTH_HOST}:${BAC
 safe_cmd "System info" curl -i -sS "http://${BACKEND_HEALTH_HOST}:${BACKEND_PORT}/api/v1/system/info"
 
 AUTH_HEADER=""
-LOGIN_JSON="$(curl -sS -X POST "http://${BACKEND_HEALTH_HOST}:${BACKEND_PORT}/api/v1/auth/login" \
-  -H 'Content-Type: application/json' \
-  -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" || true)"
-AUTH_TOKEN="$(node -e 'try{const x=JSON.parse(process.argv[1]);process.stdout.write((x.data&&x.data.token)||x.token||"")}catch{process.stdout.write("")}' "$LOGIN_JSON" 2>/dev/null || true)"
-if [[ -n "$AUTH_TOKEN" ]]; then
-  AUTH_HEADER="Authorization: Bearer $AUTH_TOKEN"
+SETUP_STATUS_JSON="$(curl -sS -X POST "http://${BACKEND_HEALTH_HOST}:${BACKEND_PORT}/api/v1/setup/status" || true)"
+SETUP_CONFIGURED="$(node -e '
+try {
+  const x = JSON.parse(process.argv[1] || "{}");
+  const val =
+    x?.data?.isConfigured ??
+    x?.isConfigured ??
+    x?.configured ??
+    false;
+  process.stdout.write(val ? "1" : "0");
+} catch {
+  process.stdout.write("0");
+}
+' "$SETUP_STATUS_JSON" 2>/dev/null || true)"
+
+{
+  echo ""
+  echo "setup_configured=${SETUP_CONFIGURED:-0}"
+  echo "selected_backend_port=${BACKEND_PORT}"
+} >> "$REPORT_FILE"
+
+if [[ "$SETUP_CONFIGURED" == "1" ]]; then
+  LOGIN_JSON="$(curl -sS -X POST "http://${BACKEND_HEALTH_HOST}:${BACKEND_PORT}/api/v1/auth/login" \
+    -H 'Content-Type: application/json' \
+    -d "{\"email\":\"${ADMIN_EMAIL}\",\"password\":\"${ADMIN_PASSWORD}\"}" || true)"
+  AUTH_TOKEN="$(node -e 'try{const x=JSON.parse(process.argv[1]);process.stdout.write((x.data&&x.data.token)||x.token||"")}catch{process.stdout.write("")}' "$LOGIN_JSON" 2>/dev/null || true)"
+  if [[ -n "$AUTH_TOKEN" ]]; then
+    AUTH_HEADER="Authorization: Bearer $AUTH_TOKEN"
+  fi
 fi
 
 {
@@ -93,7 +155,7 @@ fi
   if [[ -n "$AUTH_HEADER" ]]; then
     curl -i -sS "http://${BACKEND_HEALTH_HOST}:${BACKEND_PORT}/api/v1/diagnostics/report" -H "$AUTH_HEADER" || true
   else
-    echo "No auth token available for diagnostics report (expected before setup/login)."
+    echo "No auth token available for diagnostics report (expected before setup/login or with wrong admin credentials)."
     curl -i -sS "http://${BACKEND_HEALTH_HOST}:${BACKEND_PORT}/api/v1/diagnostics/report" || true
   fi
 } >> "$REPORT_FILE"
