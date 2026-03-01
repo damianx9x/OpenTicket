@@ -22,6 +22,9 @@ interface Step1Props {
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
     demoTicketCount?: number;
+    autoBackupEnabled?: boolean;
+    autoBackupIntervalHours?: number;
+    autoBackupPath?: string;
   }) => void;
   defaultValue: string;
 }
@@ -31,6 +34,17 @@ interface Step1Props {
  * User selects where to store data files (SQLite, uploads, configs)
  */
 export function InitStep1({ onContinue, defaultValue }: Step1Props) {
+  const defaultBackupPathFor = (targetPath: string): string => {
+    const trimmed = targetPath.trim();
+    if (!trimmed) {
+      return '';
+    }
+    if (trimmed.includes('\\')) {
+      return `${trimmed.replace(/[\\]+$/, '')}\\backups\\auto`;
+    }
+    return `${trimmed.replace(/[\\/]+$/, '')}/backups/auto`;
+  };
+
   const getPlatformDefaultPath = (): string => {
     const platform = typeof navigator !== 'undefined' ? navigator.platform : 'unknown';
 
@@ -50,6 +64,10 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   const [existingBackupArchivePath, setExistingBackupArchivePath] = useState('');
   const [demoTicketCount, setDemoTicketCount] = useState<number>(200);
   const [remoteApiBaseUrl, setRemoteApiBaseUrl] = useState('http://127.0.0.1:3200');
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
+  const [autoBackupIntervalHours, setAutoBackupIntervalHours] = useState<number>(24);
+  const [autoBackupPath, setAutoBackupPath] = useState(defaultBackupPathFor(resolvedDefaultPath));
+  const [autoBackupPathTouched, setAutoBackupPathTouched] = useState(false);
   const [useDefault, setUseDefault] = useState(true);
   const [checkingPath, setCheckingPath] = useState(false);
   const [discoveringServers, setDiscoveringServers] = useState(false);
@@ -265,6 +283,14 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   };
 
   useEffect(() => {
+    if (autoBackupPathTouched) {
+      return;
+    }
+    const nextBase = useDefault ? resolvedDefaultPath : dataPath;
+    setAutoBackupPath(defaultBackupPathFor(nextBase));
+  }, [autoBackupPathTouched, dataPath, resolvedDefaultPath, useDefault]);
+
+  useEffect(() => {
     if (installationMode !== 'client_only') {
       return;
     }
@@ -306,6 +332,37 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     }
   };
 
+  const handleChooseBackupFolder = async () => {
+    const bridge =
+      typeof window !== 'undefined'
+        ? (window as any).electron || (window as any).electronAPI
+        : null;
+
+    if (bridge?.selectFolder) {
+      try {
+        const selected = await bridge.selectFolder();
+        if (selected) {
+          setAutoBackupPath(selected);
+          setAutoBackupPathTouched(true);
+          setPathFeedback({
+            type: 'info',
+            text: 'Folder backupu wybrany.',
+          });
+        }
+      } catch (error) {
+        setPathFeedback({
+          type: 'error',
+          text: `Nie udało się wybrać folderu backupu: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+        });
+      }
+    } else {
+      setPathFeedback({
+        type: 'info',
+        text: 'W trybie przeglądarki wpisz ścieżkę backupu ręcznie. W instalatorze działa natywny wybór folderu.',
+      });
+    }
+  };
+
   const handleContinue = async () => {
     if (installationMode === 'client_only') {
       const validatedRemote = await validateRemoteAddress({ showSuccess: false });
@@ -317,6 +374,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
         installationMode,
         dataPath: resolvedDefaultPath,
         remoteApiBaseUrl: validatedRemote,
+        autoBackupEnabled: false,
       });
       return;
     }
@@ -362,6 +420,18 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       }
     }
 
+    let validatedBackupPath = autoBackupPath.trim();
+    if (autoBackupEnabled) {
+      if (!validatedBackupPath) {
+        validatedBackupPath = defaultBackupPathFor(validatedPath);
+      }
+      const backupPathCheck = await runPathValidation(validatedBackupPath);
+      if (!backupPathCheck) {
+        return;
+      }
+      validatedBackupPath = backupPathCheck;
+    }
+
     onContinue({
       installationMode,
       dataPath: validatedPath,
@@ -369,6 +439,11 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       existingDatabasePath: existingDatabasePath.trim() || undefined,
       existingBackupArchivePath: existingBackupArchivePath.trim() || undefined,
       demoTicketCount: bootstrapMode === 'demo_dataset' ? Math.floor(Number(demoTicketCount) || 200) : undefined,
+      autoBackupEnabled,
+      autoBackupIntervalHours: autoBackupEnabled
+        ? Math.max(1, Math.min(168, Math.floor(Number(autoBackupIntervalHours) || 24)))
+        : undefined,
+      autoBackupPath: autoBackupEnabled ? validatedBackupPath : undefined,
     });
   };
 
@@ -772,6 +847,76 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
               </button>
             </div>
           )}
+
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-emerald-900">Automatyczny backup</p>
+              <label className="flex items-center gap-2 text-sm font-medium text-emerald-900">
+                <input
+                  type="checkbox"
+                  checked={autoBackupEnabled}
+                  onChange={(event) => setAutoBackupEnabled(event.target.checked)}
+                />
+                Włącz
+              </label>
+            </div>
+
+            {autoBackupEnabled ? (
+              <div className="space-y-2">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="text-xs font-semibold text-emerald-800">
+                    Co ile godzin
+                    <input
+                      type="number"
+                      min={1}
+                      max={168}
+                      value={autoBackupIntervalHours}
+                      onChange={(event) => setAutoBackupIntervalHours(Number(event.target.value))}
+                      className="mt-1 w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <div className="self-end text-xs text-emerald-800">
+                    Backup nadpisuje plik bieżący i zachowuje 1 kopię wstecz.
+                  </div>
+                </div>
+
+                <label className="text-xs font-semibold text-emerald-800">
+                  Folder backupu
+                  <input
+                    type="text"
+                    value={autoBackupPath}
+                    onChange={(event) => {
+                      setAutoBackupPath(event.target.value);
+                      setAutoBackupPathTouched(true);
+                    }}
+                    placeholder={defaultBackupPathFor(useDefault ? resolvedDefaultPath : dataPath)}
+                    className="mt-1 w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 font-mono text-sm"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleChooseBackupFolder}
+                    className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm text-emerald-800 hover:bg-emerald-100"
+                  >
+                    Wybierz folder backupu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runPathValidation(autoBackupPath)}
+                    disabled={checkingPath || autoBackupPath.trim().length === 0}
+                    className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+                  >
+                    Sprawdź uprawnienia folderu backupu
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-emerald-800">
+                Backup automatyczny wyłączony. Nadal możesz robić backup ręcznie z panelu Konfiguracja.
+              </p>
+            )}
+          </div>
         </div>
       )}
 

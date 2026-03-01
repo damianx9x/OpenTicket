@@ -40,6 +40,12 @@ export interface SystemSettings {
       webhookUrl?: string;
     };
   };
+  backup: {
+    enabled: boolean;
+    intervalHours: number;
+    targetPath: string;
+    keepPrevious: boolean;
+  };
 }
 
 export async function getPublicSettings() {

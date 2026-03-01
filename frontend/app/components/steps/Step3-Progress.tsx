@@ -14,6 +14,9 @@ interface Step3Props {
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
     demoTicketCount?: number;
+    autoBackupEnabled?: boolean;
+    autoBackupIntervalHours?: number;
+    autoBackupPath?: string;
     adminEmail: string;
     organizationName?: string;
   };
@@ -100,6 +103,17 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
               ) : null}
               {summary.bootstrapMode === 'backup_archive' && summary.existingBackupArchivePath ? (
                 <p className="mt-1 font-mono text-xs text-gray-600">{summary.existingBackupArchivePath}</p>
+              ) : null}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Automatyczny backup</p>
+              <p className="text-gray-900 text-sm mt-1">
+                {summary.autoBackupEnabled
+                  ? `Włączony co ${summary.autoBackupIntervalHours || 24}h`
+                  : 'Wyłączony'}
+              </p>
+              {summary.autoBackupEnabled && summary.autoBackupPath ? (
+                <p className="mt-1 font-mono text-xs text-gray-600">{summary.autoBackupPath}</p>
               ) : null}
             </div>
           </div>

@@ -16,9 +16,11 @@ const baseUrl = process.env.BASE_URL || 'http://127.0.0.1:3200';
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@local.test';
 const adminPassword = process.env.ADMIN_PASSWORD || 'DevLocal123!';
 const companyName = process.env.COMPANY_NAME || 'OpenTicket Demo Lab';
+const demoCount = Number(process.env.DEMO_COUNT || '200');
+const screenshotVersion = process.env.SCREENSHOT_VERSION || 'v0.4';
 
 const reportDir = path.join(rootDir, 'Moj', 'testy', 'runtime', 'reports');
-const screenshotsDir = path.join(rootDir, 'docs', 'screenshots', 'v0.3');
+const screenshotsDir = path.join(rootDir, 'docs', 'screenshots', screenshotVersion);
 const assetsDir = path.join(rootDir, 'Moj', 'testy', 'runtime', 'assets');
 fs.mkdirSync(reportDir, { recursive: true });
 fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -99,8 +101,8 @@ async function main() {
 
     const demoCountInput = page.locator('label:has-text("Liczba zgłoszeń demo") input[type="number"]').first();
     if ((await demoCountInput.count()) > 0) {
-      await demoCountInput.fill('200');
-      addCheck('setup-demo-count', true, '200');
+      await demoCountInput.fill(String(demoCount));
+      addCheck('setup-demo-count', true, String(demoCount));
     } else {
       addCheck('setup-demo-count', false, 'demo count input not found');
     }

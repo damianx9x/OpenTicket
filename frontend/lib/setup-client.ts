@@ -23,6 +23,9 @@ export interface SetupRequest {
   existingDatabasePath?: string;
   existingBackupArchivePath?: string;
   demoTicketCount?: number;
+  autoBackupEnabled?: boolean;
+  autoBackupIntervalHours?: number;
+  autoBackupPath?: string;
 }
 
 export interface ClientOnlySetupRequest {

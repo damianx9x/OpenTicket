@@ -23,6 +23,9 @@ export interface SetupWizardState {
   existingDatabasePath: string;
   existingBackupArchivePath: string;
   demoTicketCount: number;
+  autoBackupEnabled: boolean;
+  autoBackupIntervalHours: number;
+  autoBackupPath: string;
   adminEmail: string;
   adminPassword: string;
   organizationName: string;
@@ -53,6 +56,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     existingDatabasePath: '',
     existingBackupArchivePath: '',
     demoTicketCount: 200,
+    autoBackupEnabled: true,
+    autoBackupIntervalHours: 24,
+    autoBackupPath: '',
     adminEmail: '',
     adminPassword: '',
     organizationName: '',
@@ -85,6 +91,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
     demoTicketCount?: number;
+    autoBackupEnabled?: boolean;
+    autoBackupIntervalHours?: number;
+    autoBackupPath?: string;
   }) => {
     setState((prev) => ({
       ...prev,
@@ -98,6 +107,15 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
         payload.bootstrapMode === 'demo_dataset'
           ? Math.max(20, Math.min(1000, Math.floor(payload.demoTicketCount || 200)))
           : 200,
+      autoBackupEnabled:
+        payload.installationMode === 'client_only'
+          ? false
+          : payload.autoBackupEnabled ?? prev.autoBackupEnabled,
+      autoBackupIntervalHours:
+        payload.installationMode === 'client_only'
+          ? prev.autoBackupIntervalHours
+          : Math.max(1, Math.min(168, Math.floor(payload.autoBackupIntervalHours || prev.autoBackupIntervalHours || 24))),
+      autoBackupPath: payload.installationMode === 'client_only' ? '' : payload.autoBackupPath || prev.autoBackupPath || '',
       currentStep: payload.installationMode === 'client_only' ? 3 : 2,
       error: null,
     }));
@@ -134,6 +152,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
           existingDatabasePath: state.existingDatabasePath || undefined,
           existingBackupArchivePath: state.existingBackupArchivePath || undefined,
           demoTicketCount: state.bootstrapMode === 'demo_dataset' ? state.demoTicketCount : undefined,
+          autoBackupEnabled: state.autoBackupEnabled,
+          autoBackupIntervalHours: state.autoBackupIntervalHours,
+          autoBackupPath: state.autoBackupPath || undefined,
         };
         result = await initializeSystem(request);
       }
@@ -210,6 +231,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
       existingDatabasePath: '',
       existingBackupArchivePath: '',
       demoTicketCount: 200,
+      autoBackupEnabled: true,
+      autoBackupIntervalHours: 24,
+      autoBackupPath: '',
       adminEmail: '',
       adminPassword: '',
       organizationName: '',
@@ -283,6 +307,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
                 existingDatabasePath: state.existingDatabasePath,
                 existingBackupArchivePath: state.existingBackupArchivePath,
                 demoTicketCount: state.demoTicketCount,
+                autoBackupEnabled: state.autoBackupEnabled,
+                autoBackupIntervalHours: state.autoBackupIntervalHours,
+                autoBackupPath: state.autoBackupPath,
                 adminEmail: state.adminEmail,
                 organizationName: state.organizationName,
               }}

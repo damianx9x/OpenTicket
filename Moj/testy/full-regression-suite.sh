@@ -72,12 +72,14 @@ run_step "04-setup-import-smoke" "$ROOT_DIR/Moj/testy/setup-import-smoke.sh"
 run_step "05-setup-state-regression-smoke" "$ROOT_DIR/Moj/testy/setup-state-regression-smoke.sh"
 run_step "06-custom-path-backup-smoke" "$ROOT_DIR/Moj/testy/custom-path-backup-smoke.sh"
 run_step "07-backup-ui-smoke" "$ROOT_DIR/Moj/testy/backup-ui-smoke.sh"
-run_step "08-profile-ui-smoke" "$ROOT_DIR/Moj/testy/profile-ui-smoke.sh"
-run_step "09-ui-random-10-all-browsers" "$ROOT_DIR/Moj/testy/ui-random-10.sh" --all-browsers
-run_step "10-print-report-smoke" "$ROOT_DIR/Moj/testy/print-report-smoke.sh"
-run_step "11-security-check" "$ROOT_DIR/scripts/security-check.sh"
-run_step "12-dependency-deep-check" "$ROOT_DIR/scripts/dependency-deep-check.sh"
-run_step "13-fresh-10x-smoke" "$ROOT_DIR/Moj/testy/fresh-10x-smoke.sh"
+run_step "08-auto-backup-smoke" "$ROOT_DIR/Moj/testy/auto-backup-smoke.sh"
+run_step "09-profile-ui-smoke" "$ROOT_DIR/Moj/testy/profile-ui-smoke.sh"
+run_step "10-client-connect-installed-server" "$ROOT_DIR/Moj/testy/client-connect-installed-server.sh"
+run_step "11-ui-random-10-all-browsers" "$ROOT_DIR/Moj/testy/ui-random-10.sh" --all-browsers
+run_step "12-print-report-smoke" "$ROOT_DIR/Moj/testy/print-report-smoke.sh"
+run_step "13-security-check" "$ROOT_DIR/scripts/security-check.sh"
+run_step "14-dependency-deep-check" "$ROOT_DIR/scripts/dependency-deep-check.sh"
+run_step "15-fresh-10x-smoke" "$ROOT_DIR/Moj/testy/fresh-10x-smoke.sh"
 
 SUMMARY_MD="$OUT_DIR/SUMMARY.md"
 {

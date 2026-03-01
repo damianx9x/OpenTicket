@@ -1,0 +1,14 @@
+{
+  "name": "setup-state-regression-smoke",
+  "status": "PASS",
+  "createdAt": "2026-03-01T15:34:18.514Z",
+  "port": 3213,
+  "dataPath": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/setup-state-regression/data",
+  "logFile": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/setup-state-regression/backend.log",
+  "checks": {
+    "statusBefore": "{\"data\":{\"isSetup\":false,\"setupMode\":true,\"defaultDataPath\":\"/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/setup-state-regression/data\",\"installationMode\":\"server_client\"}}",
+    "statusAfterImport": "{\"data\":{\"isSetup\":true,\"setupMode\":false,\"defaultDataPath\":\"/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/setup-state-regression/data\",\"installationMode\":\"server_client\"}}",
+    "statusAfterDbDelete": "{\"data\":{\"isSetup\":false,\"setupMode\":true,\"defaultDataPath\":\"/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/setup-state-regression/data\",\"installationMode\":\"server_client\"}}",
+    "clientOnlyAttempt": "{\"success\":false,\"message\":\"System is already configured. Cannot re-initialize.\"}"
+  }
+}

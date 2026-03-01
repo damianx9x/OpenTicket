@@ -54,7 +54,8 @@ Po pierwszym uruchomieniu, w kreatorze setup (krok 1) wybierasz:
 - `Nowa baza` (czysta instalacja),
 - `Import istniejącej bazy app.db`,
 - `Import backupu .tar.gz`,
-- `Baza demo` (automatyczny seed realistycznych zgłoszeń, np. 200).
+- `Baza demo` (automatyczny seed realistycznych zgłoszeń, np. 500).
+- `Auto-backup` (interwał + folder backupu, rotacja current/previous).
 
 W trybie `Sam klient`:
 - przycisk `Wyszukaj w LAN` automatycznie szuka serwera w sieci lokalnej,

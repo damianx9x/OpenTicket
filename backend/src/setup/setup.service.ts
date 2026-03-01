@@ -70,6 +70,9 @@ export class SetupService {
       const existingDatabasePath = this.resolveOptionalAbsolutePath(request.existingDatabasePath);
       const existingBackupArchivePath = this.resolveOptionalAbsolutePath(request.existingBackupArchivePath);
       const demoTicketCount = this.normalizeDemoTicketCount(request.demoTicketCount);
+      const autoBackupEnabled = this.normalizeAutoBackupEnabled(request.autoBackupEnabled);
+      const autoBackupIntervalHours = this.normalizeAutoBackupIntervalHours(request.autoBackupIntervalHours);
+      const autoBackupPath = this.resolveAutoBackupPath(request.autoBackupPath, dataPath);
 
       if (bootstrapMode === 'existing_db' && !existingDatabasePath) {
         throw new Error('Wybrano import istniejącej bazy, ale nie podano ścieżki do pliku app.db.');
@@ -86,6 +89,14 @@ export class SetupService {
       if (!fs.existsSync(uploadsPath)) {
         fs.mkdirSync(uploadsPath, { recursive: true });
         this.logger.log(`Created uploads directory: ${uploadsPath}`);
+      }
+
+      if (autoBackupEnabled) {
+        const backupPathValidation = this.validateDataPath(autoBackupPath);
+        if (!backupPathValidation.ok) {
+          throw new Error(backupPathValidation.error || 'Wybrana lokalizacja backupu jest nieprawidłowa.');
+        }
+        fs.mkdirSync(backupPathValidation.resolvedPath, { recursive: true });
       }
 
       process.env.DATABASE_URL = dbUrl;
@@ -141,7 +152,11 @@ export class SetupService {
         }
       }
 
-      await this.ensureDefaultSystemSettings(prisma, request.organizationName);
+      await this.ensureDefaultSystemSettings(prisma, request.organizationName, {
+        enabled: autoBackupEnabled,
+        intervalHours: autoBackupIntervalHours,
+        targetPath: autoBackupPath,
+      });
 
       await prisma.$disconnect();
 
@@ -692,6 +707,11 @@ export class SetupService {
   private async ensureDefaultSystemSettings(
     prisma: PrismaClient,
     organizationName?: string,
+    backupDefaults?: {
+      enabled: boolean;
+      intervalHours: number;
+      targetPath: string;
+    },
   ): Promise<void> {
     const settings = {
       branding: {
@@ -728,6 +748,12 @@ export class SetupService {
           sender: '',
           webhookUrl: '',
         },
+      },
+      backup: {
+        enabled: backupDefaults?.enabled ?? true,
+        intervalHours: backupDefaults?.intervalHours ?? 24,
+        targetPath: backupDefaults?.targetPath || '',
+        keepPrevious: true,
       },
     };
 
@@ -789,6 +815,29 @@ export class SetupService {
       return 200;
     }
     return Math.min(1000, Math.max(20, Math.floor(parsed)));
+  }
+
+  private normalizeAutoBackupEnabled(rawEnabled?: boolean): boolean {
+    if (typeof rawEnabled === 'boolean') {
+      return rawEnabled;
+    }
+    return true;
+  }
+
+  private normalizeAutoBackupIntervalHours(rawInterval?: number): number {
+    const parsed = Number(rawInterval ?? 24);
+    if (!Number.isFinite(parsed)) {
+      return 24;
+    }
+    return Math.min(168, Math.max(1, Math.floor(parsed)));
+  }
+
+  private resolveAutoBackupPath(inputPath: string | undefined, dataPath: string): string {
+    const fallback = path.join(dataPath, 'backups', 'auto');
+    if (!inputPath || inputPath.trim().length === 0) {
+      return fallback;
+    }
+    return this.resolveDataPath(inputPath.trim());
   }
 
   private resolveOptionalAbsolutePath(inputPath?: string): string | null {

@@ -63,7 +63,14 @@ import {
   type UserNote,
 } from '@/lib/users-client';
 import { getStatisticsOverview, type StatisticsOverview } from '@/lib/statistics-client';
-import { exportBackup, importBackupByPath, importBackupFromFile } from '@/lib/backup-client';
+import {
+  exportBackup,
+  getAutoBackupStatus,
+  importBackupByPath,
+  importBackupFromFile,
+  runAutoBackupNow,
+  type AutoBackupStatus,
+} from '@/lib/backup-client';
 import {
   getAdminSettings,
   sendTestEmail,
@@ -393,6 +400,20 @@ function renderCheckStatus(check?: { ok: boolean; reason?: string; skipped?: boo
   return `BŁĄD (${humanizeCheckReason(check.reason)})`;
 }
 
+function normalizeSystemSettings(input: SystemSettings): SystemSettings {
+  return {
+    ...input,
+    backup: {
+      enabled: typeof input.backup?.enabled === 'boolean' ? input.backup.enabled : true,
+      intervalHours: Number.isFinite(Number(input.backup?.intervalHours))
+        ? Math.max(1, Math.min(168, Math.floor(Number(input.backup?.intervalHours))))
+        : 24,
+      targetPath: String(input.backup?.targetPath || ''),
+      keepPrevious: typeof input.backup?.keepPrevious === 'boolean' ? input.backup.keepPrevious : true,
+    },
+  };
+}
+
 export default function DashboardPage() {
   const [bootLoading, setBootLoading] = useState(true);
   const [activeNav, setActiveNav] = useState<NavItemId>('tickets');
@@ -469,6 +490,8 @@ export default function DashboardPage() {
   const [signupCode, setSignupCode] = useState('');
   const [backupPath, setBackupPath] = useState('');
   const [backupFileToImport, setBackupFileToImport] = useState<File | null>(null);
+  const [autoBackupStatus, setAutoBackupStatus] = useState<AutoBackupStatus | null>(null);
+  const [autoBackupLoading, setAutoBackupLoading] = useState(false);
   const [loadingDemoDataset, setLoadingDemoDataset] = useState(false);
   const [costCatalog, setCostCatalog] = useState<CostCatalogItem[]>([]);
   const [costCatalogSaving, setCostCatalogSaving] = useState(false);
@@ -1241,7 +1264,7 @@ export default function DashboardPage() {
   const loadSettings = async () => {
     setSettingsLoading(true);
     try {
-      const next = await getAdminSettings();
+      const next = normalizeSystemSettings(await getAdminSettings());
       setSettings(next);
       const language = normalizeLanguage(next.uiDefaults?.language);
       setUiLanguage(language);
@@ -1264,6 +1287,18 @@ export default function DashboardPage() {
       setCostCatalog(Array.isArray(catalog) ? catalog : []);
     } catch {
       setCostCatalog([]);
+    }
+  };
+
+  const loadAutoBackupStatus = async () => {
+    setAutoBackupLoading(true);
+    try {
+      const status = await getAutoBackupStatus();
+      setAutoBackupStatus(status);
+    } catch {
+      setAutoBackupStatus(null);
+    } finally {
+      setAutoBackupLoading(false);
     }
   };
 
@@ -1627,7 +1662,7 @@ export default function DashboardPage() {
     } else if (activeNav === 'users') {
       void loadUsers();
     } else if (activeNav === 'vat' && isAdmin) {
-      void Promise.all([loadSettings(), loadCostCatalogData()]);
+      void Promise.all([loadSettings(), loadCostCatalogData(), loadAutoBackupStatus()]);
     } else if (activeNav === 'server' && isAdmin) {
       void loadServerStatus();
       void loadUpdateStatus();
@@ -2164,6 +2199,32 @@ export default function DashboardPage() {
     }
   };
 
+  const handleRunAutoBackupNow = async () => {
+    if (!isAdmin) {
+      notify({ type: 'error', text: 'Wymuszenie auto-backupu wymaga roli ADMIN.' });
+      return;
+    }
+    try {
+      const result = await runAutoBackupNow();
+      await loadAutoBackupStatus();
+      if (result.success) {
+        notify({
+          type: 'success',
+          text: result.currentPath
+            ? `Auto-backup wykonany: ${result.currentPath}`
+            : 'Auto-backup wykonany poprawnie.',
+        });
+      } else {
+        notify({ type: 'error', text: result.message || 'Auto-backup nie został wykonany.' });
+      }
+    } catch (error) {
+      notify({
+        type: 'error',
+        text: `Auto-backup nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    }
+  };
+
   const handleImportBackupByPath = async () => {
     if (!isAdmin) {
       notify({ type: 'error', text: 'Import backupu wymaga roli ADMIN.' });
@@ -2260,13 +2321,14 @@ export default function DashboardPage() {
   const handleSaveSettings = async () => {
     if (!settings) return;
     try {
-      const saved = await updateAdminSettings(settings);
+      const saved = normalizeSystemSettings(await updateAdminSettings(settings));
       setSettings(saved);
       const lang = normalizeLanguage(saved.uiDefaults?.language);
       setUiLanguage(lang);
       if (typeof window !== 'undefined') {
         window.localStorage.setItem('ts_ui_language', lang);
       }
+      await loadAutoBackupStatus();
       notify({ type: 'success', text: 'Konfiguracja została zapisana.' });
     } catch (error) {
       notify({
@@ -5419,6 +5481,141 @@ export default function DashboardPage() {
                     >
                       {loadingDemoDataset ? 'Wczytywanie...' : 'Wczytaj bazę demo (200 zgłoszeń)'}
                     </button>
+                  </div>
+                </div>
+
+                <div className="ticket-surface rounded-xl border border-slate-100 p-5">
+                  <h2 className="mb-3 text-lg font-semibold text-slate-900">Automatyczne backupy</h2>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings?.backup?.enabled)}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    backup: {
+                                      ...prev.backup,
+                                      enabled: event.target.checked,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                        Włącz automatyczny backup
+                      </label>
+
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Interwał (godziny)
+                        <input
+                          type="number"
+                          min={1}
+                          max={168}
+                          value={settings?.backup?.intervalHours || 24}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    backup: {
+                                      ...prev.backup,
+                                      intervalHours: Math.max(1, Math.min(168, Number(event.target.value) || 24)),
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                        />
+                      </label>
+
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Folder backupu auto
+                        <input
+                          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono"
+                          placeholder="/ścieżka/do/backup/auto"
+                          value={settings?.backup?.targetPath || ''}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    backup: {
+                                      ...prev.backup,
+                                      targetPath: event.target.value,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                      </label>
+
+                      <label className="flex items-center gap-2 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(settings?.backup?.keepPrevious)}
+                          onChange={(event) =>
+                            setSettings((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    backup: {
+                                      ...prev.backup,
+                                      keepPrevious: event.target.checked,
+                                    },
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                        Zachowaj 1 kopię wstecz (`previous`)
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleRunAutoBackupNow()}
+                        disabled={!isAdmin || autoBackupLoading}
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {autoBackupLoading ? 'Odświeżanie statusu...' : 'Uruchom auto-backup teraz'}
+                      </button>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <p>
+                        <strong>Status:</strong>{' '}
+                        {autoBackupStatus?.enabled ? 'Aktywny' : 'Wyłączony'}
+                        {autoBackupStatus?.running ? ' (trwa)' : ''}
+                      </p>
+                      <p>
+                        <strong>Ostatni backup:</strong>{' '}
+                        {autoBackupStatus?.lastRunAt ? formatDate(autoBackupStatus.lastRunAt) : '-'}
+                      </p>
+                      <p>
+                        <strong>Następny backup:</strong>{' '}
+                        {autoBackupStatus?.nextRunAt ? formatDate(autoBackupStatus.nextRunAt) : '-'}
+                      </p>
+                      <p className="break-all">
+                        <strong>Current:</strong> {autoBackupStatus?.lastArchivePath || '-'}
+                      </p>
+                      <p className="break-all">
+                        <strong>Previous:</strong> {autoBackupStatus?.previousArchivePath || '-'}
+                      </p>
+                      {autoBackupStatus?.lastError ? (
+                        <p className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                          Ostatni błąd: {autoBackupStatus.lastError}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-slate-500">
+                          Rotacja: nowy backup nadpisuje `current`, a poprzedni trafia do `previous`.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
 

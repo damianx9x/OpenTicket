@@ -44,6 +44,18 @@ export class BackupController {
     return res.download(filePath);
   }
 
+  @Get('auto-status')
+  @ApiOperation({ summary: 'Status automatycznych backupów' })
+  async autoStatus() {
+    return this.backupService.getAutoBackupStatus();
+  }
+
+  @Post('auto-run')
+  @ApiOperation({ summary: 'Wymuś natychmiastowy automatyczny backup' })
+  async autoRun(@CurrentUser() user: AuthenticatedUser) {
+    return this.backupService.runAutoBackupNow(`manual:${user.id}`);
+  }
+
   @Post('import-path')
   @ApiOperation({ summary: 'Import backupu ze ścieżki lokalnej serwera' })
   async importByPath(@Body() body: { archivePath?: string }) {

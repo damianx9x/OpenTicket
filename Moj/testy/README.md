@@ -106,6 +106,26 @@ Raport:
 ./Moj/testy/runtime/reports/backup-ui-smoke-*.json
 ```
 
+## Test auto-backupu (interwał + rotacja current/previous)
+```bash
+./Moj/testy/auto-backup-smoke.sh
+```
+Zakres:
+- setup z konfiguracją auto-backupu,
+- odczyt statusu auto-backupu przez API,
+- 2x uruchomienie auto-backupu,
+- walidacja rotacji (`openticket-auto-backup.current.tar.gz` + `.previous.tar.gz`).
+
+## Test klient→serwer (osobne runtime)
+```bash
+./Moj/testy/client-connect-installed-server.sh
+```
+Zakres:
+- start instancji serwera i instancji klienta na osobnych portach,
+- setup serwera + utworzenie zgłoszenia,
+- setup klienta w trybie `client_only`,
+- logowanie przez UI klienta i walidacja, że widzi dane z serwera.
+
 ## Test drukowania raportu statystyk (bez popup-blockera)
 ```bash
 ./Moj/testy/print-report-smoke.sh
@@ -176,15 +196,15 @@ Raport:
 ```
 
 Screenshoty:
-- `docs/screenshots/v0.3/setup-step1-demo.png`
-- `docs/screenshots/v0.3/setup-step2-admin.png`
-- `docs/screenshots/v0.3/setup-step3-review.png`
-- `docs/screenshots/v0.3/setup-step4-complete.png`
-- `docs/screenshots/v0.3/dashboard-theme-graphite.png`
-- `docs/screenshots/v0.3/dashboard-theme-emerald.png`
-- `docs/screenshots/v0.3/dashboard-theme-cupertino.png`
-- `docs/screenshots/v0.3/settings-logo-custom.png`
-- `docs/screenshots/v0.3/dashboard-filters-preset.png`
+- `docs/screenshots/v0.4/setup-step1-demo.png`
+- `docs/screenshots/v0.4/setup-step2-admin.png`
+- `docs/screenshots/v0.4/setup-step3-review.png`
+- `docs/screenshots/v0.4/setup-step4-complete.png`
+- `docs/screenshots/v0.4/dashboard-theme-graphite.png`
+- `docs/screenshots/v0.4/dashboard-theme-emerald.png`
+- `docs/screenshots/v0.4/dashboard-theme-cupertino.png`
+- `docs/screenshots/v0.4/settings-logo-custom.png`
+- `docs/screenshots/v0.4/dashboard-filters-preset.png`
 
 ## Pełna macierz regresji (archiwizuje logi i raporty)
 ```bash
@@ -195,17 +215,23 @@ Wynik zapisuje się do:
 docs/test-reports/full-regression-<timestamp>/SUMMARY.md
 ```
 
-## Aktualizacja screenshotów release (demo 200)
+## Aktualizacja screenshotów release (demo 500)
 ```bash
 ./Moj/testy/capture-release-screenshots.sh
 ```
 Aktualizuje:
-- `docs/screenshots/v0.3/dashboard-chromium.png`
-- `docs/screenshots/v0.3/ticket-modal-chromium.png`
-- `docs/screenshots/v0.3/statistics-chromium.png`
-- `docs/screenshots/v0.3/users-chromium.png`
-- `docs/screenshots/v0.3/settings-chromium.png`
-- `docs/screenshots/v0.3/server-chromium.png`
+- `docs/screenshots/v0.4/dashboard-chromium.png`
+- `docs/screenshots/v0.4/ticket-modal-chromium.png`
+- `docs/screenshots/v0.4/statistics-chromium.png`
+- `docs/screenshots/v0.4/users-chromium.png`
+- `docs/screenshots/v0.4/settings-chromium.png`
+- `docs/screenshots/v0.4/server-chromium.png`
+
+Do wymuszenia innej liczby rekordów demo / folderu screenshotów:
+```bash
+DEMO_COUNT=500 SCREENSHOT_VERSION=v0.4 ./Moj/testy/capture-release-screenshots.sh
+DEMO_COUNT=500 SCREENSHOT_VERSION=v0.4 ./Moj/testy/full-install-usage-smoke.sh
+```
 
 ## Stop
 ```bash

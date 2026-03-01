@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigLoaderService } from '../config/config-loader.service';
 import { PrismaService } from '../prisma/prisma.service';
 import * as fs from 'fs';
@@ -19,15 +19,37 @@ type ResolvedRuntimePaths = {
   checkedDbCandidates: string[];
 };
 
+type AutoBackupState = {
+  lastRunAt?: string;
+  nextRunAt?: string;
+  lastArchivePath?: string;
+  previousArchivePath?: string | null;
+  lastError?: string | null;
+  lastTrigger?: string | null;
+};
+
 @Injectable()
-export class BackupService {
+export class BackupService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BackupService.name);
   private readonly maxArchiveBytes = 2 * 1024 * 1024 * 1024;
+  private autoBackupTimer: NodeJS.Timeout | null = null;
+  private autoBackupRunning = false;
 
   constructor(
     private readonly configLoader: ConfigLoaderService,
     private readonly prisma: PrismaService,
   ) {}
+
+  onModuleInit(): void {
+    this.startAutoBackupLoop();
+  }
+
+  onModuleDestroy(): void {
+    if (this.autoBackupTimer) {
+      clearInterval(this.autoBackupTimer);
+      this.autoBackupTimer = null;
+    }
+  }
 
   async exportBackup(actorUserId: string) {
     const runtime = await this.resolveRuntimePaths();
@@ -113,6 +135,83 @@ export class BackupService {
     } finally {
       fs.rmSync(stageDir, { recursive: true, force: true });
     }
+  }
+
+  async runAutoBackupNow(trigger = 'manual'): Promise<{
+    success: boolean;
+    currentPath?: string;
+    previousPath?: string | null;
+    message: string;
+  }> {
+    if (this.autoBackupRunning) {
+      return { success: false, message: 'Auto-backup jest już w trakcie wykonywania.' };
+    }
+
+    this.autoBackupRunning = true;
+    try {
+      const decision = await this.shouldRunAutoBackup(true);
+      if (!decision.enabled) {
+        await this.writeAutoBackupState({
+          ...decision.state,
+          lastError: 'auto-backup-disabled',
+          lastTrigger: trigger,
+        });
+        return { success: false, message: 'Auto-backup jest wyłączony w konfiguracji.' };
+      }
+
+      const result = await this.executeAutoBackupRotation({
+        targetDir: decision.targetDir,
+        keepPrevious: decision.keepPrevious,
+      });
+      await this.writeAutoBackupState({
+        lastRunAt: new Date().toISOString(),
+        nextRunAt: new Date(Date.now() + decision.intervalHours * 60 * 60 * 1000).toISOString(),
+        lastArchivePath: result.currentPath,
+        previousArchivePath: result.previousPath || null,
+        lastError: null,
+        lastTrigger: trigger,
+      });
+
+      return {
+        success: true,
+        currentPath: result.currentPath,
+        previousPath: result.previousPath,
+        message: 'Auto-backup wykonany poprawnie.',
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const now = new Date();
+      await this.writeAutoBackupState({
+        lastRunAt: now.toISOString(),
+        nextRunAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+        lastError: reason,
+        lastTrigger: trigger,
+      });
+      throw error;
+    } finally {
+      this.autoBackupRunning = false;
+    }
+  }
+
+  async getAutoBackupStatus(): Promise<Record<string, unknown>> {
+    const decision = await this.shouldRunAutoBackup(false);
+    const now = new Date();
+    const nextRunAt = decision.state.nextRunAt ? new Date(decision.state.nextRunAt) : null;
+    return {
+      enabled: decision.enabled,
+      intervalHours: decision.intervalHours,
+      targetPath: decision.targetDir,
+      keepPrevious: decision.keepPrevious,
+      running: this.autoBackupRunning,
+      lastRunAt: decision.state.lastRunAt || null,
+      nextRunAt: decision.state.nextRunAt || null,
+      lastArchivePath: decision.state.lastArchivePath || null,
+      previousArchivePath: decision.state.previousArchivePath || null,
+      lastError: decision.state.lastError || null,
+      lastTrigger: decision.state.lastTrigger || null,
+      dueNow: Boolean(nextRunAt && nextRunAt.getTime() <= now.getTime()),
+      skippedReason: decision.enabled ? null : 'disabled',
+    };
   }
 
   async importBackupByPath(archivePath: string) {
@@ -281,6 +380,207 @@ export class BackupService {
         }
       }
     }
+  }
+
+  private startAutoBackupLoop(): void {
+    if (this.autoBackupTimer) {
+      clearInterval(this.autoBackupTimer);
+      this.autoBackupTimer = null;
+    }
+
+    const tick = () => {
+      void this.runAutoBackupTick().catch((error) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Auto-backup tick failed: ${reason}`);
+      });
+    };
+
+    this.autoBackupTimer = setInterval(tick, 60_000);
+    this.autoBackupTimer.unref?.();
+    setTimeout(tick, 12_000).unref?.();
+  }
+
+  private async runAutoBackupTick(): Promise<void> {
+    if (this.autoBackupRunning) {
+      return;
+    }
+
+    const config = this.configLoader.getConfigSync();
+    if (!config || config.setupMode || config.installationMode === 'client_only') {
+      return;
+    }
+
+    const decision = await this.shouldRunAutoBackup(false);
+    if (!decision.enabled || !decision.due) {
+      return;
+    }
+
+    this.autoBackupRunning = true;
+    try {
+      const result = await this.executeAutoBackupRotation({
+        targetDir: decision.targetDir,
+        keepPrevious: decision.keepPrevious,
+      });
+      await this.writeAutoBackupState({
+        lastRunAt: new Date().toISOString(),
+        nextRunAt: new Date(Date.now() + decision.intervalHours * 60 * 60 * 1000).toISOString(),
+        lastArchivePath: result.currentPath,
+        previousArchivePath: result.previousPath || null,
+        lastError: null,
+        lastTrigger: 'interval',
+      });
+      this.logger.log(`Auto-backup completed: ${result.currentPath}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const now = new Date();
+      await this.writeAutoBackupState({
+        lastRunAt: now.toISOString(),
+        nextRunAt: new Date(now.getTime() + 15 * 60 * 1000).toISOString(),
+        lastError: reason,
+        lastTrigger: 'interval',
+      });
+      this.logger.warn(`Auto-backup failed: ${reason}`);
+    } finally {
+      this.autoBackupRunning = false;
+    }
+  }
+
+  private async shouldRunAutoBackup(forceNow: boolean): Promise<{
+    enabled: boolean;
+    due: boolean;
+    intervalHours: number;
+    targetDir: string;
+    keepPrevious: boolean;
+    state: AutoBackupState;
+  }> {
+    const runtime = await this.resolveRuntimePaths();
+    const settings = await this.readBackupSettings(runtime);
+    const state = await this.readAutoBackupState();
+    if (!forceNow && settings.enabled && !state.nextRunAt) {
+      const firstNext = new Date(Date.now() + settings.intervalHours * 60 * 60 * 1000).toISOString();
+      const initialized = {
+        ...state,
+        nextRunAt: firstNext,
+        lastTrigger: state.lastTrigger || 'bootstrap',
+      };
+      await this.writeAutoBackupState(initialized);
+      return {
+        enabled: settings.enabled,
+        due: false,
+        intervalHours: settings.intervalHours,
+        targetDir: settings.targetPath,
+        keepPrevious: settings.keepPrevious,
+        state: initialized,
+      };
+    }
+    const now = Date.now();
+    const nextRunAt = state.nextRunAt ? new Date(state.nextRunAt).getTime() : 0;
+    const due = forceNow || !nextRunAt || nextRunAt <= now;
+    return {
+      enabled: settings.enabled,
+      due,
+      intervalHours: settings.intervalHours,
+      targetDir: settings.targetPath,
+      keepPrevious: settings.keepPrevious,
+      state,
+    };
+  }
+
+  private async readBackupSettings(runtime: ResolvedRuntimePaths): Promise<{
+    enabled: boolean;
+    intervalHours: number;
+    targetPath: string;
+    keepPrevious: boolean;
+  }> {
+    const fallback = {
+      enabled: true,
+      intervalHours: 24,
+      targetPath: path.join(runtime.dataPath, 'backups', 'auto'),
+      keepPrevious: true,
+    };
+
+    try {
+      const row = await this.prisma.appSetting.findUnique({
+        where: { key: 'system.settings' },
+        select: { value: true },
+      });
+      if (!row?.value) {
+        return fallback;
+      }
+
+      const parsed = JSON.parse(row.value) as Record<string, any>;
+      const candidate = (parsed?.backup || {}) as Record<string, any>;
+      const enabled = typeof candidate.enabled === 'boolean' ? candidate.enabled : fallback.enabled;
+      const intervalHoursRaw = Number(candidate.intervalHours ?? fallback.intervalHours);
+      const intervalHours = Number.isFinite(intervalHoursRaw)
+        ? Math.min(168, Math.max(1, Math.floor(intervalHoursRaw)))
+        : fallback.intervalHours;
+      const targetPathRaw = String(candidate.targetPath || '').trim();
+      const targetPath = targetPathRaw ? path.resolve(targetPathRaw) : fallback.targetPath;
+      const keepPrevious = typeof candidate.keepPrevious === 'boolean' ? candidate.keepPrevious : true;
+      return { enabled, intervalHours, targetPath, keepPrevious };
+    } catch {
+      return fallback;
+    }
+  }
+
+  private async executeAutoBackupRotation(params: {
+    targetDir: string;
+    keepPrevious: boolean;
+  }): Promise<{ currentPath: string; previousPath: string | null }> {
+    const exportResult = await this.exportBackup('system:auto');
+    const targetDir = path.resolve(params.targetDir);
+    fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
+    const currentPath = path.join(targetDir, 'openticket-auto-backup.current.tar.gz');
+    const previousPath = path.join(targetDir, 'openticket-auto-backup.previous.tar.gz');
+    const tempPath = path.join(targetDir, `openticket-auto-backup.tmp.${Date.now()}.tar.gz`);
+
+    fs.copyFileSync(exportResult.archivePath, tempPath);
+
+    if (params.keepPrevious) {
+      fs.rmSync(previousPath, { force: true });
+      if (fs.existsSync(currentPath)) {
+        fs.renameSync(currentPath, previousPath);
+      }
+    } else {
+      fs.rmSync(currentPath, { force: true });
+      fs.rmSync(previousPath, { force: true });
+    }
+
+    fs.renameSync(tempPath, currentPath);
+
+    if (path.resolve(exportResult.archivePath) !== path.resolve(currentPath)) {
+      fs.rmSync(exportResult.archivePath, { force: true });
+    }
+
+    return {
+      currentPath,
+      previousPath: params.keepPrevious && fs.existsSync(previousPath) ? previousPath : null,
+    };
+  }
+
+  private async readAutoBackupState(): Promise<AutoBackupState> {
+    try {
+      const row = await this.prisma.appSetting.findUnique({
+        where: { key: 'backup.auto.state.v1' },
+        select: { value: true },
+      });
+      if (!row?.value) {
+        return {};
+      }
+      const parsed = JSON.parse(row.value) as AutoBackupState;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private async writeAutoBackupState(state: AutoBackupState): Promise<void> {
+    await this.prisma.appSetting.upsert({
+      where: { key: 'backup.auto.state.v1' },
+      update: { value: JSON.stringify(state) },
+      create: { key: 'backup.auto.state.v1', value: JSON.stringify(state) },
+    });
   }
 
   private async resolveRuntimePaths(): Promise<ResolvedRuntimePaths> {

@@ -16,7 +16,9 @@ const baseUrl = process.env.BASE_URL || 'http://127.0.0.1:3200';
 const apiBase = `${baseUrl}/api/v1`;
 const adminEmail = process.env.ADMIN_EMAIL || 'admin@local.test';
 const adminPassword = process.env.ADMIN_PASSWORD || 'DevLocal123!';
-const outDir = path.join(rootDir, 'docs', 'screenshots', 'v0.3');
+const demoCount = Number(process.env.DEMO_COUNT || '500');
+const screenshotVersion = process.env.SCREENSHOT_VERSION || 'v0.4';
+const outDir = path.join(rootDir, 'docs', 'screenshots', screenshotVersion);
 fs.mkdirSync(outDir, { recursive: true });
 
 async function apiJson(pathname, init) {
@@ -68,7 +70,7 @@ async function ensureSetupAndDemo() {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ count: 200, reset: true }),
+    body: JSON.stringify({ count: Math.max(20, Math.min(1000, Math.floor(demoCount))), reset: true }),
   });
 }
 
@@ -137,7 +139,7 @@ async function main() {
     await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(outDir, 'server-chromium.png'), fullPage: true });
 
-    console.log('[screens] Updated screenshots in docs/screenshots/v0.3');
+    console.log(`[screens] Updated screenshots in docs/screenshots/${screenshotVersion}`);
   } finally {
     await context.close();
     await browser.close();

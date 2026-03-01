@@ -40,6 +40,7 @@ export class SettingsService {
         email: { ...current.integrations.email, ...(patch.integrations?.email || {}) },
         sms: { ...current.integrations.sms, ...(patch.integrations?.sms || {}) },
       },
+      backup: { ...current.backup, ...(patch.backup || {}) },
     });
 
     await this.prisma.appSetting.upsert({
@@ -150,6 +151,10 @@ export class SettingsService {
           ...DEFAULT_SYSTEM_SETTINGS.integrations.sms,
           ...(candidate.integrations?.sms || {}),
         },
+      },
+      backup: {
+        ...DEFAULT_SYSTEM_SETTINGS.backup,
+        ...(candidate.backup || {}),
       },
     };
   }

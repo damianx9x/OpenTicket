@@ -38,6 +38,12 @@ export interface SystemSettings {
       webhookUrl?: string;
     };
   };
+  backup: {
+    enabled: boolean;
+    intervalHours: number;
+    targetPath: string;
+    keepPrevious: boolean;
+  };
 }
 
 export interface CostCatalogItem {
@@ -85,5 +91,11 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
       provider: 'webhook',
       sender: '',
     },
+  },
+  backup: {
+    enabled: true,
+    intervalHours: 24,
+    targetPath: '',
+    keepPrevious: true,
   },
 };
