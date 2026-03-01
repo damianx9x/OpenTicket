@@ -1,0 +1,9 @@
+{
+  "name": "custom-path-backup-smoke",
+  "status": "PASS",
+  "createdAt": "2026-03-01T19:36:39.986Z",
+  "port": 3212,
+  "dataPath": "/Users/icex/Library/Application Support/openticket-desktop/data",
+  "archivePath": "/Users/icex/Library/Application Support/openticket-desktop/data/backups/ticket-backup-20260301-203639.otbackup",
+  "logFile": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/custom-path/backend.log"
+}

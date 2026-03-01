@@ -1,26 +1,32 @@
-# Screenshot Catalog (GitHub)
+# Screenshot Catalog
 
-Zrzuty ekranu do README i release notes są trzymane wersjami:
-- `docs/screenshots/v0.3/` — aktualny zestaw dla release `v0.3.4`.
+Zrzuty ekranu do README i release notes są wersjonowane katalogami:
+- `docs/screenshots/v0.4.1/` — aktualny zestaw dla milestone `v0.4.1`.
+- `docs/screenshots/v0.4/` — poprzedni zestaw release.
+- `docs/screenshots/v0.3/` — archiwum.
 
-## Wymagania jakości screenshotów
-- Rozdzielczość minimum `1280x720`.
-- Bez danych wrażliwych (e-mail klienta, tokeny, ścieżki prywatne).
-- Nazwy plików opisowe i stabilne (`dashboard-chromium.png`, `setup-step1-webkit.png`).
-- Każdy release aktualizuje przynajmniej:
-  - setup,
+## Standard jakości
+- Minimum `1280x720`.
+- Brak danych wrażliwych (sekrety, tokeny, dane prywatne klientów).
+- Stabilne nazwy plików (np. `dashboard-chromium.png`).
+- Każdy release odświeża minimum:
   - dashboard,
+  - modal zgłoszenia,
   - statystyki,
   - użytkowników,
   - konfigurację,
   - status serwera.
 
-## Aktualny zestaw (`v0.3.4`)
-- `setup-step1-chromium.png`
-- `setup-step1-webkit.png`
+## Aktualny zestaw (`v0.4.1`)
 - `dashboard-chromium.png`
+- `dashboard-cupertino-chromium.png`
 - `ticket-modal-chromium.png`
 - `statistics-chromium.png`
 - `users-chromium.png`
 - `settings-chromium.png`
 - `server-chromium.png`
+
+## Aktualizacja screenshotów
+```bash
+DEMO_COUNT=500 SCREENSHOT_VERSION=v0.4.1 ./Moj/testy/capture-release-screenshots.sh
+```
