@@ -21,6 +21,7 @@ interface Step1Props {
     bootstrapMode?: SetupBootstrapMode;
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
+    backupEncryptionKey?: string;
     demoTicketCount?: number;
     autoBackupEnabled?: boolean;
     autoBackupIntervalHours?: number;
@@ -58,11 +59,13 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
 
   const resolvedDefaultPath = defaultValue?.trim().length > 0 ? defaultValue : getPlatformDefaultPath();
   const [installationMode, setInstallationMode] = useState<InstallationMode>('server_client');
+  const [setupScenario, setSetupScenario] = useState<'new' | 'restore'>('new');
   const [dataPath, setDataPath] = useState(resolvedDefaultPath);
   const [bootstrapMode, setBootstrapMode] = useState<SetupBootstrapMode>('fresh');
   const [existingDatabasePath, setExistingDatabasePath] = useState('');
   const [existingBackupArchivePath, setExistingBackupArchivePath] = useState('');
   const [demoTicketCount, setDemoTicketCount] = useState<number>(200);
+  const [backupEncryptionKey, setBackupEncryptionKey] = useState('');
   const [remoteApiBaseUrl, setRemoteApiBaseUrl] = useState('http://127.0.0.1:3200');
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [autoBackupIntervalHours, setAutoBackupIntervalHours] = useState<number>(24);
@@ -301,6 +304,21 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installationMode]);
 
+  useEffect(() => {
+    if (installationMode === 'client_only') {
+      return;
+    }
+
+    if (setupScenario === 'restore' && bootstrapMode !== 'encrypted_backup') {
+      setBootstrapMode('encrypted_backup');
+      return;
+    }
+
+    if (setupScenario === 'new' && bootstrapMode === 'encrypted_backup') {
+      setBootstrapMode('fresh');
+    }
+  }, [bootstrapMode, installationMode, setupScenario]);
+
   const handleChooseFolder = async () => {
     const bridge =
       typeof window !== 'undefined'
@@ -393,6 +411,24 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       return;
     }
 
+    if (setupScenario === 'restore' && existingBackupArchivePath.trim().length === 0) {
+      setPathFeedback({
+        type: 'error',
+        text: 'Wskaż plik backupu (.otbackup), aby kontynuować odtworzenie.',
+      });
+      return;
+    }
+
+    const restorePath = existingBackupArchivePath.trim().toLowerCase();
+    const restoreLooksEncrypted = restorePath.endsWith('.otbackup');
+    if (setupScenario === 'restore' && restoreLooksEncrypted && backupEncryptionKey.trim().length < 16) {
+      setPathFeedback({
+        type: 'error',
+        text: 'Podaj klucz szyfrowania backupu (minimum 16 znaków).',
+      });
+      return;
+    }
+
     if (bootstrapMode === 'existing_db' && existingDatabasePath.trim().length === 0) {
       setPathFeedback({
         type: 'error',
@@ -438,6 +474,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       bootstrapMode,
       existingDatabasePath: existingDatabasePath.trim() || undefined,
       existingBackupArchivePath: existingBackupArchivePath.trim() || undefined,
+      backupEncryptionKey: bootstrapMode === 'encrypted_backup' ? backupEncryptionKey.trim() : undefined,
       demoTicketCount: bootstrapMode === 'demo_dataset' ? Math.floor(Number(demoTicketCount) || 200) : undefined,
       autoBackupEnabled,
       autoBackupIntervalHours: autoBackupEnabled
@@ -464,6 +501,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
             checked={installationMode === 'server_client'}
             onChange={() => {
               setInstallationMode('server_client');
+              setSetupScenario('new');
               setPathFeedback(null);
             }}
             className="mt-1"
@@ -587,9 +625,49 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
         </div>
       ) : (
         <div className="space-y-4">
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <p className="mb-2 text-sm font-semibold text-indigo-900">Scenariusz startu serwera</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3 hover:bg-indigo-50">
+                <input
+                  type="radio"
+                  checked={setupScenario === 'new'}
+                  onChange={() => {
+                    setSetupScenario('new');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium text-slate-800">Postaw nowy system</p>
+                  <p className="text-xs text-slate-600">Nowa baza danych + konfiguracja administratora.</p>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3 hover:bg-indigo-50">
+                <input
+                  type="radio"
+                  checked={setupScenario === 'restore'}
+                  onChange={() => {
+                    setSetupScenario('restore');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium text-slate-800">Odtwórz z działającego systemu</p>
+                  <p className="text-xs text-slate-600">Wskaż backup i klucz szyfrowania, aby odtworzyć bazę + zdjęcia.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-slate-700">Źródło danych przy pierwszym uruchomieniu</p>
+              <p className="text-sm font-semibold text-slate-700">
+                {setupScenario === 'restore'
+                  ? 'Odtwarzanie danych (backup + klucz)'
+                  : 'Źródło danych przy pierwszym uruchomieniu'}
+              </p>
               <button
                 type="button"
                 onClick={() => void discoverLocalData()}
@@ -600,7 +678,8 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                 Wykryj poprzednią bazę/backup
               </button>
             </div>
-            <div className="space-y-2">
+            {setupScenario === 'new' ? (
+              <div className="space-y-2">
               <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50">
                 <input
                   type="radio"
@@ -689,45 +768,53 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                 </div>
               </label>
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 hover:bg-slate-50">
-                <input
-                  type="radio"
-                  checked={bootstrapMode === 'backup_archive'}
-                  onChange={() => {
-                    setBootstrapMode('backup_archive');
-                    setPathFeedback(null);
-                  }}
-                  className="mt-1"
-                />
-                <div className="w-full">
-                  <p className="font-medium text-slate-800">Import backupu `.tar.gz`</p>
-                  <p className="text-xs text-slate-600">Odtwarza bazę i pliki (zdjęcia) z jednego archiwum.</p>
-                  {bootstrapMode === 'backup_archive' && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <input
-                        type="text"
-                        value={existingBackupArchivePath}
-                        onChange={(event) => setExistingBackupArchivePath(event.target.value)}
-                        placeholder="/ścieżka/do/backup.tar.gz"
-                        className="min-w-[260px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const selected = await selectFilePath('backup');
-                          if (selected) {
-                            setExistingBackupArchivePath(selected);
-                          }
-                        }}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        Wybierz plik
-                      </button>
-                    </div>
-                  )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="font-medium text-slate-800">Backup systemu (1 plik)</p>
+                  <p className="text-xs text-slate-600">
+                    Wybierz plik `.otbackup` wygenerowany w poprzedniej instalacji.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      value={existingBackupArchivePath}
+                      onChange={(event) => setExistingBackupArchivePath(event.target.value)}
+                      placeholder="/ścieżka/do/backup.otbackup"
+                      className="min-w-[260px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const selected = await selectFilePath('backup');
+                        if (selected) {
+                          setBootstrapMode('encrypted_backup');
+                          setExistingBackupArchivePath(selected);
+                        }
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-100"
+                    >
+                      Wybierz plik
+                    </button>
+                  </div>
                 </div>
-              </label>
-            </div>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-900">Klucz szyfrowania backupu</p>
+                  <input
+                    type="text"
+                    value={backupEncryptionKey}
+                    onChange={(event) => setBackupEncryptionKey(event.target.value)}
+                    placeholder="Wklej klucz wygenerowany podczas poprzedniej konfiguracji"
+                    autoComplete="off"
+                    className="mt-2 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-sm"
+                  />
+                  <p className="mt-1 text-xs text-amber-800">
+                    Dla plików `.otbackup` klucz jest obowiązkowy. Dla starego `.tar.gz` może nie być wymagany.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {(discoveredDatabases.length > 0 || discoveredBackups.length > 0) && (
               <div className="mt-3 space-y-3 rounded-lg border border-slate-200 bg-white p-3">
@@ -740,6 +827,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                           key={dbPath}
                           type="button"
                           onClick={() => {
+                            setSetupScenario('new');
                             setBootstrapMode('existing_db');
                             setExistingDatabasePath(dbPath);
                             setPathFeedback({ type: 'info', text: `Wybrano bazę: ${dbPath}` });
@@ -754,14 +842,15 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                 )}
                 {discoveredBackups.length > 0 && (
                   <div>
-                    <p className="mb-2 text-xs font-semibold uppercase text-slate-600">Wykryte backupy .tar.gz</p>
+                    <p className="mb-2 text-xs font-semibold uppercase text-slate-600">Wykryte backupy (.otbackup / .tar.gz)</p>
                     <div className="max-h-32 space-y-2 overflow-auto pr-1">
                       {discoveredBackups.slice(0, 6).map((backupPath) => (
                         <button
                           key={backupPath}
                           type="button"
                           onClick={() => {
-                            setBootstrapMode('backup_archive');
+                            setSetupScenario('restore');
+                            setBootstrapMode('encrypted_backup');
                             setExistingBackupArchivePath(backupPath);
                             setPathFeedback({ type: 'info', text: `Wybrano backup: ${backupPath}` });
                           }}
@@ -952,7 +1041,9 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
           ? 'Przetwarzanie...'
           : installationMode === 'client_only'
             ? 'Połącz z serwerem →'
-            : 'Continue to Admin Setup →'}
+            : setupScenario === 'restore'
+              ? 'Dalej: ustaw konto admina i odtwórz →'
+              : 'Dalej do konfiguracji admina →'}
       </button>
     </div>
   );

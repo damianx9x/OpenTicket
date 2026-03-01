@@ -489,6 +489,7 @@ export default function DashboardPage() {
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [signupCode, setSignupCode] = useState('');
   const [backupPath, setBackupPath] = useState('');
+  const [backupEncryptionKey, setBackupEncryptionKey] = useState('');
   const [backupFileToImport, setBackupFileToImport] = useState<File | null>(null);
   const [autoBackupStatus, setAutoBackupStatus] = useState<AutoBackupStatus | null>(null);
   const [autoBackupLoading, setAutoBackupLoading] = useState(false);
@@ -2235,7 +2236,7 @@ export default function DashboardPage() {
       return;
     }
     try {
-      await importBackupByPath(backupPath.trim());
+      await importBackupByPath(backupPath.trim(), backupEncryptionKey.trim() || undefined);
       notify({
         type: 'success',
         text: 'Backup zaimportowany. Dla bezpieczeństwa uruchom ponownie aplikację desktop.',
@@ -2254,11 +2255,11 @@ export default function DashboardPage() {
       return;
     }
     if (!backupFileToImport) {
-      notify({ type: 'error', text: 'Najpierw wybierz plik backupu (.tar.gz).' });
+      notify({ type: 'error', text: 'Najpierw wybierz plik backupu (.otbackup lub .tar.gz).' });
       return;
     }
     try {
-      await importBackupFromFile(backupFileToImport);
+      await importBackupFromFile(backupFileToImport, backupEncryptionKey.trim() || undefined);
       notify({
         type: 'success',
         text: 'Backup zaimportowany z pliku. Dla bezpieczeństwa uruchom ponownie aplikację desktop.',
@@ -2270,7 +2271,7 @@ export default function DashboardPage() {
           : '';
       notify({
         type: 'error',
-        text: `Import backupu z pliku nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}${suffix} (upewnij się, że plik to .tar.gz)`,
+        text: `Import backupu z pliku nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}${suffix} (upewnij się, że plik to .otbackup lub .tar.gz)`,
       });
     } finally {
       setBackupFileToImport(null);
@@ -5624,7 +5625,7 @@ export default function DashboardPage() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2 rounded-lg border border-slate-200 p-3">
                       <p className="text-sm text-slate-600">
-                        Eksport zawiera bazę, zdjęcia i konfigurację. Jeden plik, gotowy do reinstalacji.
+                        Eksport zawiera bazę, zdjęcia i konfigurację. Jeden szyfrowany plik `.otbackup`, gotowy do reinstalacji.
                       </p>
                       <button
                         type="button"
@@ -5637,9 +5638,16 @@ export default function DashboardPage() {
                       </button>
                       <input
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
-                        placeholder="/ścieżka/do/backup.tar.gz"
+                        placeholder="/ścieżka/do/backup.otbackup"
                         value={backupPath}
                         onChange={(event) => setBackupPath(event.target.value)}
+                      />
+                      <input
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs"
+                        placeholder="Klucz szyfrowania backupu (dla .otbackup)"
+                        value={backupEncryptionKey}
+                        onChange={(event) => setBackupEncryptionKey(event.target.value)}
+                        autoComplete="off"
                       />
                       <button
                         type="button"
@@ -5656,7 +5664,7 @@ export default function DashboardPage() {
                       <input
                         id="backup-import-file"
                         type="file"
-                        accept=".tar.gz,.tgz,.gz"
+                        accept=".otbackup,.tar.gz,.tgz,.gz"
                         onChange={(event) => setBackupFileToImport(event.target.files?.[0] ?? null)}
                         className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                       />
@@ -5672,7 +5680,7 @@ export default function DashboardPage() {
                         Importuj z pliku
                       </button>
                       <p className="text-xs text-slate-500">
-                        Po imporcie zalecany restart aplikacji, aby wszystkie połączenia odświeżyć.
+                        Dla pliku `.otbackup` podaj klucz szyfrowania. Po imporcie zalecany restart aplikacji.
                       </p>
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                         Wymagane uprawnienia: ADMIN. Twoja rola: {normalizedCurrentRole || 'BRAK'}.

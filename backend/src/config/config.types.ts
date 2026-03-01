@@ -5,7 +5,12 @@
 export type DatabaseMode = 'sqlite' | 'postgresql';
 export type StorageMode = 'local' | 's3';
 export type InstallationMode = 'server_client' | 'client_only';
-export type SetupBootstrapMode = 'fresh' | 'existing_db' | 'backup_archive' | 'demo_dataset';
+export type SetupBootstrapMode =
+  | 'fresh'
+  | 'existing_db'
+  | 'backup_archive'
+  | 'encrypted_backup'
+  | 'demo_dataset';
 
 export interface AppConfig {
   // Database
@@ -38,6 +43,7 @@ export interface AppConfig {
   setupModeKey?: string; // Random key to validate setup requests
   installationMode?: InstallationMode;
   remoteApiBaseUrl?: string;
+  backupEncryptionKey?: string;
   
   createdAt: Date;
 }
@@ -54,6 +60,7 @@ export interface SetupRequest {
   autoBackupEnabled?: boolean;
   autoBackupIntervalHours?: number;
   autoBackupPath?: string;
+  backupEncryptionKey?: string;
 }
 
 export interface DiscoverLocalDataResponse {
@@ -118,4 +125,6 @@ export interface SetupResponse {
   bootstrapMode?: SetupBootstrapMode;
   bootstrapSourcePath?: string;
   demoTicketCount?: number;
+  backupEncryptionKeyGenerated?: string;
+  backupEncryptionKeyHint?: string;
 }

@@ -1890,7 +1890,7 @@ app.on("ready", async () => {
       const kind = payload?.kind === "backup" ? "backup" : "database";
       const filters =
         kind === "backup"
-          ? [{ name: "Backup archives", extensions: ["tar", "tgz", "gz"] }]
+          ? [{ name: "Backup archives", extensions: ["otbackup", "tar", "tgz", "gz"] }]
           : [{ name: "SQLite database", extensions: ["db", "sqlite", "sqlite3"] }];
 
       const result = await dialog.showOpenDialog(mainWindow!, {

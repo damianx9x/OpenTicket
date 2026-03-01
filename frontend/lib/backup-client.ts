@@ -4,6 +4,7 @@ export interface BackupExportResult {
   archivePath: string;
   archiveName: string;
   bytes: number;
+  encrypted?: boolean;
 }
 
 export async function exportBackup(): Promise<BackupExportResult> {
@@ -12,16 +13,25 @@ export async function exportBackup(): Promise<BackupExportResult> {
   });
 }
 
-export async function importBackupByPath(archivePath: string): Promise<{ success: boolean }> {
+export async function importBackupByPath(
+  archivePath: string,
+  encryptionKey?: string,
+): Promise<{ success: boolean }> {
   return requestData('/api/v1/system/backup/import-path', {
     method: 'POST',
-    body: JSON.stringify({ archivePath }),
+    body: JSON.stringify({ archivePath, encryptionKey }),
   });
 }
 
-export async function importBackupFromFile(file: File): Promise<{ success: boolean }> {
+export async function importBackupFromFile(
+  file: File,
+  encryptionKey?: string,
+): Promise<{ success: boolean }> {
   const formData = new FormData();
   formData.append('backup', file);
+  if (encryptionKey && encryptionKey.trim().length > 0) {
+    formData.append('encryptionKey', encryptionKey.trim());
+  }
 
   return requestData('/api/v1/system/backup/import', {
     method: 'POST',

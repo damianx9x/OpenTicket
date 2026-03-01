@@ -22,6 +22,7 @@ export interface SetupWizardState {
   bootstrapMode: SetupBootstrapMode;
   existingDatabasePath: string;
   existingBackupArchivePath: string;
+  backupEncryptionKey: string;
   demoTicketCount: number;
   autoBackupEnabled: boolean;
   autoBackupIntervalHours: number;
@@ -55,6 +56,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     bootstrapMode: 'fresh',
     existingDatabasePath: '',
     existingBackupArchivePath: '',
+    backupEncryptionKey: '',
     demoTicketCount: 200,
     autoBackupEnabled: true,
     autoBackupIntervalHours: 24,
@@ -90,6 +92,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     bootstrapMode?: SetupBootstrapMode;
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
+    backupEncryptionKey?: string;
     demoTicketCount?: number;
     autoBackupEnabled?: boolean;
     autoBackupIntervalHours?: number;
@@ -103,6 +106,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
       bootstrapMode: payload.bootstrapMode || 'fresh',
       existingDatabasePath: payload.existingDatabasePath || '',
       existingBackupArchivePath: payload.existingBackupArchivePath || '',
+      backupEncryptionKey: payload.backupEncryptionKey || '',
       demoTicketCount:
         payload.bootstrapMode === 'demo_dataset'
           ? Math.max(20, Math.min(1000, Math.floor(payload.demoTicketCount || 200)))
@@ -151,6 +155,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
           bootstrapMode: state.bootstrapMode,
           existingDatabasePath: state.existingDatabasePath || undefined,
           existingBackupArchivePath: state.existingBackupArchivePath || undefined,
+          backupEncryptionKey: state.backupEncryptionKey || undefined,
           demoTicketCount: state.bootstrapMode === 'demo_dataset' ? state.demoTicketCount : undefined,
           autoBackupEnabled: state.autoBackupEnabled,
           autoBackupIntervalHours: state.autoBackupIntervalHours,
@@ -230,6 +235,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
       bootstrapMode: 'fresh',
       existingDatabasePath: '',
       existingBackupArchivePath: '',
+      backupEncryptionKey: '',
       demoTicketCount: 200,
       autoBackupEnabled: true,
       autoBackupIntervalHours: 24,
@@ -306,6 +312,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
                 bootstrapMode: state.bootstrapMode,
                 existingDatabasePath: state.existingDatabasePath,
                 existingBackupArchivePath: state.existingBackupArchivePath,
+                backupEncryptionKey: state.backupEncryptionKey,
                 demoTicketCount: state.demoTicketCount,
                 autoBackupEnabled: state.autoBackupEnabled,
                 autoBackupIntervalHours: state.autoBackupIntervalHours,

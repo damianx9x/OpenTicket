@@ -132,11 +132,15 @@ async function main() {
     const initClicked = await clickFirst(page, [/Initialize System/i, /Initializing/i]);
     addCheck('setup-initialize-click', initClicked);
 
-    await page.waitForSelector('text=Setup Complete', { timeout: 50000 });
+    await Promise.race([
+      page.waitForSelector('text=System skonfigurowany poprawnie', { timeout: 50000 }),
+      page.waitForSelector('text=Klient gotowy do pracy', { timeout: 50000 }),
+      page.waitForSelector('text=Setup Complete', { timeout: 50000 }),
+    ]);
     await safeShot(page, 'setup-step4-complete.png');
     addCheck('setup-completed', true);
 
-    const toDashboard = await clickFirst(page, [/Przejdź do dashboardu/i, /Go to dashboard/i]);
+    const toDashboard = await clickFirst(page, [/Zaczynamy/i, /Przejdź do dashboardu/i, /Go to dashboard/i]);
     addCheck('step4-go-dashboard', toDashboard);
 
     await page.waitForURL(/\/dashboard$/, { timeout: 25000 });

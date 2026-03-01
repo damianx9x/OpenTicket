@@ -12,7 +12,12 @@ import {
 export { buildApiUrl } from '@/lib/api-base';
 
 export type InstallationMode = 'server_client' | 'client_only';
-export type SetupBootstrapMode = 'fresh' | 'existing_db' | 'backup_archive' | 'demo_dataset';
+export type SetupBootstrapMode =
+  | 'fresh'
+  | 'existing_db'
+  | 'backup_archive'
+  | 'encrypted_backup'
+  | 'demo_dataset';
 
 export interface SetupRequest {
   dataPath: string;
@@ -26,6 +31,7 @@ export interface SetupRequest {
   autoBackupEnabled?: boolean;
   autoBackupIntervalHours?: number;
   autoBackupPath?: string;
+  backupEncryptionKey?: string;
 }
 
 export interface ClientOnlySetupRequest {
@@ -44,6 +50,8 @@ export interface SetupResponse {
   bootstrapMode?: SetupBootstrapMode;
   bootstrapSourcePath?: string;
   demoTicketCount?: number;
+  backupEncryptionKeyGenerated?: string;
+  backupEncryptionKeyHint?: string;
 }
 
 export interface SetupStatus {

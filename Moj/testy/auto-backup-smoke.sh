@@ -29,12 +29,12 @@ echo "$STATUS_JSON" | grep -q '"intervalHours":1'
 
 echo "[auto-backup-smoke] 4/5 first auto run"
 curl -fsS -X POST "$API_URL/system/backup/auto-run" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}' >/dev/null
-[[ -f "$AUTO_PATH/openticket-auto-backup.current.tar.gz" ]]
+[[ -f "$AUTO_PATH/openticket-auto-backup.current.otbackup" ]]
 
 echo "[auto-backup-smoke] 5/5 second auto run with previous rotation"
 sleep 1
 curl -fsS -X POST "$API_URL/system/backup/auto-run" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{}' >/dev/null
-[[ -f "$AUTO_PATH/openticket-auto-backup.current.tar.gz" ]]
-[[ -f "$AUTO_PATH/openticket-auto-backup.previous.tar.gz" ]]
+[[ -f "$AUTO_PATH/openticket-auto-backup.current.otbackup" ]]
+[[ -f "$AUTO_PATH/openticket-auto-backup.previous.otbackup" ]]
 
 echo "[auto-backup-smoke] PASS"

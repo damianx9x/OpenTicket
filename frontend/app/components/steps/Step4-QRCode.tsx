@@ -12,10 +12,6 @@ interface Step4Props {
   onContinueToDashboard: () => void;
 }
 
-/**
- * Step 4: QR Code Display & Completion
- * Shows QR code for iOS app to scan and connect
- */
 export function InitStep4({
   result,
   installationMode,
@@ -25,19 +21,14 @@ export function InitStep4({
 }: Step4Props) {
   const [copyFeedback, setCopyFeedback] = useState('');
   const [localIp, setLocalIp] = useState<string>('localhost');
-  const apiPort =
-    typeof window !== 'undefined'
-      ? window.location.port || '3000'
-      : '3000';
+  const apiPort = typeof window !== 'undefined' ? window.location.port || '3000' : '3000';
   const explicitApiBase = process.env.NEXT_PUBLIC_API_URL || '';
 
   useEffect(() => {
     const getLocalIp = async () => {
       try {
         const bridge =
-          typeof window !== 'undefined'
-            ? (window as any).electron || (window as any).electronAPI
-            : null;
+          typeof window !== 'undefined' ? (window as any).electron || (window as any).electronAPI : null;
 
         if (bridge?.getLocalIp) {
           const ip = await bridge.getLocalIp();
@@ -45,13 +36,12 @@ export function InitStep4({
         } else {
           setLocalIp(window.location.hostname || 'localhost');
         }
-      } catch (error) {
-        console.error('Failed to get local IP:', error);
+      } catch {
         setLocalIp(window.location.hostname || 'localhost');
       }
     };
 
-    getLocalIp();
+    void getLocalIp();
   }, []);
 
   const resolvedApiBase = explicitApiBase
@@ -66,154 +56,126 @@ export function InitStep4({
   };
 
   const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopyFeedback(label);
-    setTimeout(() => setCopyFeedback(''), 2000);
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(text);
+      setCopyFeedback(label);
+      setTimeout(() => setCopyFeedback(''), 2200);
+    }
   };
+
+  const hasGeneratedKey = Boolean(result.backupEncryptionKeyGenerated);
+  const backupKeyToDisplay = result.backupEncryptionKeyGenerated || result.backupEncryptionKeyHint || '';
 
   return (
     <div className="space-y-6">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-green-600 mb-2">
-          ✅ {installationMode === 'client_only' ? 'Klient skonfigurowany!' : 'System Initialized Successfully!'}
+      <div className="rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-cyan-50 p-5">
+        <h2 className="text-2xl font-bold text-emerald-700">
+          {installationMode === 'client_only' ? 'Klient gotowy do pracy' : 'System skonfigurowany poprawnie'}
         </h2>
-        <p className="text-gray-600">
+        <p className="mt-1 text-sm text-emerald-900">
           {installationMode === 'client_only'
-            ? 'Aplikacja desktop jest gotowa i połączona z istniejącym serwerem.'
-            : 'Your ticket system is ready to use. Scan the QR code with your iPhone to connect.'}
+            ? 'Połączenie z serwerem zapisane. Możesz od razu przejść do logowania.'
+            : 'Silnik, baza i panel zostały uruchomione. Poniżej masz komplet informacji startowych.'}
         </p>
       </div>
 
-      {installationMode !== 'client_only' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 flex justify-center">
-          <QRCodeDisplay data={qrData} />
-        </div>
-      )}
-
-      <div className="bg-green-50 border border-green-200 rounded-lg p-6 space-y-3">
-        <h3 className="font-semibold text-green-900">✓ Setup Complete</h3>
-        <div className="text-sm text-green-800 space-y-1">
-          {installationMode === 'client_only' ? (
-            <>
-              <p>✓ Client profile saved</p>
-              <p>✓ Remote server: {remoteApiBaseUrl || result.remoteApiBaseUrl}</p>
-              <p>✓ Configuration saved</p>
-            </>
-          ) : (
-            <>
-              <p>✓ Database created: {result.configPath}/app.db</p>
-              <p>✓ Configuration saved</p>
-              <p>✓ Admin account created: {result.adminEmail}</p>
-              <p>✓ {result.migrationsApplied || 0} migrations applied</p>
-            </>
-          )}
-        </div>
-      </div>
-
       {installationMode !== 'client_only' ? (
-        <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="font-medium text-blue-900">📱 Connect Your iPhone:</p>
-          <ol className="text-sm text-blue-800 space-y-2">
-            <li>1. Open the OpenTicket app on your iPhone</li>
-            <li>2. Tap "Scan Server"</li>
-            <li>3. Point camera at QR code above</li>
-            <li>4. App will auto-connect to your local system</li>
-          </ol>
-
-          <div className="border-t border-blue-200 pt-3 mt-3">
-            <p className="text-xs font-medium text-blue-900 mb-2">Manual Connection (if QR doesn't work):</p>
-            <div className="flex gap-2">
-              <code className="flex-1 text-xs bg-white border border-blue-200 rounded px-2 py-1 font-mono">
-                {qrData.apiBase}
-              </code>
-              <button
-                onClick={() => copyToClipboard(qrData.apiBase, 'API Base')}
-                className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 transition-colors"
-              >
-                {copyFeedback === 'API Base' ? '✓ Copied' : 'Copy'}
-              </button>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Połącz iPhone</p>
+            <div className="mt-3 flex justify-center rounded-lg border border-slate-100 bg-slate-50 p-4">
+              <QRCodeDisplay data={qrData} />
             </div>
+          </div>
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Parametry systemu</p>
+            <div className="space-y-1 text-sm text-slate-700">
+              <p>
+                <strong>API:</strong>{' '}
+                <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{resolvedApiBase}</code>
+              </p>
+              <p>
+                <strong>Tryb:</strong> Serwer + klient
+              </p>
+              <p>
+                <strong>Admin:</strong> {result.adminEmail || '-'}
+              </p>
+              <p>
+                <strong>Lokalizacja danych:</strong>{' '}
+                <span className="break-all font-mono text-xs">{result.configPath || '-'}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => copyToClipboard(resolvedApiBase, 'API')}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+            >
+              {copyFeedback === 'API' ? 'Skopiowano adres API' : 'Kopiuj adres API'}
+            </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="font-medium text-blue-900">Połączenie klienta</p>
-          <p className="text-sm text-blue-800">
-            Klient będzie korzystał z serwera:
-            <code className="ml-1 rounded bg-white px-1 py-0.5 font-mono text-xs">
-              {remoteApiBaseUrl || result.remoteApiBaseUrl}
-            </code>
-          </p>
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+          Klient będzie łączył się z adresem:{' '}
+          <code className="rounded bg-white px-1 py-0.5 text-xs">
+            {remoteApiBaseUrl || result.remoteApiBaseUrl || resolvedApiBase}
+          </code>
         </div>
       )}
 
-      <div className="space-y-3">
-        <h3 className="font-semibold text-gray-800">📋 Next Steps:</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="font-medium text-gray-800">💻 Web Dashboard</p>
-            <p className="text-gray-600 mt-1">
-              <a
-                href={`${qrData.apiBase}/dashboard`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
+      {installationMode !== 'client_only' && backupKeyToDisplay ? (
+        <div
+          className={`rounded-xl border p-4 ${
+            hasGeneratedKey ? 'border-red-300 bg-red-50' : 'border-amber-200 bg-amber-50'
+          }`}
+        >
+          <p className={`text-sm font-semibold ${hasGeneratedKey ? 'text-red-800' : 'text-amber-900'}`}>
+            {hasGeneratedKey ? 'WAŻNE: Klucz odzyskiwania backupu' : 'Klucz backupu (podpowiedź)'}
+          </p>
+          <p className={`mt-1 text-xs ${hasGeneratedKey ? 'text-red-700' : 'text-amber-800'}`}>
+            {hasGeneratedKey
+              ? 'Zapisz ten klucz poza systemem (np. manager haseł). Bez niego nie odtworzysz zaszyfrowanego backupu.'
+              : 'System używa klucza skonfigurowanego wcześniej. Zachowaj go do przyszłego odtwarzania danych.'}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <code className="rounded bg-white px-2 py-1 font-mono text-xs text-slate-800">{backupKeyToDisplay}</code>
+            {hasGeneratedKey ? (
+              <button
+                type="button"
+                onClick={() => copyToClipboard(backupKeyToDisplay, 'KEY')}
+                className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
               >
-                Open in browser →
-              </a>
-            </p>
-          </div>
-
-          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="font-medium text-gray-800">🔐 Login Details</p>
-            <p className="text-gray-600 mt-1">
-              {installationMode === 'client_only' ? (
-                'Użyj konta z istniejącego serwera.'
-              ) : (
-                <>
-                  Email:{' '}
-                  <code className="text-xs bg-white px-1 rounded">{result.adminEmail || 'admin@example.com'}</code>
-                </>
-              )}
-            </p>
-          </div>
-
-          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="font-medium text-gray-800">💾 Data Location</p>
-            <p className="text-gray-600 text-xs mt-1 break-all">{result.configPath}</p>
-          </div>
-
-          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="font-medium text-gray-800">📚 Documentation</p>
-            <p className="text-gray-600 mt-1">
-              <a href="/api/docs" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                API Docs (Swagger) →
-              </a>
-            </p>
+                {copyFeedback === 'KEY' ? 'Skopiowano klucz' : 'Kopiuj klucz'}
+              </button>
+            ) : null}
           </div>
         </div>
+      ) : null}
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Podsumowanie</p>
+        <ul className="mt-2 space-y-1 text-sm text-slate-700">
+          <li>✓ Konfiguracja została zapisana.</li>
+          <li>✓ Silnik uruchomi się automatycznie po starcie aplikacji.</li>
+          <li>✓ Backup zawiera bazę + zdjęcia w jednym pliku.</li>
+          <li>✓ W każdej chwili możesz wrócić do konfiguracji w panelu administratora.</li>
+        </ul>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="space-y-3">
         <button
           onClick={onContinueToDashboard}
-          className="w-full px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+          className="w-full rounded-xl bg-blue-600 px-6 py-4 text-lg font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
         >
-          Przejdź do dashboardu
+          Zaczynamy →
         </button>
         <button
           onClick={onNewSetup}
-          className="w-full px-6 py-3 border-2 border-green-600 text-green-600 font-medium rounded-lg hover:bg-green-50 transition-colors"
+          className="w-full rounded-xl border border-red-300 bg-white px-6 py-3 text-sm font-medium text-red-700 hover:bg-red-50"
         >
-          Uruchom setup od nowa
+          Od nowa: uruchom kreator ponownie
         </button>
       </div>
-
-      <p className="text-center text-xs text-gray-500">
-        {installationMode === 'client_only'
-          ? `Client connected to ${remoteApiBaseUrl || result.remoteApiBaseUrl || qrData.apiBase}`
-          : `Your system is running locally at ${qrData.apiBase}`}
-      </p>
     </div>
   );
 }

@@ -1,0 +1,55 @@
+# Potentially risky patterns (manual review)
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/README.md:31:Hot reload dev server on `http://localhost:3000`:
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/README.md:145:const tickets = await fetch('http://localhost:3000/api/v1/tickets')
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/README.md:148:const newTicket = await fetch('http://localhost:3000/api/v1/tickets', {
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/README.md:154:await fetch('http://localhost:3000/api/v1/tickets/:id/comments', {
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/README.md:307:NEXT_PUBLIC_API_URL=http://localhost:3000
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:328:      const response = await fetch(`http://127.0.0.1:${port}/api/v1/setup/status`, {
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:359:    const response = await fetch(`http://127.0.0.1:${port}/api/v1/health`, {
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:372:      const response = await fetch(`http://127.0.0.1:${port}/api/v1/setup/status`, {
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1188:      const openResult = await shell.openExternal(updateStatus.manualDownloadUrl).then(
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1432:  const expectedPrefix = `http://127.0.0.1:${port}`;
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1746:  const localOrigin = `http://127.0.0.1:${port}`;
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1765:  const startUrl = `http://127.0.0.1:${port}${startPath}`;
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1775:    void shell.openExternal(url).catch(() => undefined);
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1785:      void shell.openExternal(url).catch(() => undefined);
+/Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/main.ts:1998:        await shell.openExternal(parsed.toString());
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/notifications/notifications.service.ts:135:      throw new BadRequestException(`Webhook (${channel}) musi używać http:// albo https://.`);
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/lib/api-base.ts:36:    throw new Error('API base must use http:// or https://');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/lib/api-base.ts:82:    return 'http://127.0.0.1:3000';
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/app/dashboard/page.tsx:2902:      return 'http://127.0.0.1:3000';
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/app/components/steps/Step4-QRCode.tsx:51:      : `http://${localIp}:${apiPort}`;
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/app/components/steps/Step1-Location.tsx:69:  const [remoteApiBaseUrl, setRemoteApiBaseUrl] = useState('http://127.0.0.1:3200');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/app/components/steps/Step1-Location.tsx:248:        text: 'URL serwera jest nieprawidłowy. Użyj formatu http://host:port lub https://host.',
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/app/components/steps/Step1-Location.tsx:566:            placeholder="http://192.168.1.50:3200 lub https://serwer.twojafirma.pl"
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/public/openticket-mark.svg:1:<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+/Users/icex/Projekty/git_repos/OpenTicket-clean/frontend/lib/setup-client.ts:116:    return process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || 'http://127.0.0.1:3000';
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/mock-api.js:242:        publicUrl: `http://localhost:3002/ticket/${ticket.publicToken}`,
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/mock-api.js:351:  console.log(`\n✅ Mock API Server running on http://localhost:${PORT}`);
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/openapi.yaml:9:  - url: http://localhost:3000
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:10:HEALTH=$(curl -s http://localhost:3333/api/v1/health | jq -r '.status')
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:21:TICKETS=$(curl -s http://localhost:3333/api/v1/tickets | jq '.data | length')
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:27:RESPONSE=$(curl -s -X POST http://localhost:3333/api/v1/tickets \
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:49:TICKET=$(curl -s http://localhost:3333/api/v1/tickets/$TICKET_ID | jq -r '.data.title')
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:55:curl -s -X POST http://localhost:3333/api/v1/tickets/$TICKET_ID/comments \
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:67:curl -s -X POST http://localhost:3333/api/v1/tickets/$TICKET_ID/cost-items \
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:80:curl -s -X PATCH http://localhost:3333/api/v1/tickets/$TICKET_ID \
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:88:QR=$(curl -s -X POST http://localhost:3333/api/v1/tickets/$TICKET_ID/generate-qr | jq -r '.data.qrToken')
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:100:echo "🌐 Frontend: http://localhost:3002"
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:101:echo "🔗 API: http://localhost:3333/api/v1"
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-integration.sh:102:echo "📱 Public Page: http://localhost:3333/ticket/$(echo $RESPONSE | jq -r '.data.publicToken')"
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1347:      throw new Error('Adres serwera jest nieprawidłowy (oczekiwano http:// lub https://).');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1351:      throw new Error('Adres serwera musi używać protokołu http:// lub https://.');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1438:        targets.add(`http://${host}:${port}`);
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1443:      targets.add('http://127.0.0.1:3200');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1444:      targets.add('http://localhost:3200');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1445:      targets.add('http://127.0.0.1:3000');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/setup/setup.service.ts:1446:      targets.add('http://localhost:3000');
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-qr-integration.sh:6:API_URL="http://localhost:3333/api/v1"
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-qr-integration.sh:7:FRONTEND_URL="http://localhost:3002"
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/test-qr-integration.sh:56:if [[ $PUBLIC_URL == http://localhost:3002/ticket/* ]]; then
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/main.ts:299:  const baseUrl = `http://${bindHost}:${port}`;
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/qrcode/qr.service.ts:19:    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='100%' height='100%' fill='#fff'/><text x='10' y='20' font-size='14'>Ticket: ${ticketId}</text><text x='10' y='40' font-size='12'>Issued: ${issuedAt}</text></svg>`;
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/diagnostics/diagnostics.service.ts:80:        endpoint: endpoint.startsWith('http') ? endpoint : `http://${endpoint}:${process.env.MINIO_PORT || 9000}`,
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/storage/s3-storage.strategy.ts:24:    this.endpoint = config?.s3Endpoint || process.env.MINIO_ENDPOINT || 'http://localhost:9000';
+/Users/icex/Projekty/git_repos/OpenTicket-clean/backend/src/storage/s3-storage.strategy.ts:30:      endpoint: this.endpoint.startsWith('http') ? this.endpoint : `http://${this.endpoint}:${process.env.MINIO_PORT || 9000}`,

@@ -13,7 +13,8 @@ OpenTicket to lokalny system ticketowy dla serwisów elektroniki: backend + WebU
 - Lokalny silnik (NestJS + Prisma + SQLite).
 - WebUI operatora (Next.js) osadzane również w desktop app.
 - Instalatory klientowe (`.pkg`, `.exe`) i kompletna deinstalacja.
-- Setup wizard: czysta baza / import `app.db` / import backupu `.tar.gz` / seed bazy demo (500).
+- Setup wizard: wybór trybu `Klient` lub `Serwer + klient`; dla serwera scenariusz `Nowy system` lub `Odtwórz z backupu`.
+- Backup/restore: szyfrowany plik `.otbackup` (AES-256-GCM) + klucz odzyskiwania, kompatybilność importu legacy `.tar.gz`.
 - Konfiguracja auto-backupu już w setupie (folder + interwał, rotacja `current` + `previous`).
 - Backup i restore (baza + uploady + konfiguracja).
 - Diagnostyka serwera, restart silnika, szybka naprawa i raport JSON.
@@ -60,6 +61,7 @@ Po buildzie:
 - Setup krok 2 (admin): `docs/screenshots/v0.4/setup-step2-admin.png`
 - Setup krok 3 (review/init): `docs/screenshots/v0.4/setup-step3-review.png`
 - Setup krok 4 (complete): `docs/screenshots/v0.4/setup-step4-complete.png`
+- Backup eksport (szyfrowany): `docs/screenshots/v0.4/backup-export-success.png`
 - Ticket modal: `docs/screenshots/v0.4/ticket-modal-chromium.png`
 - Statystyki: `docs/screenshots/v0.4/statistics-chromium.png`
 - Użytkownicy: `docs/screenshots/v0.4/users-chromium.png`
@@ -81,6 +83,7 @@ Po buildzie:
 ## Status (v0.4.0)
 Zrobione:
 - setup wizard: dodany wariant „baza demo” przy pierwszej konfiguracji,
+- setup wizard: przebudowany flow (`Klient` vs `Serwer + klient`, `Nowy system` vs `Odtwórz`) + klucz odzyskiwania backupu,
 - deinstalator: rozszerzone czyszczenie legacy i custom data paths,
 - installer DMG: przebudowany na nośnik `.pkg` (koniec z uruchamianiem app bez instalacji do `/Applications`),
 - auto-update: fallback do GitHub Releases, gdy release nie ma `latest-mac.yml` / `latest.yml`,
@@ -128,7 +131,7 @@ Co waliduje:
 
 ## Matryca regresji (zarchiwizowana)
 Pełny przebieg 15 kroków:
-- `docs/test-reports/full-regression-20260301-163146/SUMMARY.md`
+- `docs/test-reports/full-regression-20260301-174606/SUMMARY.md`
 
 Zawiera:
 - log per krok (setup, auth, import, backup, auto-backup, klient↔serwer, random-ui, print, security, dependency, 10x fresh),

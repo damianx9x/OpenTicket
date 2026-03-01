@@ -10,9 +10,10 @@ interface Step3Props {
     installationMode: 'server_client' | 'client_only';
     dataPath: string;
     remoteApiBaseUrl?: string;
-    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive' | 'demo_dataset';
+    bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive' | 'encrypted_backup' | 'demo_dataset';
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
+    backupEncryptionKey?: string;
     demoTicketCount?: number;
     autoBackupEnabled?: boolean;
     autoBackupIntervalHours?: number;
@@ -92,6 +93,8 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
               <p className="text-gray-900 text-sm mt-1">
                 {summary.bootstrapMode === 'existing_db'
                   ? 'Import istniejącej bazy app.db'
+                  : summary.bootstrapMode === 'encrypted_backup'
+                    ? 'Odtworzenie z szyfrowanego backupu (.otbackup)'
                   : summary.bootstrapMode === 'backup_archive'
                     ? 'Import backupu (.tar.gz)'
                     : summary.bootstrapMode === 'demo_dataset'
@@ -103,6 +106,14 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
               ) : null}
               {summary.bootstrapMode === 'backup_archive' && summary.existingBackupArchivePath ? (
                 <p className="mt-1 font-mono text-xs text-gray-600">{summary.existingBackupArchivePath}</p>
+              ) : null}
+              {summary.bootstrapMode === 'encrypted_backup' && summary.existingBackupArchivePath ? (
+                <p className="mt-1 font-mono text-xs text-gray-600">{summary.existingBackupArchivePath}</p>
+              ) : null}
+              {summary.bootstrapMode === 'encrypted_backup' ? (
+                <p className="mt-1 text-xs text-amber-700">
+                  Klucz backupu: {summary.backupEncryptionKey ? 'podany' : 'brak (konfiguracja nie przejdzie)'}
+                </p>
               ) : null}
             </div>
             <div>
@@ -148,7 +159,9 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
                 <li>
                   ✓{' '}
                   {summary.bootstrapMode === 'existing_db'
-                    ? 'Import i walidacja istniejącej bazy (app.db)'
+                  ? 'Import i walidacja istniejącej bazy (app.db)'
+                    : summary.bootstrapMode === 'encrypted_backup'
+                      ? 'Odtworzenie szyfrowanego backupu (.otbackup) + walidacja klucza'
                     : summary.bootstrapMode === 'backup_archive'
                       ? 'Import backupu (.tar.gz) + odtworzenie danych'
                       : summary.bootstrapMode === 'demo_dataset'

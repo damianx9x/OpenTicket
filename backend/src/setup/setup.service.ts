@@ -21,6 +21,13 @@ import { spawnSync } from 'child_process';
 import { hashPassword } from '../common/security/password';
 import { PrismaService } from '../prisma/prisma.service';
 import { DemoService } from '../demo/demo.service';
+import {
+  buildBackupKeyHint,
+  decryptBackupFileToArchive,
+  generateBackupEncryptionKey,
+  isEncryptedBackupFile,
+  normalizeBackupEncryptionKey,
+} from '../backup/backup-encryption';
 
 export interface DataPathValidationResult {
   ok: boolean;
@@ -73,12 +80,31 @@ export class SetupService {
       const autoBackupEnabled = this.normalizeAutoBackupEnabled(request.autoBackupEnabled);
       const autoBackupIntervalHours = this.normalizeAutoBackupIntervalHours(request.autoBackupIntervalHours);
       const autoBackupPath = this.resolveAutoBackupPath(request.autoBackupPath, dataPath);
+      const requestedBackupEncryptionKey = this.resolveOptionalBackupEncryptionKey(request.backupEncryptionKey);
+
+      let generatedBackupEncryptionKey: string | undefined;
+      let activeBackupEncryptionKey = requestedBackupEncryptionKey || '';
+      if (!activeBackupEncryptionKey) {
+        activeBackupEncryptionKey = generateBackupEncryptionKey();
+        generatedBackupEncryptionKey = activeBackupEncryptionKey;
+      }
+      activeBackupEncryptionKey = normalizeBackupEncryptionKey(activeBackupEncryptionKey);
 
       if (bootstrapMode === 'existing_db' && !existingDatabasePath) {
         throw new Error('Wybrano import istniejącej bazy, ale nie podano ścieżki do pliku app.db.');
       }
       if (bootstrapMode === 'backup_archive' && !existingBackupArchivePath) {
         throw new Error('Wybrano import backupu, ale nie podano ścieżki do archiwum .tar.gz.');
+      }
+      if (bootstrapMode === 'encrypted_backup' && !existingBackupArchivePath) {
+        throw new Error('Wybrano odtworzenie z backupu, ale nie podano ścieżki do pliku .otbackup.');
+      }
+      const restoreArchiveIsEncrypted =
+        bootstrapMode === 'encrypted_backup' &&
+        existingBackupArchivePath &&
+        isEncryptedBackupFile(existingBackupArchivePath);
+      if (restoreArchiveIsEncrypted && !requestedBackupEncryptionKey) {
+        throw new Error('Dla odtworzenia z backupu podaj klucz szyfrowania.');
       }
 
       if (!fs.existsSync(dataPath)) {
@@ -121,10 +147,18 @@ export class SetupService {
           uploadsPath,
         });
       } else if (bootstrapMode === 'backup_archive') {
-        this.importBackupArchiveToRuntime({
+        await this.importBackupArchiveToRuntime({
           archivePath: existingBackupArchivePath as string,
           targetDbPath: dbPath,
           uploadsPath,
+          backupEncryptionKey: null,
+        });
+      } else if (bootstrapMode === 'encrypted_backup') {
+        await this.importBackupArchiveToRuntime({
+          archivePath: existingBackupArchivePath as string,
+          targetDbPath: dbPath,
+          uploadsPath,
+          backupEncryptionKey: requestedBackupEncryptionKey,
         });
       }
 
@@ -177,6 +211,7 @@ export class SetupService {
         jwtSecret: crypto.randomBytes(32).toString('hex'),
         setupMode: false,
         adminEmail: request.adminEmail,
+        backupEncryptionKey: activeBackupEncryptionKey,
         createdAt: new Date(),
       };
 
@@ -198,8 +233,12 @@ export class SetupService {
             ? existingDatabasePath || undefined
             : bootstrapMode === 'backup_archive'
               ? existingBackupArchivePath || undefined
+              : bootstrapMode === 'encrypted_backup'
+                ? existingBackupArchivePath || undefined
               : undefined,
         demoTicketCount: bootstrapMode === 'demo_dataset' ? demoTicketCount : undefined,
+        backupEncryptionKeyGenerated: generatedBackupEncryptionKey,
+        backupEncryptionKeyHint: buildBackupKeyHint(activeBackupEncryptionKey),
       };
     } catch (error: any) {
       this.logger.error(`Initialization failed: ${error.message}`, error.stack);
@@ -802,11 +841,20 @@ export class SetupService {
     if (
       normalized === 'existing_db' ||
       normalized === 'backup_archive' ||
+      normalized === 'encrypted_backup' ||
       normalized === 'demo_dataset'
     ) {
       return normalized;
     }
     return 'fresh';
+  }
+
+  private resolveOptionalBackupEncryptionKey(rawKey?: string): string | null {
+    if (!rawKey || rawKey.trim().length === 0) {
+      return null;
+    }
+
+    return normalizeBackupEncryptionKey(rawKey);
   }
 
   private normalizeDemoTicketCount(rawCount?: number): number {
@@ -881,33 +929,52 @@ export class SetupService {
     this.logger.log(`Setup import: existing database copied (${sourceDbPath} -> ${targetDbPath})`);
   }
 
-  private importBackupArchiveToRuntime(params: {
+  private async importBackupArchiveToRuntime(params: {
     archivePath: string;
     targetDbPath: string;
     uploadsPath: string;
-  }): void {
+    backupEncryptionKey?: string | null;
+  }): Promise<void> {
     const archivePath = path.resolve(params.archivePath);
     if (!fs.existsSync(archivePath)) {
       throw new Error(`Nie znaleziono archiwum backupu: ${archivePath}`);
     }
     this.assertBackupArchiveFileSafe(archivePath);
-    this.assertBackupArchiveEntriesSafe(archivePath);
 
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openticket-setup-import-'));
+    const extractedDir = path.join(stageDir, 'extracted');
+    fs.mkdirSync(extractedDir, { recursive: true });
 
     try {
+      let archiveToExtract = archivePath;
+      if (isEncryptedBackupFile(archivePath)) {
+        if (!params.backupEncryptionKey || params.backupEncryptionKey.trim().length === 0) {
+          throw new Error('Backup jest zaszyfrowany. Podaj poprawny klucz szyfrowania.');
+        }
+        const encryptionKey = normalizeBackupEncryptionKey(params.backupEncryptionKey || '');
+        archiveToExtract = path.join(stageDir, 'decrypted.tar.gz');
+        await decryptBackupFileToArchive({
+          inputBackupPath: archivePath,
+          outputArchivePath: archiveToExtract,
+          encryptionKey,
+        });
+      }
+
+      this.assertBackupArchiveFileSafe(archiveToExtract);
+      this.assertBackupArchiveEntriesSafe(archiveToExtract);
+
       const extract = spawnSync(
         'tar',
-        ['-xzf', archivePath, '-C', stageDir, '--no-same-owner', '--no-same-permissions'],
+        ['-xzf', archiveToExtract, '-C', extractedDir, '--no-same-owner', '--no-same-permissions'],
         { encoding: 'utf-8' },
       );
       if (extract.status !== 0) {
         const reason = (extract.stderr || extract.stdout || 'tar extract failed').trim();
         throw new Error(`Nie udało się rozpakować backupu: ${reason}`);
       }
-      this.assertNoSymlinksInDirectory(stageDir);
+      this.assertNoSymlinksInDirectory(extractedDir);
 
-      const importedDbPath = path.join(stageDir, 'app.db');
+      const importedDbPath = path.join(extractedDir, 'app.db');
       if (!fs.existsSync(importedDbPath)) {
         throw new Error('Backup nie zawiera pliku app.db.');
       }
@@ -924,11 +991,11 @@ export class SetupService {
       }
 
       fs.copyFileSync(importedDbPath, params.targetDbPath);
-      this.copyFileIfExists(path.join(stageDir, 'app.db-wal'), `${params.targetDbPath}-wal`);
-      this.copyFileIfExists(path.join(stageDir, 'app.db-shm'), `${params.targetDbPath}-shm`);
-      this.copyFileIfExists(path.join(stageDir, 'app.db-journal'), `${params.targetDbPath}-journal`);
+      this.copyFileIfExists(path.join(extractedDir, 'app.db-wal'), `${params.targetDbPath}-wal`);
+      this.copyFileIfExists(path.join(extractedDir, 'app.db-shm'), `${params.targetDbPath}-shm`);
+      this.copyFileIfExists(path.join(extractedDir, 'app.db-journal'), `${params.targetDbPath}-journal`);
 
-      const importedUploads = path.join(stageDir, 'uploads');
+      const importedUploads = path.join(extractedDir, 'uploads');
       if (fs.existsSync(importedUploads)) {
         fs.rmSync(params.uploadsPath, { recursive: true, force: true });
         fs.cpSync(importedUploads, params.uploadsPath, { recursive: true });
@@ -1342,7 +1409,10 @@ export class SetupService {
     }
 
     return entries
-      .filter((name) => name.endsWith('.tar.gz'))
+      .filter(
+        (name) =>
+          name.endsWith('.otbackup') || name.endsWith('.tar.gz') || name.endsWith('.tgz') || name.endsWith('.gz'),
+      )
       .map((name) => path.join(dirPath, name))
       .filter((fullPath) => fs.existsSync(fullPath));
   }

@@ -49,6 +49,18 @@ function nowStamp() {
 }
 
 async function ensureSetupAndLogin(page) {
+  const clickButtonByName = async (patterns, timeout = 30000) => {
+    const list = Array.isArray(patterns) ? patterns : [patterns];
+    for (const pattern of list) {
+      const button = page.getByRole('button', { name: pattern });
+      const visible = await button.first().isVisible().catch(() => false);
+      if (!visible) continue;
+      await button.first().click({ timeout });
+      return true;
+    }
+    return false;
+  };
+
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => window.location.pathname !== '/', undefined, {
     timeout: 12000,
@@ -57,14 +69,56 @@ async function ensureSetupAndLogin(page) {
   const currentPath = new URL(page.url()).pathname;
 
   if (currentPath.startsWith('/setup')) {
-    await page.getByRole('button', { name: /Continue to Admin Setup/i }).click();
+    const movedToAdminSetup = await clickButtonByName(
+      [/Continue to Admin Setup/i, /Dalej.*konfiguracji admina/i, /^Dalej/i],
+      35000,
+    );
+    if (!movedToAdminSetup) {
+      throw new Error('Setup step 1 button not found');
+    }
+
     await page.getByPlaceholder('admin@company.com').fill(email);
     await page.getByPlaceholder('Enter a strong password').fill(password);
     await page.getByPlaceholder('Re-enter password').fill(password);
     await page.getByPlaceholder("e.g., John's Services").fill('Moj Serwis');
-    await page.getByRole('button', { name: /Continue to Review/i }).click();
-    await page.getByRole('button', { name: /Initialize System/i }).click();
-    await page.getByRole('button', { name: /Przejdź do dashboardu/i }).click();
+
+    const movedToReview = await clickButtonByName(
+      [/Continue to Review/i, /Dalej.*podsumowania/i, /^Continue/i],
+      35000,
+    );
+    if (!movedToReview) {
+      throw new Error('Setup step 2 button not found');
+    }
+
+    const initialized = await clickButtonByName(
+      [/Initialize System/i, /Inicjalizuj system/i, /Uruchom system/i],
+      35000,
+    );
+    if (!initialized) {
+      throw new Error('Setup step 3 initialize button not found');
+    }
+
+    await page
+      .waitForFunction(() => {
+        const path = window.location.pathname || '';
+        if (path.startsWith('/dashboard') || path.startsWith('/login')) {
+          return true;
+        }
+        const body = document.body?.innerText || '';
+        return /Zaczynamy|Przejdź do dashboardu|Go to Dashboard/i.test(body);
+      }, undefined, { timeout: 120000 })
+      .catch(() => undefined);
+
+    const afterInitPath = new URL(page.url()).pathname;
+    if (afterInitPath.startsWith('/setup')) {
+      const openedDashboard = await clickButtonByName(
+        [/Zaczynamy/i, /Przejdź do dashboardu/i, /Go to Dashboard/i],
+        35000,
+      );
+      if (!openedDashboard) {
+        throw new Error('Setup completion button not found');
+      }
+    }
   }
 
   if (new URL(page.url()).pathname.startsWith('/login')) {

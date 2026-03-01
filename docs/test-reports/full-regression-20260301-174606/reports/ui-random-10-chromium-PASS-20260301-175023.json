@@ -1,0 +1,60 @@
+{
+  "browser": "chromium",
+  "baseUrl": "http://127.0.0.1:3200",
+  "iterations": 10,
+  "startedAt": "2026-03-01T16:50:19.806Z",
+  "success": true,
+  "actions": [
+    {
+      "step": 1,
+      "action": "refresh_tickets",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 2,
+      "action": "open_ui_personalization",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 3,
+      "action": "refresh_tickets",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 4,
+      "action": "click_notifications",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 5,
+      "action": "open_ui_personalization",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 6,
+      "action": "open_users",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 7,
+      "action": "open_config",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 8,
+      "action": "open_ui_personalization",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 9,
+      "action": "refresh_tickets",
+      "url": "http://127.0.0.1:3200/dashboard"
+    },
+    {
+      "step": 10,
+      "action": "open_ui_personalization",
+      "url": "http://127.0.0.1:3200/dashboard"
+    }
+  ],
+  "error": null
+}

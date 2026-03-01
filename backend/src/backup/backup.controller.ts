@@ -32,7 +32,7 @@ export class BackupController {
   constructor(private readonly backupService: BackupService) {}
 
   @Post('export')
-  @ApiOperation({ summary: 'Eksport całego systemu do jednego pliku (.tar.gz)' })
+  @ApiOperation({ summary: 'Eksport całego systemu do jednego, szyfrowanego pliku (.otbackup)' })
   async export(@CurrentUser() user: AuthenticatedUser) {
     return this.backupService.exportBackup(user.id);
   }
@@ -58,8 +58,8 @@ export class BackupController {
 
   @Post('import-path')
   @ApiOperation({ summary: 'Import backupu ze ścieżki lokalnej serwera' })
-  async importByPath(@Body() body: { archivePath?: string }) {
-    return this.backupService.importBackupByPath(body.archivePath || '');
+  async importByPath(@Body() body: { archivePath?: string; encryptionKey?: string }) {
+    return this.backupService.importBackupByPath(body.archivePath || '', body.encryptionKey || '');
   }
 
   @Post('import')
@@ -69,19 +69,24 @@ export class BackupController {
       limits: { fileSize: BackupController.MAX_UPLOAD_BACKUP_BYTES },
     }),
   )
-  @ApiOperation({ summary: 'Import backupu z uploadowanego pliku .tar.gz' })
-  async importUploaded(@UploadedFile() file?: { path?: string; originalname?: string }) {
+  @ApiOperation({ summary: 'Import backupu z uploadowanego pliku .otbackup / .tar.gz' })
+  async importUploaded(
+    @UploadedFile() file?: { path?: string; originalname?: string },
+    @Body() body?: { encryptionKey?: string },
+  ) {
     if (!file?.path || !fs.existsSync(file.path)) {
       throw new BadRequestException('Brak pliku backupu do importu.');
     }
 
     const originalName = (file.originalname || '').trim().toLowerCase();
-    if (originalName && !/\.(tar\.gz|tgz|gz)$/.test(originalName)) {
-      throw new BadRequestException('Do importu backupu użyj pliku .tar.gz, .tgz lub .gz.');
+    if (originalName && !/\.(otbackup|tar\.gz|tgz|gz)$/.test(originalName)) {
+      throw new BadRequestException('Do importu backupu użyj pliku .otbackup lub .tar.gz.');
     }
 
     try {
-      await this.backupService.importFromArchiveFile(file.path);
+      await this.backupService.importFromArchiveFile(file.path, {
+        encryptionKey: body?.encryptionKey || '',
+      });
       return { success: true };
     } finally {
       fs.rmSync(file.path, { force: true });

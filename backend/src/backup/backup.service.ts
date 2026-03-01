@@ -6,6 +6,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { AppConfig } from '../config/config.types';
+import {
+  generateBackupEncryptionKey,
+  decryptBackupFileToArchive,
+  encryptArchiveToBackupFile,
+  isEncryptedBackupFile,
+  normalizeBackupEncryptionKey,
+} from './backup-encryption';
 
 type ResolvedRuntimePaths = {
   configDir: string;
@@ -70,9 +77,10 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
     fs.mkdirSync(runtime.backupsDir, { recursive: true });
     const timestamp = this.nowStamp();
-    const archiveName = `ticket-backup-${timestamp}.tar.gz`;
+    const archiveName = `ticket-backup-${timestamp}.otbackup`;
     const archivePath = path.join(runtime.backupsDir, archiveName);
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-export-'));
+    const rawArchivePath = path.join(stageDir, 'backup-plain.tar.gz');
     const includes: string[] = [];
 
     try {
@@ -119,18 +127,26 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       };
       fs.writeFileSync(path.join(stageDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
-      const tarResult = spawnSync('tar', ['-czf', archivePath, '-C', stageDir, '.'], {
+      const tarResult = spawnSync('tar', ['-czf', rawArchivePath, '-C', stageDir, '.'], {
         encoding: 'utf-8',
       });
       if (tarResult.status !== 0) {
         throw new Error((tarResult.stderr || tarResult.stdout || 'tar failed').trim());
       }
 
+      const encryptionKey = await this.resolveConfiguredBackupEncryptionKey();
+      await encryptArchiveToBackupFile({
+        inputArchivePath: rawArchivePath,
+        outputBackupPath: archivePath,
+        encryptionKey,
+      });
+
       const stat = fs.statSync(archivePath);
       return {
         archivePath,
         archiveName,
         bytes: stat.size,
+        encrypted: true,
       };
     } finally {
       fs.rmSync(stageDir, { recursive: true, force: true });
@@ -214,7 +230,7 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async importBackupByPath(archivePath: string) {
+  async importBackupByPath(archivePath: string, encryptionKey?: string) {
     if (!archivePath || archivePath.trim().length === 0) {
       throw new BadRequestException('Brak ścieżki do pliku backupu.');
     }
@@ -225,21 +241,40 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     }
     this.assertArchiveFileIsSafe(resolved);
 
-    await this.importFromArchiveFile(resolved);
+    await this.importFromArchiveFile(resolved, { encryptionKey });
     return { success: true, archivePath: resolved };
   }
 
-  async importFromArchiveFile(archivePath: string) {
+  async importFromArchiveFile(archivePath: string, options?: { encryptionKey?: string }) {
     const runtime = await this.resolveRuntimePaths();
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-import-'));
+    const extractedDir = path.join(stageDir, 'extracted');
+    fs.mkdirSync(extractedDir, { recursive: true });
 
     try {
       this.assertArchiveFileIsSafe(archivePath);
-      this.assertArchiveEntriesSafe(archivePath);
+      let archiveToExtract = archivePath;
+      if (isEncryptedBackupFile(archivePath)) {
+        const decryptionKey = await this.resolveImportBackupEncryptionKey(options?.encryptionKey);
+        archiveToExtract = path.join(stageDir, 'decrypted.tar.gz');
+        try {
+          await decryptBackupFileToArchive({
+            inputBackupPath: archivePath,
+            outputArchivePath: archiveToExtract,
+            encryptionKey: decryptionKey,
+          });
+        } catch (error: any) {
+          throw new BadRequestException(
+            `Nie udało się odszyfrować backupu: ${error?.message || 'nieprawidłowy klucz lub uszkodzony plik'}`,
+          );
+        }
+      }
+      this.assertArchiveFileIsSafe(archiveToExtract);
+      this.assertArchiveEntriesSafe(archiveToExtract);
 
       const tarResult = spawnSync(
         'tar',
-        ['-xzf', archivePath, '-C', stageDir, '--no-same-owner', '--no-same-permissions'],
+        ['-xzf', archiveToExtract, '-C', extractedDir, '--no-same-owner', '--no-same-permissions'],
         {
           encoding: 'utf-8',
         },
@@ -247,9 +282,9 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
       if (tarResult.status !== 0) {
         throw new Error((tarResult.stderr || tarResult.stdout || 'tar extract failed').trim());
       }
-      this.assertNoSymlinks(stageDir);
+      this.assertNoSymlinks(extractedDir);
 
-      const importedDb = path.join(stageDir, 'app.db');
+      const importedDb = path.join(extractedDir, 'app.db');
       if (!fs.existsSync(importedDb)) {
         throw new BadRequestException('Backup nie zawiera pliku app.db.');
       }
@@ -270,9 +305,9 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
 
       fs.copyFileSync(importedDb, runtime.dbFile);
       const importedSidecars: Array<{ source: string; target: string }> = [
-        { source: path.join(stageDir, 'app.db-wal'), target: `${runtime.dbFile}-wal` },
-        { source: path.join(stageDir, 'app.db-shm'), target: `${runtime.dbFile}-shm` },
-        { source: path.join(stageDir, 'app.db-journal'), target: `${runtime.dbFile}-journal` },
+        { source: path.join(extractedDir, 'app.db-wal'), target: `${runtime.dbFile}-wal` },
+        { source: path.join(extractedDir, 'app.db-shm'), target: `${runtime.dbFile}-shm` },
+        { source: path.join(extractedDir, 'app.db-journal'), target: `${runtime.dbFile}-journal` },
       ];
       for (const sidecar of importedSidecars) {
         if (!fs.existsSync(sidecar.source)) {
@@ -281,13 +316,13 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         fs.copyFileSync(sidecar.source, sidecar.target);
       }
 
-      const importedUploads = path.join(stageDir, 'uploads');
+      const importedUploads = path.join(extractedDir, 'uploads');
       if (fs.existsSync(importedUploads)) {
         fs.rmSync(runtime.uploadsDir, { recursive: true, force: true });
         fs.cpSync(importedUploads, runtime.uploadsDir, { recursive: true });
       }
 
-      const importedConfig = path.join(stageDir, 'config.json');
+      const importedConfig = path.join(extractedDir, 'config.json');
       if (fs.existsSync(importedConfig)) {
         this.persistImportedConfigSafely(importedConfig, runtime);
       }
@@ -380,6 +415,32 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
+  }
+
+  private async resolveConfiguredBackupEncryptionKey(): Promise<string> {
+    const runtimeConfig = this.configLoader.getConfigSync();
+    const fromEnv = process.env.TICKET_SYSTEM_BACKUP_KEY;
+    const candidate = (fromEnv || runtimeConfig?.backupEncryptionKey || '').trim();
+    if (candidate) {
+      return normalizeBackupEncryptionKey(candidate);
+    }
+
+    const generated = generateBackupEncryptionKey();
+    const config = runtimeConfig || (await this.configLoader.loadConfig());
+    await this.configLoader.saveConfig({
+      ...config,
+      backupEncryptionKey: generated,
+      createdAt: config.createdAt || new Date(),
+    });
+    this.logger.warn('Brak klucza backupu w konfiguracji. Wygenerowano nowy klucz szyfrowania.');
+    return normalizeBackupEncryptionKey(generated);
+  }
+
+  private async resolveImportBackupEncryptionKey(candidate?: string): Promise<string> {
+    if (candidate && candidate.trim().length > 0) {
+      return normalizeBackupEncryptionKey(candidate);
+    }
+    return this.resolveConfiguredBackupEncryptionKey();
   }
 
   private startAutoBackupLoop(): void {
@@ -531,9 +592,9 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     const exportResult = await this.exportBackup('system:auto');
     const targetDir = path.resolve(params.targetDir);
     fs.mkdirSync(targetDir, { recursive: true, mode: 0o700 });
-    const currentPath = path.join(targetDir, 'openticket-auto-backup.current.tar.gz');
-    const previousPath = path.join(targetDir, 'openticket-auto-backup.previous.tar.gz');
-    const tempPath = path.join(targetDir, `openticket-auto-backup.tmp.${Date.now()}.tar.gz`);
+    const currentPath = path.join(targetDir, 'openticket-auto-backup.current.otbackup');
+    const previousPath = path.join(targetDir, 'openticket-auto-backup.previous.otbackup');
+    const tempPath = path.join(targetDir, `openticket-auto-backup.tmp.${Date.now()}.otbackup`);
 
     fs.copyFileSync(exportResult.archivePath, tempPath);
 

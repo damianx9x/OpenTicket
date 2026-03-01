@@ -63,12 +63,12 @@ const { pathToFileURL } = require('url');
     await page.waitForSelector('text=Backup gotowy:', { timeout: 15000 });
     add('backup-export-notice', true);
 
-    const backupInput = page.locator('input[placeholder="/ścieżka/do/backup.tar.gz"]').first();
+    const backupInput = page.locator('input[placeholder="/ścieżka/do/backup.otbackup"]').first();
     const backupPath = await backupInput.inputValue();
     const exists = backupPath.length > 0 && fs.existsSync(backupPath);
     add('backup-file-created', exists, backupPath || '(empty)');
 
-    await page.screenshot({ path: path.join(root, 'docs/screenshots/v0.3/backup-export-success.png'), fullPage: true });
+    await page.screenshot({ path: path.join(root, 'docs/screenshots/v0.4/backup-export-success.png'), fullPage: true });
   } catch (error) {
     add('unexpected-error', false, error instanceof Error ? error.message : String(error));
   } finally {

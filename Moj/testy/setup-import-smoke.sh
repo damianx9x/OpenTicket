@@ -7,7 +7,7 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-admin@local.test}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-DevLocal123!}"
 DATA_PATH="${DATA_PATH:-$ROOT_DIR/Moj/testy/runtime/state/data}"
 SEED_DB="${SEED_DB:-/tmp/openticket-seed-setup.db}"
-SEED_ARCHIVE="${SEED_ARCHIVE:-/tmp/openticket-seed-setup.tar.gz}"
+SEED_ARCHIVE="${SEED_ARCHIVE:-/tmp/openticket-seed-setup.otbackup}"
 
 json_get() {
   local expr="$1"
@@ -25,7 +25,7 @@ setup_init() {
   local payload="$1"
   curl -fsS -X POST "$BASE_URL/setup/init" \
     -H 'Content-Type: application/json' \
-    -d "$payload" >/dev/null
+    -d "$payload"
 }
 
 count_seed_tickets() {
@@ -37,7 +37,12 @@ count_seed_tickets() {
 
 echo "[setup-import-smoke] Seed baseline"
 "$ROOT_DIR/Moj/testy/start.sh" --fresh --no-open >/tmp/openticket-setup-import-seed.log 2>&1
-setup_init "{\"dataPath\":\"$DATA_PATH\",\"adminEmail\":\"$ADMIN_EMAIL\",\"adminPassword\":\"$ADMIN_PASSWORD\",\"organizationName\":\"SeedOrg\"}"
+SEED_SETUP_JSON="$(setup_init "{\"dataPath\":\"$DATA_PATH\",\"adminEmail\":\"$ADMIN_EMAIL\",\"adminPassword\":\"$ADMIN_PASSWORD\",\"organizationName\":\"SeedOrg\"}")"
+BACKUP_KEY="$(printf '%s' "$SEED_SETUP_JSON" | json_get "return data.backupEncryptionKeyGenerated || '';")"
+if [[ -z "$BACKUP_KEY" ]]; then
+  echo "[setup-import-smoke] FAIL: brak wygenerowanego klucza backupu po setupie seed"
+  exit 1
+fi
 
 TOKEN="$(login_token)"
 if [[ -z "$TOKEN" ]]; then
@@ -57,13 +62,13 @@ cp "$ARCHIVE_PATH" "$SEED_ARCHIVE"
 
 echo "[setup-import-smoke] Test import existing_db"
 "$ROOT_DIR/Moj/testy/start.sh" --fresh --no-open >/tmp/openticket-setup-import-existing.log 2>&1
-setup_init "{\"dataPath\":\"$DATA_PATH\",\"bootstrapMode\":\"existing_db\",\"existingDatabasePath\":\"$SEED_DB\",\"adminEmail\":\"$ADMIN_EMAIL\",\"adminPassword\":\"$ADMIN_PASSWORD\",\"organizationName\":\"SeedOrg\"}"
+setup_init "{\"dataPath\":\"$DATA_PATH\",\"bootstrapMode\":\"existing_db\",\"existingDatabasePath\":\"$SEED_DB\",\"adminEmail\":\"$ADMIN_EMAIL\",\"adminPassword\":\"$ADMIN_PASSWORD\",\"organizationName\":\"SeedOrg\"}" >/dev/null
 TOKEN_EXISTING="$(login_token)"
 COUNT_EXISTING="$(count_seed_tickets "$TOKEN_EXISTING")"
 
-echo "[setup-import-smoke] Test import backup_archive"
+echo "[setup-import-smoke] Test import encrypted_backup"
 "$ROOT_DIR/Moj/testy/start.sh" --fresh --no-open >/tmp/openticket-setup-import-archive.log 2>&1
-setup_init "{\"dataPath\":\"$DATA_PATH\",\"bootstrapMode\":\"backup_archive\",\"existingBackupArchivePath\":\"$SEED_ARCHIVE\",\"adminEmail\":\"$ADMIN_EMAIL\",\"adminPassword\":\"$ADMIN_PASSWORD\",\"organizationName\":\"SeedOrg\"}"
+setup_init "{\"dataPath\":\"$DATA_PATH\",\"bootstrapMode\":\"encrypted_backup\",\"existingBackupArchivePath\":\"$SEED_ARCHIVE\",\"backupEncryptionKey\":\"$BACKUP_KEY\",\"adminEmail\":\"$ADMIN_EMAIL\",\"adminPassword\":\"$ADMIN_PASSWORD\",\"organizationName\":\"SeedOrg\"}" >/dev/null
 TOKEN_ARCHIVE="$(login_token)"
 COUNT_ARCHIVE="$(count_seed_tickets "$TOKEN_ARCHIVE")"
 
@@ -73,8 +78,8 @@ if [[ "$COUNT_EXISTING" -lt 1 ]]; then
 fi
 
 if [[ "$COUNT_ARCHIVE" -lt 1 ]]; then
-  echo "[setup-import-smoke] FAIL: import backup_archive nie odtworzył danych"
+  echo "[setup-import-smoke] FAIL: import encrypted_backup nie odtworzył danych"
   exit 1
 fi
 
-echo "[setup-import-smoke] PASS existing_db=$COUNT_EXISTING backup_archive=$COUNT_ARCHIVE"
+echo "[setup-import-smoke] PASS existing_db=$COUNT_EXISTING encrypted_backup=$COUNT_ARCHIVE"
