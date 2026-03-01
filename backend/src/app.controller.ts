@@ -41,6 +41,12 @@ export class AppController {
   @Get('system/info')
   systemInfo() {
     const cfg = this.configLoader.getConfigSync();
+    const remoteSetupExpiresAt = cfg?.setupRemoteEnabledUntil ?? null;
+    const remoteSetupOpen =
+      Boolean(cfg?.setupMode) &&
+      Boolean(remoteSetupExpiresAt) &&
+      Number.isFinite(Date.parse(remoteSetupExpiresAt as string)) &&
+      Date.parse(remoteSetupExpiresAt as string) > Date.now();
     return {
       app: 'openticket',
       version: process.env.npm_package_version || '0.0.0-dev',
@@ -48,6 +54,11 @@ export class AppController {
       environment: process.env.NODE_ENV || 'development',
       setupMode: cfg?.setupMode ?? true,
       installationMode: cfg?.installationMode ?? 'server_client',
+      deploymentTarget: cfg?.deploymentTarget ?? 'local_machine',
+      hostProfile: cfg?.hostProfile ?? null,
+      setupSessionMode: cfg?.setupSessionMode ?? 'loopback',
+      remoteSetupOpen,
+      remoteSetupExpiresAt,
       remoteApiBaseUrl: cfg?.remoteApiBaseUrl ?? null,
       databaseMode: cfg?.databaseMode ?? 'sqlite',
       storageMode: cfg?.storageMode ?? 'local',

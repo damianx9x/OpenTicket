@@ -138,6 +138,45 @@ const api = {
     return ipcRenderer.invoke("open-external-url", { url });
   },
 
+  remoteDeploySsh: async (payload: {
+    host: string;
+    user?: string;
+    sshPort?: number;
+    identityFile?: string;
+    profile?: "linux_docker" | "linux_native" | "synology_docker";
+    remoteRepoPath?: string;
+    apiPort?: number;
+    withTls?: boolean;
+    domain?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    code?: number | null;
+    stdout?: string;
+    stderr?: string;
+    error?: string | null;
+  }> => {
+    return ipcRenderer.invoke("remote-deploy-ssh", payload);
+  },
+
+  remoteCreateSetupTokenSsh: async (payload: {
+    host: string;
+    user?: string;
+    sshPort?: number;
+    identityFile?: string;
+    apiPort?: number;
+    ttlMinutes?: number;
+    maxAttempts?: number;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    token?: string | null;
+    expiresAt?: string | null;
+    raw?: string;
+  }> => {
+    return ipcRenderer.invoke("remote-create-setup-token-ssh", payload);
+  },
+
   // Renderer notifications
   onBackendCrashed: (callback: () => void): (() => void) => {
     const listener = () => callback();

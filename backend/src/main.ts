@@ -212,6 +212,12 @@ async function bootstrap() {
       message: 'Zbyt wiele żądań krytycznych setup. Odczekaj chwilę i spróbuj ponownie.',
     },
     {
+      pattern: /^\/api\/v1\/setup\/token\/(create|claim|revoke)$/,
+      windowMs: 10 * 60 * 1000,
+      limit: 30,
+      message: 'Zbyt wiele żądań tokenu setup. Odczekaj chwilę i spróbuj ponownie.',
+    },
+    {
       pattern: /^\/api\/v1\/setup\/(validate-path|discover-local-data|discover-servers|validate-remote)$/,
       windowMs: 10 * 60 * 1000,
       limit: 300,

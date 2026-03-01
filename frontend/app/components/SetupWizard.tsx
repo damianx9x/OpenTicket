@@ -8,15 +8,20 @@ import { InitStep4 } from './steps/Step4-QRCode';
 import {
   applyRuntimeApiBaseFromSetupStatus,
   initializeClientOnlyMode,
-  InstallationMode,
-  SetupBootstrapMode,
-  SetupRequest,
-  SetupResponse,
+  type DeploymentTarget,
+  type HostProfile,
+  type InstallationMode,
+  type SetupBootstrapMode,
+  type SetupRequest,
+  type SetupResponse,
 } from '@/lib/setup-client';
 
 export interface SetupWizardState {
   currentStep: 1 | 2 | 3 | 4;
   installationMode: InstallationMode;
+  deploymentTarget: DeploymentTarget;
+  hostProfile: HostProfile;
+  setupSessionToken: string;
   dataPath: string;
   remoteApiBaseUrl: string;
   bootstrapMode: SetupBootstrapMode;
@@ -51,6 +56,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
   const [state, setState] = useState<SetupWizardState>({
     currentStep: 1,
     installationMode: 'server_client',
+    deploymentTarget: 'local_machine',
+    hostProfile: 'linux_docker',
+    setupSessionToken: '',
     dataPath: initialDataPath,
     remoteApiBaseUrl: '',
     bootstrapMode: 'fresh',
@@ -89,6 +97,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     installationMode: InstallationMode;
     dataPath: string;
     remoteApiBaseUrl?: string;
+    deploymentTarget?: DeploymentTarget;
+    hostProfile?: HostProfile;
+    setupSessionToken?: string;
     bootstrapMode?: SetupBootstrapMode;
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
@@ -101,6 +112,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     setState((prev) => ({
       ...prev,
       installationMode: payload.installationMode,
+      deploymentTarget: payload.deploymentTarget || 'local_machine',
+      hostProfile: payload.hostProfile || prev.hostProfile || 'linux_docker',
+      setupSessionToken: payload.setupSessionToken || '',
       dataPath: payload.dataPath,
       remoteApiBaseUrl: payload.remoteApiBaseUrl || '',
       bootstrapMode: payload.bootstrapMode || 'fresh',
@@ -146,12 +160,60 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
         result = await initializeClientOnlyMode({
           remoteApiBaseUrl: state.remoteApiBaseUrl,
         });
+      } else if (state.deploymentTarget === 'remote_host') {
+        if (!state.remoteApiBaseUrl) {
+          throw new Error('Brak adresu API hosta zdalnego.');
+        }
+        if (!state.setupSessionToken) {
+          throw new Error('Brak aktywnej sesji setup dla hosta zdalnego.');
+        }
+        const remoteRequest: SetupRequest = {
+          dataPath: state.dataPath,
+          adminEmail: state.adminEmail,
+          adminPassword: state.adminPassword,
+          organizationName: state.organizationName || undefined,
+          deploymentTarget: 'remote_host',
+          hostProfile: state.hostProfile,
+          setupSessionToken: state.setupSessionToken,
+          bootstrapMode: state.bootstrapMode,
+          existingDatabasePath: state.existingDatabasePath || undefined,
+          existingBackupArchivePath: state.existingBackupArchivePath || undefined,
+          backupEncryptionKey: state.backupEncryptionKey || undefined,
+          demoTicketCount: state.bootstrapMode === 'demo_dataset' ? state.demoTicketCount : undefined,
+          autoBackupEnabled: state.autoBackupEnabled,
+          autoBackupIntervalHours: state.autoBackupIntervalHours,
+          autoBackupPath: state.autoBackupPath || undefined,
+        };
+        const remoteResult = await initializeSystem(remoteRequest, {
+          apiBaseUrl: state.remoteApiBaseUrl,
+          setupSessionToken: state.setupSessionToken,
+        });
+        if (!remoteResult.success) {
+          result = remoteResult;
+        } else {
+          const localClientResult = await initializeClientOnlyMode({
+            remoteApiBaseUrl: state.remoteApiBaseUrl,
+          });
+          if (!localClientResult.success) {
+            result = {
+              success: false,
+              message: `Remote setup OK, ale lokalna konfiguracja klienta nie powiodła się: ${localClientResult.message}`,
+            };
+          } else {
+            result = {
+              ...remoteResult,
+              installationMode: 'client_only',
+              remoteApiBaseUrl: state.remoteApiBaseUrl,
+            };
+          }
+        }
       } else {
         const request: SetupRequest = {
           dataPath: state.dataPath,
           adminEmail: state.adminEmail,
           adminPassword: state.adminPassword,
           organizationName: state.organizationName || undefined,
+          deploymentTarget: 'local_machine',
           bootstrapMode: state.bootstrapMode,
           existingDatabasePath: state.existingDatabasePath || undefined,
           existingBackupArchivePath: state.existingBackupArchivePath || undefined,
@@ -195,7 +257,7 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
   };
 
   const handleContinueToDashboard = async () => {
-    if (state.installationMode === 'client_only') {
+    if (state.installationMode === 'client_only' || state.deploymentTarget === 'remote_host') {
       window.location.href = '/login';
       return;
     }
@@ -230,6 +292,9 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
     setState({
       currentStep: 1,
       installationMode: 'server_client',
+      deploymentTarget: 'local_machine',
+      hostProfile: 'linux_docker',
+      setupSessionToken: '',
       dataPath: '',
       remoteApiBaseUrl: '',
       bootstrapMode: 'fresh',
@@ -307,6 +372,8 @@ export default function SetupWizard({ onComplete, initialDataPath = '' }: SetupW
               isLoading={state.isLoading}
               summary={{
                 installationMode: state.installationMode,
+                deploymentTarget: state.deploymentTarget,
+                hostProfile: state.hostProfile,
                 dataPath: state.dataPath,
                 remoteApiBaseUrl: state.remoteApiBaseUrl,
                 bootstrapMode: state.bootstrapMode,

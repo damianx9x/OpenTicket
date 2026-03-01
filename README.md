@@ -35,6 +35,34 @@ cd /Users/icex/Projekty/git_repos/OpenTicket-clean
 ./Moj/testy/ui-random-10.sh --all-browsers
 ```
 
+## Remote Host (Linux/Synology)
+Tryb zdalny działa równolegle do lokalnego (bez regresji local mode).
+
+Docker (rekomendowane):
+```bash
+cd /Users/icex/Projekty/git_repos/OpenTicket-clean
+./deploy/docker/install.sh --port 3200
+```
+
+Native systemd:
+```bash
+cd /Users/icex/Projekty/git_repos/OpenTicket-clean
+sudo ./deploy/native/install.sh --port 3200
+```
+
+Dokumentacja:
+- `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/REMOTE_INSTALL_LINUX.md`
+- `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/REMOTE_INSTALL_SYNOLOGY.md`
+- `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/REMOTE_INSTALL_NATIVE_SYSTEMD.md`
+
+Token setup (jednorazowy, TTL):
+```bash
+curl -fsS -X POST http://127.0.0.1:3200/api/v1/setup/token/create \
+  -H 'content-type: application/json' \
+  -d '{"ttlMinutes":15,"maxAttempts":5}'
+```
+Następnie w wizardze: `Serwer + klient` -> `Serwer na hoście zdalnym` i podaj `API URL + token`.
+
 ## Build instalatorów
 ```bash
 cd /Users/icex/Projekty/git_repos/OpenTicket-clean
@@ -137,6 +165,15 @@ Zawiera:
 - log per krok (setup, auth, import, backup, auto-backup, klient↔serwer, random-ui, print, security, dependency, 10x fresh),
 - raporty JSON/MD z każdego testu,
 - wynik końcowy: `PASS`.
+
+## Live test policy (3 scenariusze)
+```bash
+./Moj/testy/live-3-suite.sh
+```
+Policy:
+1. Fresh install + realny flow użytkownika,
+2. klient podłączony do działającego serwera,
+3. disaster restore z backupu.
 
 ## TODO (najbliższe kroki)
 1. Rozpocząć etap iOS: pairing + ticket create + upload zdjęć + QR scan flow.

@@ -69,3 +69,37 @@ jobs:
         run: npm --prefix backend run build
       - name: Run clean user account smoke
         run: node scripts/ci/clean-user-account-smoke.mjs --platform=${{ matrix.platform }}
+
+  remote-docker-smoke:
+    name: Remote Docker smoke (token setup)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+      - name: Run remote docker smoke
+        run: ./scripts/ci/remote-docker-smoke.sh
+
+  remote-native-smoke:
+    name: Remote native profile smoke (dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate native installer profile
+        run: ./deploy/native/install.sh --dry-run
+
+  synology-profile-validate:
+    name: Synology profile validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Synology profile docs/config
+        run: ./scripts/ci/validate-synology-profile.sh

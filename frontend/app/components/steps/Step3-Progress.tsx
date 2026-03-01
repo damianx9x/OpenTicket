@@ -8,6 +8,8 @@ interface Step3Props {
   isLoading: boolean;
   summary: {
     installationMode: 'server_client' | 'client_only';
+    deploymentTarget?: 'local_machine' | 'remote_host';
+    hostProfile?: 'linux_docker' | 'linux_native' | 'synology_docker';
     dataPath: string;
     remoteApiBaseUrl?: string;
     bootstrapMode?: 'fresh' | 'existing_db' | 'backup_archive' | 'encrypted_backup' | 'demo_dataset';
@@ -88,6 +90,17 @@ export function InitStep3({ onContinue, onBack, isLoading, summary }: Step3Props
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-600">Data Location</p>
             <p className="text-gray-900 font-mono text-sm mt-1">{summary.dataPath}</p>
+            <div>
+              <p className="text-sm font-medium text-gray-600">Hosting serwera</p>
+              <p className="text-gray-900 text-sm mt-1">
+                {summary.deploymentTarget === 'remote_host'
+                  ? `Host zdalny${summary.hostProfile ? ` (${summary.hostProfile})` : ''}`
+                  : 'Lokalny komputer'}
+              </p>
+              {summary.deploymentTarget === 'remote_host' && summary.remoteApiBaseUrl ? (
+                <p className="mt-1 font-mono text-xs text-gray-600">{summary.remoteApiBaseUrl}</p>
+              ) : null}
+            </div>
             <div>
               <p className="text-sm font-medium text-gray-600">Źródło danych</p>
               <p className="text-gray-900 text-sm mt-1">

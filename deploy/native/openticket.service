@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenTicket Backend Service
+After=network.target
+StartLimitIntervalSec=120
+StartLimitBurst=8
+
+[Service]
+Type=simple
+User=openticket
+Group=openticket
+WorkingDirectory=/opt/openticket/app/backend
+EnvironmentFile=/etc/openticket/openticket.env
+ExecStart=/usr/bin/env node /opt/openticket/app/backend/dist/main.js
+Restart=always
+RestartSec=3
+StandardOutput=append:/var/log/openticket/backend.log
+StandardError=append:/var/log/openticket/backend.log
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

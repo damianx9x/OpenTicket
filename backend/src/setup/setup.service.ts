@@ -2,11 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigLoaderService } from '../config/config-loader.service';
 import {
   AppConfig,
+  ClaimSetupTokenResponse,
   ClientOnlySetupRequest,
+  CreateSetupTokenRequest,
+  CreateSetupTokenResponse,
+  DeploymentTarget,
   DiscoverLocalDataResponse,
   DiscoverServersRequest,
   DiscoverServersResponse,
   DiscoveredServerInfo,
+  HostProfile,
+  RevokeSetupTokenResponse,
+  SetupSessionMode,
   SetupBootstrapMode,
   SetupRequest,
   SetupResponse,
@@ -43,6 +50,9 @@ export interface DataPathValidationResult {
 export class SetupService {
   private readonly logger = new Logger(SetupService.name);
   private readonly maxBackupArchiveBytes = 2 * 1024 * 1024 * 1024;
+  private readonly defaultSetupTokenTtlMinutes = 15;
+  private readonly defaultSetupTokenMaxAttempts = 5;
+  private readonly defaultSetupSessionTtlMinutes = 30;
 
   constructor(
     private readonly configLoader: ConfigLoaderService,
@@ -73,6 +83,8 @@ export class SetupService {
       const uploadsPath = path.join(dataPath, 'uploads');
       const dbPath = path.join(dataPath, 'app.db');
       const dbUrl = this.toSqliteDatabaseUrl(dbPath);
+      const deploymentTarget = this.normalizeDeploymentTarget(request.deploymentTarget);
+      const hostProfile = this.normalizeHostProfile(request.hostProfile, deploymentTarget);
       const bootstrapMode = this.normalizeBootstrapMode(request.bootstrapMode);
       const existingDatabasePath = this.resolveOptionalAbsolutePath(request.existingDatabasePath);
       const existingBackupArchivePath = this.resolveOptionalAbsolutePath(request.existingBackupArchivePath);
@@ -210,8 +222,19 @@ export class SetupService {
         port: Number(process.env.PORT || 3000),
         jwtSecret: crypto.randomBytes(32).toString('hex'),
         setupMode: false,
+        setupSessionMode: 'loopback',
         adminEmail: request.adminEmail,
+        deploymentTarget,
+        hostProfile,
         backupEncryptionKey: activeBackupEncryptionKey,
+        setupRemoteEnabledUntil: undefined,
+        setupRemoteTokenHash: undefined,
+        setupRemoteTokenSalt: undefined,
+        setupRemoteTokenAttempts: 0,
+        setupRemoteTokenMaxAttempts: this.defaultSetupTokenMaxAttempts,
+        setupRemoteSessionTokenHash: undefined,
+        setupRemoteSessionTokenSalt: undefined,
+        setupRemoteSessionExpiresAt: undefined,
         createdAt: new Date(),
       };
 
@@ -227,6 +250,8 @@ export class SetupService {
         adminUserId,
         adminEmail: request.adminEmail,
         installationMode: 'server_client',
+        deploymentTarget,
+        hostProfile,
         bootstrapMode,
         bootstrapSourcePath:
           bootstrapMode === 'existing_db'
@@ -282,7 +307,10 @@ export class SetupService {
       port: Number(process.env.PORT || 3000),
       jwtSecret: crypto.randomBytes(32).toString('hex'),
       setupMode: false,
+      setupSessionMode: 'loopback',
       installationMode: 'client_only',
+      deploymentTarget: 'local_machine',
+      hostProfile: undefined,
       remoteApiBaseUrl,
       createdAt: new Date(),
     };
@@ -296,6 +324,7 @@ export class SetupService {
       message: 'Client-only mode initialized successfully',
       configPath: dataPath,
       installationMode: 'client_only',
+      deploymentTarget: 'local_machine',
       remoteApiBaseUrl,
     };
   }
@@ -813,6 +842,11 @@ export class SetupService {
     setupMode: boolean;
     defaultDataPath: string;
     installationMode: 'server_client' | 'client_only';
+    deploymentTarget: DeploymentTarget;
+    hostProfile?: HostProfile;
+    setupSessionMode?: SetupSessionMode;
+    remoteSetupOpen: boolean;
+    remoteSetupExpiresAt?: string;
     remoteApiBaseUrl?: string;
   }> {
     const config = await this.configLoader.loadConfig();
@@ -823,6 +857,11 @@ export class SetupService {
       setupMode: !isSetup,
       defaultDataPath: this.getRecommendedDataPath(),
       installationMode: (config.installationMode as 'server_client' | 'client_only') || 'server_client',
+      deploymentTarget: (config.deploymentTarget as DeploymentTarget) || 'local_machine',
+      hostProfile: config.hostProfile as HostProfile | undefined,
+      setupSessionMode: (config.setupSessionMode as SetupSessionMode) || 'loopback',
+      remoteSetupOpen: this.isRemoteSetupOpen(config),
+      remoteSetupExpiresAt: config.setupRemoteEnabledUntil || undefined,
       remoteApiBaseUrl: config.remoteApiBaseUrl || undefined,
     };
   }
@@ -834,6 +873,198 @@ export class SetupService {
     }
 
     return this.configLoader.getDefaultDataDirectoryPath();
+  }
+
+  async createRemoteSetupToken(request: CreateSetupTokenRequest = {}): Promise<CreateSetupTokenResponse> {
+    const config = await this.configLoader.loadConfig();
+    if (!config.setupMode) {
+      return {
+        success: false,
+        message: 'System jest już skonfigurowany. Token setup nie jest już wymagany.',
+      };
+    }
+
+    const ttlMinutes = this.clampInt(request.ttlMinutes ?? this.defaultSetupTokenTtlMinutes, 5, 120);
+    const maxAttempts = this.clampInt(request.maxAttempts ?? this.defaultSetupTokenMaxAttempts, 1, 20);
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+    const token = this.generateHumanReadableToken();
+    const salt = crypto.randomBytes(16).toString('hex');
+    const tokenHash = this.hashSetupSecret(token, salt);
+
+    const nextConfig = this.withSetupDefaults(config);
+    nextConfig.setupSessionMode = 'one_time_token';
+    nextConfig.setupRemoteEnabledUntil = expiresAt.toISOString();
+    nextConfig.setupRemoteTokenHash = tokenHash;
+    nextConfig.setupRemoteTokenSalt = salt;
+    nextConfig.setupRemoteTokenAttempts = 0;
+    nextConfig.setupRemoteTokenMaxAttempts = maxAttempts;
+    nextConfig.setupRemoteSessionTokenHash = undefined;
+    nextConfig.setupRemoteSessionTokenSalt = undefined;
+    nextConfig.setupRemoteSessionExpiresAt = undefined;
+
+    await this.configLoader.saveConfig(nextConfig);
+    this.logger.warn(`Setup token generated, valid until ${expiresAt.toISOString()}`);
+
+    return {
+      success: true,
+      token,
+      expiresAt: expiresAt.toISOString(),
+      maxAttempts,
+      message: `Token setup aktywny przez ${ttlMinutes} minut.`,
+    };
+  }
+
+  async claimRemoteSetupToken(token: string): Promise<ClaimSetupTokenResponse> {
+    const config = await this.configLoader.loadConfig();
+    if (!config.setupMode) {
+      return {
+        success: false,
+        message: 'System jest już skonfigurowany. Token setup nie jest aktywny.',
+      };
+    }
+
+    const nextConfig = this.withSetupDefaults(config);
+    const now = Date.now();
+    const expiresAtMs = this.parseTimestamp(nextConfig.setupRemoteEnabledUntil);
+    const maxAttempts = this.clampInt(
+      nextConfig.setupRemoteTokenMaxAttempts ?? this.defaultSetupTokenMaxAttempts,
+      1,
+      20,
+    );
+    const usedAttempts = this.clampInt(nextConfig.setupRemoteTokenAttempts ?? 0, 0, 999);
+
+    if (!nextConfig.setupRemoteTokenHash || !nextConfig.setupRemoteTokenSalt || !expiresAtMs) {
+      return {
+        success: false,
+        message: 'Brak aktywnego tokenu setup. Wygeneruj nowy token na hoście.',
+      };
+    }
+
+    if (expiresAtMs <= now) {
+      nextConfig.setupRemoteTokenHash = undefined;
+      nextConfig.setupRemoteTokenSalt = undefined;
+      nextConfig.setupRemoteTokenAttempts = 0;
+      await this.configLoader.saveConfig(nextConfig);
+      return {
+        success: false,
+        message: 'Token setup wygasł. Wygeneruj nowy token.',
+      };
+    }
+
+    if (usedAttempts >= maxAttempts) {
+      nextConfig.setupRemoteTokenHash = undefined;
+      nextConfig.setupRemoteTokenSalt = undefined;
+      nextConfig.setupRemoteTokenAttempts = usedAttempts;
+      await this.configLoader.saveConfig(nextConfig);
+      return {
+        success: false,
+        message: 'Token setup został zablokowany po przekroczeniu limitu prób.',
+      };
+    }
+
+    const providedHash = this.hashSetupSecret(token, nextConfig.setupRemoteTokenSalt);
+    const valid = this.safeEqualHex(providedHash, nextConfig.setupRemoteTokenHash);
+    if (!valid) {
+      const failedAttempts = usedAttempts + 1;
+      nextConfig.setupRemoteTokenAttempts = failedAttempts;
+      if (failedAttempts >= maxAttempts) {
+        nextConfig.setupRemoteTokenHash = undefined;
+        nextConfig.setupRemoteTokenSalt = undefined;
+      }
+      await this.configLoader.saveConfig(nextConfig);
+      return {
+        success: false,
+        message:
+          failedAttempts >= maxAttempts
+            ? 'Token setup został zablokowany po przekroczeniu limitu prób.'
+            : `Nieprawidłowy token setup. Pozostało prób: ${Math.max(0, maxAttempts - failedAttempts)}.`,
+      };
+    }
+
+    const sessionToken = crypto.randomBytes(32).toString('base64url');
+    const sessionSalt = crypto.randomBytes(16).toString('hex');
+    const sessionHash = this.hashSetupSecret(sessionToken, sessionSalt);
+    const sessionExpiresAt = new Date(Date.now() + this.defaultSetupSessionTtlMinutes * 60 * 1000);
+
+    nextConfig.setupRemoteTokenHash = undefined;
+    nextConfig.setupRemoteTokenSalt = undefined;
+    nextConfig.setupRemoteTokenAttempts = 0;
+    nextConfig.setupRemoteSessionTokenHash = sessionHash;
+    nextConfig.setupRemoteSessionTokenSalt = sessionSalt;
+    nextConfig.setupRemoteSessionExpiresAt = sessionExpiresAt.toISOString();
+    await this.configLoader.saveConfig(nextConfig);
+
+    return {
+      success: true,
+      setupSessionToken: sessionToken,
+      expiresAt: sessionExpiresAt.toISOString(),
+      message: 'Token setup zaakceptowany. Sesja konfiguracji zdalnej jest aktywna.',
+    };
+  }
+
+  async revokeRemoteSetupToken(): Promise<RevokeSetupTokenResponse> {
+    const config = await this.configLoader.loadConfig();
+    const nextConfig = this.withSetupDefaults(config);
+    nextConfig.setupRemoteEnabledUntil = undefined;
+    nextConfig.setupRemoteTokenHash = undefined;
+    nextConfig.setupRemoteTokenSalt = undefined;
+    nextConfig.setupRemoteTokenAttempts = 0;
+    nextConfig.setupRemoteTokenMaxAttempts = this.defaultSetupTokenMaxAttempts;
+    nextConfig.setupRemoteSessionTokenHash = undefined;
+    nextConfig.setupRemoteSessionTokenSalt = undefined;
+    nextConfig.setupRemoteSessionExpiresAt = undefined;
+    nextConfig.setupSessionMode = 'loopback';
+    await this.configLoader.saveConfig(nextConfig);
+
+    return {
+      success: true,
+      message: 'Zdalny token setup został wycofany.',
+    };
+  }
+
+  async validateSetupSessionToken(setupSessionToken?: string): Promise<boolean> {
+    if (!setupSessionToken || setupSessionToken.trim().length === 0) {
+      return false;
+    }
+
+    const config = await this.configLoader.loadConfig();
+    if (!config.setupMode) {
+      return false;
+    }
+
+    const tokenHash = config.setupRemoteSessionTokenHash || '';
+    const tokenSalt = config.setupRemoteSessionTokenSalt || '';
+    const expiresAtMs = this.parseTimestamp(config.setupRemoteSessionExpiresAt);
+    if (!tokenHash || !tokenSalt || !expiresAtMs) {
+      return false;
+    }
+
+    if (expiresAtMs <= Date.now()) {
+      const nextConfig = this.withSetupDefaults(config);
+      nextConfig.setupRemoteSessionTokenHash = undefined;
+      nextConfig.setupRemoteSessionTokenSalt = undefined;
+      nextConfig.setupRemoteSessionExpiresAt = undefined;
+      await this.configLoader.saveConfig(nextConfig);
+      return false;
+    }
+
+    const providedHash = this.hashSetupSecret(setupSessionToken, tokenSalt);
+    return this.safeEqualHex(providedHash, tokenHash);
+  }
+
+  isRemoteSetupOpen(config?: AppConfig | null): boolean {
+    const cfg = config || this.configLoader.getConfigSync();
+    if (!cfg || !cfg.setupMode) {
+      return false;
+    }
+    if (!cfg.setupRemoteEnabledUntil) {
+      return false;
+    }
+    const expiresAt = this.parseTimestamp(cfg.setupRemoteEnabledUntil);
+    if (!expiresAt) {
+      return false;
+    }
+    return expiresAt > Date.now();
   }
 
   private normalizeBootstrapMode(rawMode?: string): SetupBootstrapMode {
@@ -1600,6 +1831,90 @@ export class SetupService {
 
   private clampInt(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, Math.floor(value)));
+  }
+
+  private normalizeDeploymentTarget(rawTarget?: string): DeploymentTarget {
+    if (!rawTarget) {
+      return 'local_machine';
+    }
+    const normalized = rawTarget.trim().toLowerCase();
+    if (normalized === 'remote_host') {
+      return 'remote_host';
+    }
+    return 'local_machine';
+  }
+
+  private normalizeHostProfile(rawProfile: string | undefined, deploymentTarget: DeploymentTarget): HostProfile | undefined {
+    if (deploymentTarget !== 'remote_host') {
+      return undefined;
+    }
+
+    const normalized = (rawProfile || '').trim().toLowerCase();
+    if (normalized === 'linux_native') {
+      return 'linux_native';
+    }
+    if (normalized === 'synology_docker') {
+      return 'synology_docker';
+    }
+    return 'linux_docker';
+  }
+
+  private withSetupDefaults(config: AppConfig): AppConfig {
+    return {
+      ...config,
+      setupSessionMode: config.setupSessionMode || 'loopback',
+      setupRemoteTokenAttempts: this.clampInt(config.setupRemoteTokenAttempts ?? 0, 0, 999),
+      setupRemoteTokenMaxAttempts: this.clampInt(
+        config.setupRemoteTokenMaxAttempts ?? this.defaultSetupTokenMaxAttempts,
+        1,
+        20,
+      ),
+    };
+  }
+
+  private parseTimestamp(value?: string): number | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return parsed;
+  }
+
+  private generateHumanReadableToken(): string {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const chunk = (length: number) =>
+      Array.from(crypto.randomBytes(length))
+        .map((byte) => alphabet[byte % alphabet.length])
+        .join('');
+    return `${chunk(4)}-${chunk(4)}-${chunk(4)}`;
+  }
+
+  private hashSetupSecret(secret: string, salt: string): string {
+    return crypto
+      .createHash('sha256')
+      .update(salt, 'utf8')
+      .update(':', 'utf8')
+      .update(secret, 'utf8')
+      .digest('hex');
+  }
+
+  private safeEqualHex(left: string, right: string): boolean {
+    if (!left || !right || left.length !== right.length) {
+      return false;
+    }
+    try {
+      const leftBuffer = Buffer.from(left, 'hex');
+      const rightBuffer = Buffer.from(right, 'hex');
+      if (leftBuffer.length === 0 || rightBuffer.length === 0 || leftBuffer.length !== rightBuffer.length) {
+        return false;
+      }
+      return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+    } catch {
+      return false;
+    }
   }
 
   private async refreshRuntimePrisma(stage: string): Promise<void> {

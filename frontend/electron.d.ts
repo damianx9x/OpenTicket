@@ -69,6 +69,39 @@ declare global {
     }>;
     openBackupsFolder: () => Promise<{ success: boolean; message: string; path: string }>;
     openExternalUrl: (url: string) => Promise<{ success: boolean; message: string }>;
+    remoteDeploySsh: (payload: {
+      host: string;
+      user?: string;
+      sshPort?: number;
+      identityFile?: string;
+      profile?: 'linux_docker' | 'linux_native' | 'synology_docker';
+      remoteRepoPath?: string;
+      apiPort?: number;
+      withTls?: boolean;
+      domain?: string;
+    }) => Promise<{
+      success: boolean;
+      message: string;
+      code?: number | null;
+      stdout?: string;
+      stderr?: string;
+      error?: string | null;
+    }>;
+    remoteCreateSetupTokenSsh: (payload: {
+      host: string;
+      user?: string;
+      sshPort?: number;
+      identityFile?: string;
+      apiPort?: number;
+      ttlMinutes?: number;
+      maxAttempts?: number;
+    }) => Promise<{
+      success: boolean;
+      message: string;
+      token?: string | null;
+      expiresAt?: string | null;
+      raw?: string;
+    }>;
     onBackendCrashed: (callback: () => void) => () => void;
     onBackendWatchdog: (
       callback: (payload: { success: boolean; message: string; status?: EngineStatus }) => void,

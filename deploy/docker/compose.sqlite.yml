@@ -1,0 +1,54 @@
+services:
+  openticket:
+    image: ${OPENTICKET_IMAGE:-ghcr.io/damianx9x/openticket:latest}
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    pull_policy: missing
+    container_name: openticket
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      APP_ENV: SHOP_LOCAL
+      PORT: 3200
+      TICKET_SYSTEM_AUTO_MIGRATE: '1'
+      CORS_ALLOW_PRIVATE_LAN: '1'
+      TICKET_SYSTEM_CONFIG_DIR: /var/lib/openticket/config
+      TICKET_SYSTEM_DATA_DIR: /var/lib/openticket/data
+    volumes:
+      - openticket_data:/var/lib/openticket/data
+      - openticket_config:/var/lib/openticket/config
+      - openticket_logs:/var/log/openticket
+    ports:
+      - '${OPENTICKET_PORT:-3200}:3200'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3200/api/v1/health >/dev/null 2>&1 || exit 1']
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+
+  caddy:
+    image: caddy:2
+    container_name: openticket-caddy
+    restart: unless-stopped
+    depends_on:
+      - openticket
+    profiles: ['tls']
+    environment:
+      OPENTICKET_DOMAIN: ${OPENTICKET_DOMAIN:-}
+      OPENTICKET_UPSTREAM: openticket:3200
+    ports:
+      - '${OPENTICKET_HTTP_PORT:-80}:80'
+      - '${OPENTICKET_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  openticket_data:
+  openticket_config:
+  openticket_logs:
+  caddy_data:
+  caddy_config:

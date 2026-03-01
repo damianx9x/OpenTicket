@@ -215,6 +215,16 @@ Wynik zapisuje się do:
 docs/test-reports/full-regression-<timestamp>/SUMMARY.md
 ```
 
+## Live policy (3 scenariusze)
+Główne testy „na żywym organizmie” są ograniczone do 3 scenariuszy:
+```bash
+./Moj/testy/live-3-suite.sh
+```
+Scenariusze:
+1. świeża instalacja + setup + realne użycie,
+2. klient łączy się do działającego serwera,
+3. disaster restore z backupu.
+
 ## Aktualizacja screenshotów release (demo 500)
 ```bash
 ./Moj/testy/capture-release-screenshots.sh

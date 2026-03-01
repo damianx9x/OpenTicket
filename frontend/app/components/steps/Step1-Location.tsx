@@ -4,9 +4,12 @@ import { useEffect, useState } from 'react';
 import { CheckCircle2, Folder, Loader2, RefreshCw, Wifi } from 'lucide-react';
 import { normalizeApiBaseUrl } from '@/lib/api-base';
 import {
+  claimRemoteSetupToken,
+  type DeploymentTarget,
   discoverLocalDataSources,
   discoverSetupServers,
   type DiscoveredSetupServer,
+  type HostProfile,
   type InstallationMode,
   type SetupBootstrapMode,
   validateDataPath as validateDataPathRequest,
@@ -18,6 +21,9 @@ interface Step1Props {
     installationMode: InstallationMode;
     dataPath: string;
     remoteApiBaseUrl?: string;
+    deploymentTarget?: DeploymentTarget;
+    hostProfile?: HostProfile;
+    setupSessionToken?: string;
     bootstrapMode?: SetupBootstrapMode;
     existingDatabasePath?: string;
     existingBackupArchivePath?: string;
@@ -58,7 +64,10 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   };
 
   const resolvedDefaultPath = defaultValue?.trim().length > 0 ? defaultValue : getPlatformDefaultPath();
+  const remoteHostDefaultPath = '/var/lib/openticket/data';
   const [installationMode, setInstallationMode] = useState<InstallationMode>('server_client');
+  const [deploymentTarget, setDeploymentTarget] = useState<DeploymentTarget>('local_machine');
+  const [hostProfile, setHostProfile] = useState<HostProfile>('linux_docker');
   const [setupScenario, setSetupScenario] = useState<'new' | 'restore'>('new');
   const [dataPath, setDataPath] = useState(resolvedDefaultPath);
   const [bootstrapMode, setBootstrapMode] = useState<SetupBootstrapMode>('fresh');
@@ -67,6 +76,9 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   const [demoTicketCount, setDemoTicketCount] = useState<number>(200);
   const [backupEncryptionKey, setBackupEncryptionKey] = useState('');
   const [remoteApiBaseUrl, setRemoteApiBaseUrl] = useState('http://127.0.0.1:3200');
+  const [remoteSetupToken, setRemoteSetupToken] = useState('');
+  const [remoteSetupSessionToken, setRemoteSetupSessionToken] = useState('');
+  const [claimingSetupToken, setClaimingSetupToken] = useState(false);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [autoBackupIntervalHours, setAutoBackupIntervalHours] = useState<number>(24);
   const [autoBackupPath, setAutoBackupPath] = useState(defaultBackupPathFor(resolvedDefaultPath));
@@ -85,6 +97,10 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     type: 'success' | 'error' | 'info' | 'warning';
     text: string;
   } | null>(null);
+  const effectiveDefaultPath =
+    installationMode === 'server_client' && deploymentTarget === 'remote_host'
+      ? remoteHostDefaultPath
+      : resolvedDefaultPath;
 
   const isElectron =
     typeof window !== 'undefined' &&
@@ -116,10 +132,13 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     }
   };
 
-  const runPathValidation = async (targetPath: string): Promise<string | null> => {
+  const runPathValidation = async (
+    targetPath: string,
+    options?: { apiBaseUrl?: string; setupSessionToken?: string },
+  ): Promise<string | null> => {
     setCheckingPath(true);
     try {
-      const result = await validateDataPathRequest(targetPath);
+      const result = await validateDataPathRequest(targetPath, options);
       if (!result.ok) {
         setPathFeedback({
           type: 'error',
@@ -289,9 +308,9 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     if (autoBackupPathTouched) {
       return;
     }
-    const nextBase = useDefault ? resolvedDefaultPath : dataPath;
+    const nextBase = useDefault ? effectiveDefaultPath : dataPath;
     setAutoBackupPath(defaultBackupPathFor(nextBase));
-  }, [autoBackupPathTouched, dataPath, resolvedDefaultPath, useDefault]);
+  }, [autoBackupPathTouched, dataPath, effectiveDefaultPath, useDefault]);
 
   useEffect(() => {
     if (installationMode !== 'client_only') {
@@ -390,14 +409,15 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
 
       onContinue({
         installationMode,
-        dataPath: resolvedDefaultPath,
+        deploymentTarget: 'local_machine',
+        dataPath: effectiveDefaultPath,
         remoteApiBaseUrl: validatedRemote,
         autoBackupEnabled: false,
       });
       return;
     }
 
-    const finalPath = useDefault ? resolvedDefaultPath : dataPath;
+    const finalPath = useDefault ? effectiveDefaultPath : dataPath;
     if (!finalPath || finalPath.trim().length === 0) {
       setPathFeedback({
         type: 'error',
@@ -406,7 +426,61 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       return;
     }
 
-    const validatedPath = await runPathValidation(finalPath);
+    let validatedRemoteForHost: string | null = null;
+    let setupSessionToken = '';
+    if (deploymentTarget === 'remote_host') {
+      validatedRemoteForHost = await validateRemoteAddress({ showSuccess: false });
+      if (!validatedRemoteForHost) {
+        return;
+      }
+
+      setupSessionToken = remoteSetupSessionToken.trim();
+      if (!setupSessionToken) {
+        const setupToken = remoteSetupToken.trim();
+        if (!setupToken) {
+          setPathFeedback({
+            type: 'error',
+            text: 'Podaj jednorazowy token setup wygenerowany na serwerze zdalnym.',
+          });
+          return;
+        }
+
+        setClaimingSetupToken(true);
+        try {
+          const claim = await claimRemoteSetupToken(setupToken, {
+            apiBaseUrl: validatedRemoteForHost,
+          });
+          if (!claim.success || !claim.setupSessionToken) {
+            setPathFeedback({
+              type: 'error',
+              text: claim.message || 'Nie udało się aktywować sesji setup na hoście.',
+            });
+            return;
+          }
+          setupSessionToken = claim.setupSessionToken;
+          setRemoteSetupSessionToken(claim.setupSessionToken);
+          setPathFeedback({
+            type: 'success',
+            text: `Sesja setup aktywna do ${claim.expiresAt || 'upływu TTL'}.`,
+          });
+        } catch (error) {
+          setPathFeedback({
+            type: 'error',
+            text: `Claim tokenu setup nie powiódł się: ${
+              error instanceof Error ? error.message : 'nieznany błąd'
+            }`,
+          });
+          return;
+        } finally {
+          setClaimingSetupToken(false);
+        }
+      }
+    }
+
+    const validatedPath = await runPathValidation(finalPath, {
+      apiBaseUrl: validatedRemoteForHost || undefined,
+      setupSessionToken: setupSessionToken || undefined,
+    });
     if (!validatedPath) {
       return;
     }
@@ -461,7 +535,10 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
       if (!validatedBackupPath) {
         validatedBackupPath = defaultBackupPathFor(validatedPath);
       }
-      const backupPathCheck = await runPathValidation(validatedBackupPath);
+      const backupPathCheck = await runPathValidation(validatedBackupPath, {
+        apiBaseUrl: validatedRemoteForHost || undefined,
+        setupSessionToken: setupSessionToken || undefined,
+      });
       if (!backupPathCheck) {
         return;
       }
@@ -470,7 +547,11 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
 
     onContinue({
       installationMode,
+      deploymentTarget,
+      hostProfile: deploymentTarget === 'remote_host' ? hostProfile : undefined,
+      setupSessionToken: setupSessionToken || undefined,
       dataPath: validatedPath,
+      remoteApiBaseUrl: validatedRemoteForHost || undefined,
       bootstrapMode,
       existingDatabasePath: existingDatabasePath.trim() || undefined,
       existingBackupArchivePath: existingBackupArchivePath.trim() || undefined,
@@ -484,7 +565,8 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     });
   };
 
-  const isBusy = checkingPath || discoveringServers || discoveringLocalData || validatingRemote;
+  const isBusy =
+    checkingPath || discoveringServers || discoveringLocalData || validatingRemote || claimingSetupToken;
 
   return (
     <div className="space-y-6">
@@ -501,6 +583,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
             checked={installationMode === 'server_client'}
             onChange={() => {
               setInstallationMode('server_client');
+              setDeploymentTarget('local_machine');
               setSetupScenario('new');
               setPathFeedback(null);
             }}
@@ -518,6 +601,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
             checked={installationMode === 'client_only'}
             onChange={() => {
               setInstallationMode('client_only');
+              setDeploymentTarget('local_machine');
               setPathFeedback(null);
             }}
             className="mt-1"
@@ -625,6 +709,145 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
         </div>
       ) : (
         <div className="space-y-4">
+          <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+            <p className="text-sm font-semibold text-indigo-900">Lokalizacja serwera</p>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3 hover:bg-indigo-50">
+                <input
+                  type="radio"
+                  checked={deploymentTarget === 'local_machine'}
+                  onChange={() => {
+                    setDeploymentTarget('local_machine');
+                    setRemoteSetupSessionToken('');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium text-slate-800">Serwer na tym komputerze</p>
+                  <p className="text-xs text-slate-600">Standardowa instalacja lokalna (desktop + silnik).</p>
+                </div>
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-200 bg-white p-3 hover:bg-indigo-50">
+                <input
+                  type="radio"
+                  checked={deploymentTarget === 'remote_host'}
+                  onChange={() => {
+                    setDeploymentTarget('remote_host');
+                    setPathFeedback(null);
+                  }}
+                  className="mt-1"
+                />
+                <div>
+                  <p className="font-medium text-slate-800">Serwer na hoście zdalnym</p>
+                  <p className="text-xs text-slate-600">Linux/Synology + konfiguracja przez jednorazowy token setup.</p>
+                </div>
+              </label>
+            </div>
+
+            {deploymentTarget === 'remote_host' ? (
+              <div className="space-y-3 rounded-lg border border-indigo-200 bg-white p-3">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Profil hosta
+                    <select
+                      value={hostProfile}
+                      onChange={(event) => setHostProfile(event.target.value as HostProfile)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                    >
+                      <option value="linux_docker">Linux + Docker (zalecane)</option>
+                      <option value="linux_native">Linux native (systemd)</option>
+                      <option value="synology_docker">Synology Docker</option>
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    Jednorazowy token setup
+                    <input
+                      type="text"
+                      value={remoteSetupToken}
+                      onChange={(event) => {
+                        setRemoteSetupToken(event.target.value);
+                        setRemoteSetupSessionToken('');
+                      }}
+                      placeholder="ABCD-EFGH-JKLM"
+                      className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm text-slate-800"
+                    />
+                  </label>
+                </div>
+
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Adres API hosta
+                  <input
+                    type="text"
+                    value={remoteApiBaseUrl}
+                    onChange={(event) => {
+                      setRemoteApiBaseUrl(event.target.value);
+                      setRemoteValidated(null);
+                      setRemoteSetupSessionToken('');
+                    }}
+                    placeholder="https://openticket.twojadomena.pl"
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                  />
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const validatedRemote = await validateRemoteAddress({ showSuccess: false });
+                      if (!validatedRemote) {
+                        return;
+                      }
+                      const setupToken = remoteSetupToken.trim();
+                      if (!setupToken) {
+                        setPathFeedback({
+                          type: 'error',
+                          text: 'Podaj token setup wygenerowany na hoście.',
+                        });
+                        return;
+                      }
+                      setClaimingSetupToken(true);
+                      try {
+                        const claim = await claimRemoteSetupToken(setupToken, {
+                          apiBaseUrl: validatedRemote,
+                        });
+                        if (!claim.success || !claim.setupSessionToken) {
+                          setPathFeedback({
+                            type: 'error',
+                            text: claim.message || 'Nie udało się aktywować sesji setup.',
+                          });
+                          return;
+                        }
+                        setRemoteSetupSessionToken(claim.setupSessionToken);
+                        setPathFeedback({
+                          type: 'success',
+                          text: `Sesja setup aktywna do ${claim.expiresAt || 'upływu TTL'}.`,
+                        });
+                      } catch (error) {
+                        setPathFeedback({
+                          type: 'error',
+                          text: `Claim tokenu setup nie powiódł się: ${
+                            error instanceof Error ? error.message : 'nieznany błąd'
+                          }`,
+                        });
+                      } finally {
+                        setClaimingSetupToken(false);
+                      }
+                    }}
+                    disabled={claimingSetupToken || validatingRemote}
+                    className="inline-flex items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {claimingSetupToken ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    Połącz tokenem z hostem
+                  </button>
+                  {remoteSetupSessionToken ? (
+                    <span className="text-xs font-medium text-emerald-700">Sesja setup aktywna.</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
             <p className="mb-2 text-sm font-semibold text-indigo-900">Scenariusz startu serwera</p>
             <div className="grid gap-2 md:grid-cols-2">
@@ -878,7 +1101,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
             />
             <div className="flex-1">
               <p className="font-medium text-gray-800">Use Default Location</p>
-              <p className="mt-1 font-mono text-sm text-gray-600">{resolvedDefaultPath}</p>
+              <p className="mt-1 font-mono text-sm text-gray-600">{effectiveDefaultPath}</p>
               <p className="mt-2 text-xs text-gray-500">✓ Recommended for most users</p>
             </div>
           </label>
@@ -928,7 +1151,13 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
               />
               <button
                 type="button"
-                onClick={() => void runPathValidation(dataPath)}
+                onClick={() =>
+                  void runPathValidation(dataPath, {
+                    apiBaseUrl: deploymentTarget === 'remote_host' ? remoteApiBaseUrl : undefined,
+                    setupSessionToken:
+                      deploymentTarget === 'remote_host' ? remoteSetupSessionToken || undefined : undefined,
+                  })
+                }
                 disabled={checkingPath || dataPath.trim().length === 0}
                 className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -978,7 +1207,7 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                       setAutoBackupPath(event.target.value);
                       setAutoBackupPathTouched(true);
                     }}
-                    placeholder={defaultBackupPathFor(useDefault ? resolvedDefaultPath : dataPath)}
+                    placeholder={defaultBackupPathFor(useDefault ? effectiveDefaultPath : dataPath)}
                     className="mt-1 w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 font-mono text-sm"
                   />
                 </label>
@@ -992,7 +1221,13 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void runPathValidation(autoBackupPath)}
+                    onClick={() =>
+                      void runPathValidation(autoBackupPath, {
+                        apiBaseUrl: deploymentTarget === 'remote_host' ? remoteApiBaseUrl : undefined,
+                        setupSessionToken:
+                          deploymentTarget === 'remote_host' ? remoteSetupSessionToken || undefined : undefined,
+                      })
+                    }
                     disabled={checkingPath || autoBackupPath.trim().length === 0}
                     className="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-sm text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
                   >
@@ -1041,6 +1276,8 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
           ? 'Przetwarzanie...'
           : installationMode === 'client_only'
             ? 'Połącz z serwerem →'
+            : deploymentTarget === 'remote_host'
+              ? 'Dalej: konfiguracja admina (host zdalny) →'
             : setupScenario === 'restore'
               ? 'Dalej: ustaw konto admina i odtwórz →'
               : 'Dalej do konfiguracji admina →'}

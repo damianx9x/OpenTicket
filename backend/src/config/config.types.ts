@@ -5,6 +5,9 @@
 export type DatabaseMode = 'sqlite' | 'postgresql';
 export type StorageMode = 'local' | 's3';
 export type InstallationMode = 'server_client' | 'client_only';
+export type DeploymentTarget = 'local_machine' | 'remote_host';
+export type HostProfile = 'linux_docker' | 'linux_native' | 'synology_docker';
+export type SetupSessionMode = 'loopback' | 'one_time_token';
 export type SetupBootstrapMode =
   | 'fresh'
   | 'existing_db'
@@ -42,8 +45,19 @@ export interface AppConfig {
   setupMode: boolean;
   setupModeKey?: string; // Random key to validate setup requests
   installationMode?: InstallationMode;
+  deploymentTarget?: DeploymentTarget;
+  hostProfile?: HostProfile;
+  setupSessionMode?: SetupSessionMode;
   remoteApiBaseUrl?: string;
   backupEncryptionKey?: string;
+  setupRemoteEnabledUntil?: string;
+  setupRemoteTokenHash?: string;
+  setupRemoteTokenSalt?: string;
+  setupRemoteTokenAttempts?: number;
+  setupRemoteTokenMaxAttempts?: number;
+  setupRemoteSessionTokenHash?: string;
+  setupRemoteSessionTokenSalt?: string;
+  setupRemoteSessionExpiresAt?: string;
   
   createdAt: Date;
 }
@@ -53,6 +67,9 @@ export interface SetupRequest {
   adminEmail: string;
   adminPassword: string;
   organizationName?: string;
+  deploymentTarget?: DeploymentTarget;
+  hostProfile?: HostProfile;
+  setupSessionToken?: string;
   bootstrapMode?: SetupBootstrapMode;
   existingDatabasePath?: string;
   existingBackupArchivePath?: string;
@@ -72,6 +89,7 @@ export interface DiscoverLocalDataResponse {
 
 export interface ClientOnlySetupRequest {
   remoteApiBaseUrl: string;
+  setupSessionToken?: string;
 }
 
 export interface DiscoverServersRequest {
@@ -121,10 +139,41 @@ export interface SetupResponse {
   adminUserId?: string;
   adminEmail?: string;
   installationMode?: InstallationMode;
+  deploymentTarget?: DeploymentTarget;
+  hostProfile?: HostProfile;
   remoteApiBaseUrl?: string;
   bootstrapMode?: SetupBootstrapMode;
   bootstrapSourcePath?: string;
   demoTicketCount?: number;
   backupEncryptionKeyGenerated?: string;
   backupEncryptionKeyHint?: string;
+}
+
+export interface CreateSetupTokenRequest {
+  ttlMinutes?: number;
+  maxAttempts?: number;
+}
+
+export interface CreateSetupTokenResponse {
+  success: boolean;
+  token?: string;
+  expiresAt?: string;
+  maxAttempts?: number;
+  message: string;
+}
+
+export interface ClaimSetupTokenRequest {
+  token: string;
+}
+
+export interface ClaimSetupTokenResponse {
+  success: boolean;
+  setupSessionToken?: string;
+  expiresAt?: string;
+  message: string;
+}
+
+export interface RevokeSetupTokenResponse {
+  success: boolean;
+  message: string;
 }

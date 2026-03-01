@@ -141,6 +141,60 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function shellEscape(value: string): string {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function runSshCommand(params: {
+  host: string;
+  user?: string;
+  sshPort?: number;
+  identityFile?: string;
+  remoteCommand: string;
+  timeoutMs?: number;
+}): {
+  ok: boolean;
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  error?: string;
+} {
+  const host = params.host.trim();
+  if (!host) {
+    return {
+      ok: false,
+      code: null,
+      stdout: "",
+      stderr: "",
+      error: "Missing remote host.",
+    };
+  }
+
+  const target = params.user?.trim() ? `${params.user.trim()}@${host}` : host;
+  const args: string[] = [];
+  if (params.sshPort && Number.isFinite(params.sshPort)) {
+    args.push("-p", String(params.sshPort));
+  }
+  if (params.identityFile?.trim()) {
+    args.push("-i", params.identityFile.trim());
+  }
+  args.push(target, params.remoteCommand);
+
+  const result = spawnSync("ssh", args, {
+    encoding: "utf-8",
+    timeout: params.timeoutMs ?? 10 * 60 * 1000,
+    maxBuffer: 1024 * 1024 * 16,
+  });
+
+  return {
+    ok: result.status === 0,
+    code: result.status,
+    stdout: (result.stdout || "").trim(),
+    stderr: (result.stderr || "").trim(),
+    error: result.error?.message,
+  };
+}
+
 function resolveSqlitePath(databaseUrl?: string | null): string | null {
   if (!databaseUrl || typeof databaseUrl !== "string" || !databaseUrl.startsWith("file:")) {
     return null;
@@ -2004,6 +2058,127 @@ app.on("ready", async () => {
       }
       return { success: true, message: `Otwarto: ${parsed.toString()}` };
     });
+
+    ipcMain.handle(
+      "remote-deploy-ssh",
+      async (
+        _event,
+        payload: {
+          host?: string;
+          user?: string;
+          sshPort?: number;
+          identityFile?: string;
+          profile?: "linux_docker" | "linux_native" | "synology_docker";
+          remoteRepoPath?: string;
+          apiPort?: number;
+          withTls?: boolean;
+          domain?: string;
+        },
+      ) => {
+        const host = (payload?.host || "").trim();
+        if (!host) {
+          return { success: false, message: "Podaj host SSH." };
+        }
+
+        const profile = payload?.profile || "linux_docker";
+        const remoteRepoPath = (payload?.remoteRepoPath || "~/OpenTicket-clean").trim();
+        const apiPort = Number(payload?.apiPort || 3200);
+        const withTls = Boolean(payload?.withTls);
+        const domain = (payload?.domain || "").trim();
+
+        let remoteCommand = "";
+        if (profile === "linux_native") {
+          remoteCommand = `cd ${shellEscape(remoteRepoPath)} && sudo ./deploy/native/install.sh --port ${apiPort}`;
+        } else {
+          const tlsFlags = withTls && domain ? ` --with-tls --domain ${shellEscape(domain)}` : "";
+          remoteCommand = `cd ${shellEscape(remoteRepoPath)} && ./deploy/docker/install.sh --port ${apiPort}${tlsFlags}`;
+        }
+
+        const execution = runSshCommand({
+          host,
+          user: payload?.user,
+          sshPort: payload?.sshPort,
+          identityFile: payload?.identityFile,
+          remoteCommand: remoteCommand,
+          timeoutMs: 30 * 60 * 1000,
+        });
+
+        return {
+          success: execution.ok,
+          message: execution.ok ? "Wdrożenie zdalne zakończone." : "Wdrożenie zdalne nie powiodło się.",
+          code: execution.code,
+          stdout: execution.stdout,
+          stderr: execution.stderr,
+          error: execution.error || null,
+        };
+      },
+    );
+
+    ipcMain.handle(
+      "remote-create-setup-token-ssh",
+      async (
+        _event,
+        payload: {
+          host?: string;
+          user?: string;
+          sshPort?: number;
+          identityFile?: string;
+          apiPort?: number;
+          ttlMinutes?: number;
+          maxAttempts?: number;
+        },
+      ) => {
+        const host = (payload?.host || "").trim();
+        if (!host) {
+          return { success: false, message: "Podaj host SSH." };
+        }
+        const apiPort = Number(payload?.apiPort || 3200);
+        const ttlMinutes = Number(payload?.ttlMinutes || 15);
+        const maxAttempts = Number(payload?.maxAttempts || 5);
+        const body = JSON.stringify({
+          ttlMinutes: Math.max(5, Math.min(120, Math.floor(ttlMinutes))),
+          maxAttempts: Math.max(1, Math.min(20, Math.floor(maxAttempts))),
+        });
+        const remoteCommand = `curl -fsS -X POST http://127.0.0.1:${apiPort}/api/v1/setup/token/create -H 'content-type: application/json' -d ${shellEscape(
+          body,
+        )}`;
+
+        const execution = runSshCommand({
+          host,
+          user: payload?.user,
+          sshPort: payload?.sshPort,
+          identityFile: payload?.identityFile,
+          remoteCommand,
+        });
+
+        if (!execution.ok) {
+          return {
+            success: false,
+            message: "Nie udało się wygenerować tokenu setup przez SSH.",
+            code: execution.code,
+            stdout: execution.stdout,
+            stderr: execution.stderr,
+            error: execution.error || null,
+          };
+        }
+
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(execution.stdout);
+        } catch {
+          parsed = null;
+        }
+
+        const data = parsed?.data || parsed || {};
+        return {
+          success: Boolean(data?.success ?? true),
+          message: data?.message || "Token setup wygenerowany.",
+          token: data?.token || null,
+          expiresAt: data?.expiresAt || null,
+          raw: execution.stdout,
+        };
+      },
+    );
 
     ipcMain.handle("engine-diagnose", async () => {
       return writeEngineDiagnosisReport();
