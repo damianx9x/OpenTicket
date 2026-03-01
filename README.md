@@ -2,61 +2,75 @@
 <!-- INSTALLER_LINK:START -->
 ## Installers (macOS + Windows)
 - macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- macOS PKG (v0.4.1): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.4.1/OpenTicket-Installer.pkg)
+- macOS PKG (v0.5.0-pre-alpha): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.0-pre-alpha/OpenTicket-Installer.pkg)
 - Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
-- Windows EXE (v0.4.1): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.4.1/OpenTicket-Installer.exe)
+- Windows EXE (v0.5.0-pre-alpha): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.0-pre-alpha/OpenTicket-Installer.exe)
 <!-- INSTALLER_LINK:END -->
 
-OpenTicket to nowoczesny system ticketowy dla serwisów elektroniki, zaprojektowany pod realną pracę warsztatową: szybkie przyjęcie sprzętu, pełna historia klienta, statusy etapów, koszty, zdjęcia, backup i odzyskiwanie.
+**Język:** Polski (domyślnie) | [English](/README.en.md)
 
-## Milestone 0.41 (v0.4.1)
-Wersja stabilizująca produkt przed wydaniami produkcyjnymi:
-- pełna walidacja regresji i scenariuszy live (`16/16 PASS` + `3/3 PASS`),
-- gotowe instalatory macOS (`.pkg`, `.dmg`) i Windows (`.exe`) dla tej wersji,
-- odświeżone screenshoty release,
-- poprawiona jakość dokumentacji i procesu wydawniczego,
-- zachowany tryb lokalny + tryb serwera zdalnego (Linux/Synology) bez regresji.
+OpenTicket to system ticketowy dla małych i średnich serwisów elektroniki. Priorytetem jest szybkość pracy operatora, stabilność działania i prosty onboarding klienta końcowego.
 
-## Dlaczego OpenTicket
-- **Szybki onboarding**: kreator setup prowadzi użytkownika krok po kroku.
-- **Odporność operacyjna**: reset, diagnostyka, backup, restore, watchdog backendu.
-- **Desktop + WebUI**: jedno spójne doświadczenie dla macOS/Windows i przeglądarki.
-- **Praca lokalna i zdalna**: `server_client`, `client_only`, `remote host`.
-- **Bezpieczeństwo i audyt**: tokenowany setup zdalny, szyfrowane backupy, raporty testowe.
+## Wersja
+- **Release line:** `0.5 pre-alpha`
+- **SemVer:** `0.5.0-pre-alpha`
+- **Status:** aktywny milestone produktowy (macOS + WebUI + Windows installer)
+
+## Co dostajesz w produkcie
+1. Przyjęcie zgłoszenia w kilka sekund (klient, urządzenie, opis, zdjęcia).
+2. Pełny workflow serwisowy: etapy, komentarze, koszty, historia.
+3. Personalizacja operatora: presety filtrów, motywy, układ dashboardu.
+4. Narzędzia admina: konfiguracja, backup/restore, status serwera, szybka naprawa.
+5. Instalatory gotowe do wysyłki klientowi: `.pkg`, `.dmg`, `.exe`, deinstalator.
 
 ## Kluczowe możliwości
-- Workflow zgłoszeń z etapami (m.in. przyjęcie, diagnoza, kosztorys, realizacja, zamknięcie/reopen).
-- Przypisanie technika + filtry operacyjne (`Tylko moje`, `> X dni`, statusy, priorytet, kanał, daty).
-- Zapisywalne presety filtrów użytkownika (szybkie przełączanie na dashboardzie).
-- Konfiguracja firmy: branding, logo, kanały komunikacji, ustawienia operatorów.
-- Backup `.otbackup` (AES-256-GCM) + klucz odzyskiwania + walidacja integralności.
-- Auto-backup z rotacją (`current` + `previous`) i harmonogramem.
-- Import/restore w setupie: istniejąca baza, backup szyfrowany, dataset demo.
-- Narzędzia serwisowe admina: status silnika, restart, szybka naprawa, raport diagnostyczny.
+- **Tryby pracy:**
+  - `Serwer + klient` (lokalnie),
+  - `Sam klient` (podpięcie do istniejącego serwera),
+  - `Serwer zdalny` (Linux/Synology).
+- **Backup i odzyskiwanie:**
+  - szyfrowany `.otbackup` (AES-256-GCM),
+  - klucz odzyskiwania,
+  - auto-backup z rotacją `current/previous`,
+  - import w setupie (baza/backup/demo).
+- **Bezpieczeństwo operacyjne:**
+  - setup token dla hosta zdalnego,
+  - role i uprawnienia,
+  - audyt i diagnostyka,
+  - raporty testów regresji i live.
 
-## Architektura
-- `backend/` — NestJS + Prisma + SQLite, API `v1`, auth, tickets, backup, demo seed.
-- `frontend/` — Next.js WebUI (setup, login, dashboard, statystyki, użytkownicy, konfiguracja).
-- `desktop/` — Electron (watchdog backendu, updater, IPC bridge).
-- `deploy/` — profile remote host (Docker Linux/Synology + native systemd).
-- `Moj/` — oficjalny build instalatorów/deinstalatora + testy E2E.
+## Stack technologiczny
+- **Backend:** NestJS, Prisma ORM, SQLite (runtime v1), TypeScript
+- **Frontend/WebUI:** Next.js 14, TypeScript
+- **Desktop app:** Electron
+- **Testy E2E/UI:** Playwright
+- **Dystrybucja:** electron-builder, GitHub Releases, updater metadata (`latest-mac.yml`, `latest.yml`)
 
-## Screenshoty (v0.4.1)
-- Dashboard: `docs/screenshots/v0.4.1/dashboard-chromium.png`
-- Dashboard (Cupertino): `docs/screenshots/v0.4.1/dashboard-cupertino-chromium.png`
-- Modal zgłoszenia: `docs/screenshots/v0.4.1/ticket-modal-chromium.png`
-- Statystyki: `docs/screenshots/v0.4.1/statistics-chromium.png`
-- Użytkownicy: `docs/screenshots/v0.4.1/users-chromium.png`
-- Konfiguracja: `docs/screenshots/v0.4.1/settings-chromium.png`
-- Serwer/diagnostyka: `docs/screenshots/v0.4.1/server-chromium.png`
+## Galeria UI (v0.5 pre-alpha)
+Pełna dokumentacja zakładek i funkcji jest tutaj: [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
 
-![Dashboard](docs/screenshots/v0.4.1/dashboard-chromium.png)
-![Ticket Modal](docs/screenshots/v0.4.1/ticket-modal-chromium.png)
-![Statystyki](docs/screenshots/v0.4.1/statistics-chromium.png)
-![Konfiguracja](docs/screenshots/v0.4.1/settings-chromium.png)
+### Setup i onboarding
+![Setup Step 1](/docs/screenshots/v0.5-pre-alpha/setup-step1-demo.png)
+![Setup Step 4](/docs/screenshots/v0.5-pre-alpha/setup-step4-complete.png)
 
-## Szybki start (DEV)
+### Dashboard i workflow
+![Dashboard](/docs/screenshots/v0.5-pre-alpha/dashboard-demo-helpdesk.png)
+![Ticket Modal](/docs/screenshots/v0.5-pre-alpha/ticket-modal-chromium.png)
+
+### Zakładki operacyjne
+![Statistics](/docs/screenshots/v0.5-pre-alpha/statistics-chromium.png)
+![Users](/docs/screenshots/v0.5-pre-alpha/users-chromium.png)
+![Settings](/docs/screenshots/v0.5-pre-alpha/settings-chromium.png)
+![Server](/docs/screenshots/v0.5-pre-alpha/server-chromium.png)
+
+### Motywy kolorystyczne
+![Graphite Theme](/docs/screenshots/v0.5-pre-alpha/dashboard-theme-graphite.png)
+![Emerald Theme](/docs/screenshots/v0.5-pre-alpha/dashboard-theme-emerald.png)
+![Cupertino Theme](/docs/screenshots/v0.5-pre-alpha/dashboard-theme-cupertino.png)
+
+## Quickstart (DEV)
 ```bash
+cd /Users/icex/Projekty/git_repos/OpenTicket-clean
 make test
 ./Moj/testy/smoke.sh
 ./Moj/testy/auth-smoke.sh
@@ -70,37 +84,28 @@ make test
 ./Moj/publish-release.sh
 ```
 
-Artefakty:
-- `Moj/OpenTicket-Installer.pkg`
-- `Moj/OpenTicket-Uninstaller.pkg`
-- `Moj/OpenTicket-Installer.dmg`
-- `Moj/OpenTicket-Installer.exe`
-- `Moj/OpenTicket-Portable.exe`
-- `Moj/latest-mac.yml`, `Moj/latest.yml`
+## Instalacja zdalna (host)
+- Linux Docker: `/deploy/docker/install.sh`
+- Linux native systemd: `/deploy/native/install.sh`
+- Synology: `/docs/REMOTE_INSTALL_SYNOLOGY.md`
 
-## Tryb zdalny (Remote Host)
-OpenTicket wspiera wdrożenie serwera poza komputerem użytkownika końcowego:
-- Linux Docker: `deploy/docker/install.sh`
-- Linux native systemd: `deploy/native/install.sh`
-- Synology Docker profile
+Pełne guide:
+- `/docs/REMOTE_INSTALL_LINUX.md`
+- `/docs/REMOTE_INSTALL_NATIVE_SYSTEMD.md`
+- `/docs/REMOTE_INSTALL_SYNOLOGY.md`
 
-Dokumentacja:
-- `docs/REMOTE_INSTALL_LINUX.md`
-- `docs/REMOTE_INSTALL_SYNOLOGY.md`
-- `docs/REMOTE_INSTALL_NATIVE_SYSTEMD.md`
+## Ostatnia walidacja jakości
+- Full regression suite: `16/16 PASS`
+  - `/docs/test-reports/full-regression-20260301-203414/SUMMARY.md`
+- Live policy suite: `3/3 PASS`
+  - `/docs/test-reports/live-3-20260301-205513/SUMMARY.md`
 
-## Jakość i testy
-Ostatnia walidacja release (v0.4.1):
-- pełna regresja: `docs/test-reports/full-regression-20260301-203414/SUMMARY.md` (`16/16 PASS`),
-- testy live: `docs/test-reports/live-3-20260301-205513/SUMMARY.md` (`3/3 PASS`),
-- losowe testy UI Chromium/WebKit: PASS,
-- test integralności backupu: PASS,
-- test klient↔serwer: PASS.
+## Dokumentacja
+- [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
+- [CHANGELOG](/CHANGELOG.md)
+- [Security Test Plan](/docs/SECURITY_TEST_PLAN.md)
+- [Security Report](/docs/SECURITY_AGENT_REPORT_2026-02-27.md)
+- [Dependency Deep Check](/docs/DEPENDENCY_DEEP_CHECK_2026-02-28.md)
 
-## Security
-- plan testów: `docs/SECURITY_TEST_PLAN.md`
-- raport bezpieczeństwa: `docs/SECURITY_AGENT_REPORT_2026-02-27.md`
-- audyt zależności: `docs/DEPENDENCY_DEEP_CHECK_2026-02-28.md`
-
-## Changelog
-Pełna lista zmian milestone: `CHANGELOG.md`.
+## Dla właściciela serwisu
+OpenTicket jest projektowany tak, by technik mógł pracować od razu po instalacji: mniej klikania, mniej ryzyka utraty danych, więcej kontroli operacyjnej i czytelne statusy dla zespołu oraz klienta.

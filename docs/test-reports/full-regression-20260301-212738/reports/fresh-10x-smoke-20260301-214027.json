@@ -1,0 +1,8 @@
+{
+  "name": "fresh-10x-smoke",
+  "status": "PASS",
+  "browser": "chromium",
+  "iterations": 10,
+  "passed": 10,
+  "createdAt": "2026-03-01T20:40:27Z"
+}

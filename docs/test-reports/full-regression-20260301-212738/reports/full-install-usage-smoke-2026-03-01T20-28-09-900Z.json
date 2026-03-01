@@ -1,0 +1,105 @@
+{
+  "name": "full-install-usage-smoke",
+  "createdAt": "2026-03-01T20:28:00.238Z",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "setup-opened",
+      "ok": true,
+      "detail": "/setup ready"
+    },
+    {
+      "name": "setup-demo-mode-select",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "setup-demo-count",
+      "ok": true,
+      "detail": "200"
+    },
+    {
+      "name": "setup-step1-continue",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "setup-step2-form",
+      "ok": true,
+      "detail": "admin@local.test"
+    },
+    {
+      "name": "setup-step2-continue",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "setup-initialize-click",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "setup-completed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "step4-go-dashboard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "dashboard-opened",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "filter-preset-save-apply",
+      "ok": true,
+      "detail": "iphone-smoke-84924"
+    },
+    {
+      "name": "theme-graphite-noir",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "theme-emerald-flow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "theme-cupertino-glass",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "logo-upload-save",
+      "ok": true,
+      "detail": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/assets/custom-logo-smoke.svg"
+    },
+    {
+      "name": "sidebar-logo-visible",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "server-tab-open",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "screenshots": [
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/setup-step1-demo.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/setup-step2-admin.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/setup-step3-review.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/setup-step4-complete.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/dashboard-demo-helpdesk.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/dashboard-filters-preset.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/dashboard-theme-graphite.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/dashboard-theme-emerald.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/dashboard-theme-cupertino.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/settings-logo-custom.png",
+    "/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/screenshots/v0.4/server-status-after-install.png"
+  ]
+}

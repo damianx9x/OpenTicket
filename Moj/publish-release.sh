@@ -6,6 +6,10 @@ MOJ_DIR="$ROOT_DIR/Moj"
 VERSION="$(node -p "require('$ROOT_DIR/desktop/package.json').version")"
 TAG="v${VERSION}"
 TITLE="OpenTicket ${TAG}"
+IS_PRERELEASE=false
+if [[ "$VERSION" == *"alpha"* || "$VERSION" == *"beta"* || "$VERSION" == *"rc"* || "$VERSION" == *"pre"* ]]; then
+  IS_PRERELEASE=true
+fi
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "Brak gh CLI. Zainstaluj GitHub CLI i zaloguj się (gh auth login)." >&2
@@ -78,7 +82,11 @@ if gh release view "$TAG" >/dev/null 2>&1; then
   gh release upload "$TAG" "${upload_files[@]}" --clobber
 else
   echo "Tworzę release $TAG"
-  gh release create "$TAG" "${upload_files[@]}" --title "$TITLE" --notes "OpenTicket ${TAG}"
+  create_args=("$TAG" "${upload_files[@]}" --title "$TITLE" --notes "OpenTicket ${TAG}")
+  if [[ "$IS_PRERELEASE" == "true" ]]; then
+    create_args+=(--prerelease)
+  fi
+  gh release create "${create_args[@]}"
 fi
 
 REPO_URL="$(git config --get remote.origin.url | sed -E 's#git@github.com:#https://github.com/#; s#\.git$##')"
