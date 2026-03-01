@@ -15,12 +15,10 @@ sudo installer -pkg "$PKG_PATH" -target /
 
 echo "[Moj/install] Uruchamianie aplikacji..."
 if [[ -d "/Applications/OpenTicket.app" ]]; then
-  open "/Applications/OpenTicket.app"
-elif [[ -d "$HOME/Applications/OpenTicket.app" ]]; then
-  echo "[Moj/install] Aplikacja zainstalowana w domenie użytkownika: $HOME/Applications/OpenTicket.app"
-  open "$HOME/Applications/OpenTicket.app"
+  open -na "/Applications/OpenTicket.app" --args --setup-assistant --permissions-assistant || open "/Applications/OpenTicket.app"
 else
-  echo "[Moj/install] Nie znaleziono OpenTicket.app, otwieram fallback WebUI setup..."
+  echo "[Moj/install] BŁĄD: nie znaleziono /Applications/OpenTicket.app po instalacji."
+  echo "[Moj/install] Otwieram fallback WebUI setup..."
   open "http://127.0.0.1:3200/setup?source=installer"
 fi
 

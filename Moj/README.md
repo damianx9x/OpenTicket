@@ -43,8 +43,8 @@ Publikacja release na GitHub (z metadanymi auto-update):
 
 Po zakończeniu instalacji `.pkg`:
 - instalator automatycznie uruchamia `OpenTicket.app` z asystentem setup,
-- gdy aplikacja nie może się otworzyć (np. ograniczenia domeny instalacji), uruchamiany jest fallback do `http://127.0.0.1:3200/setup?source=installer`,
-- jeśli użytkownik wybrał instalację „tylko dla mnie”, skrypt postinstall szuka aplikacji także w `~/Applications/OpenTicket.app`.
+- pakiet wymusza instalację systemową (`/Applications/OpenTicket.app`), bez instalacji do katalogów roboczych lub `~/Applications`,
+- gdy aplikacja nie może się otworzyć, uruchamiany jest fallback do `http://127.0.0.1:3200/setup?source=installer`.
 
 Po pierwszym uruchomieniu, w kreatorze setup (krok 1) wybierasz:
 - `Serwer + klient` (pełna instalacja lokalna),
@@ -149,5 +149,14 @@ Uruchom testowy tryb „jak klient od zera”:
 
 ## Uwagi
 - Instalator `.pkg` kopiuje aplikację do `/Applications`.
+- Build instalatora tworzy tymczasowe artefakty `.app` poza repozytorium (`/tmp`), więc Spotlight nie indeksuje folderu roboczego projektu.
 - Runtime jest lokalny (app + backend + WebUI w pakiecie aplikacji).
 - Internet może być potrzebny tylko przy buildzie/release (nie przy samym uruchomieniu aplikacji).
+
+### Jednorazowe czyszczenie starych wpisów Spotlight z poprzednich buildów
+Jeśli kiedyś build był robiony do `desktop/release*`, Spotlight mógł zapamiętać te ścieżki.
+Wykonaj raz:
+```bash
+sudo rm -rf /Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/release* \
+  /Users/icex/Projekty/git_repos/OpenTicket-clean/desktop/release-user*
+```
