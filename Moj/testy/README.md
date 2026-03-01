@@ -99,7 +99,7 @@ Raport:
 Zakres:
 - przejście do `Konfiguracja -> Backup i odtwarzanie`,
 - klik `Eksportuj backup`,
-- walidacja ścieżki i obecności pliku `.tar.gz`.
+- walidacja ścieżki i obecności pliku `.otbackup`.
 
 Raport:
 ```bash
@@ -114,7 +114,22 @@ Zakres:
 - setup z konfiguracją auto-backupu,
 - odczyt statusu auto-backupu przez API,
 - 2x uruchomienie auto-backupu,
-- walidacja rotacji (`openticket-auto-backup.current.tar.gz` + `.previous.tar.gz`).
+- walidacja rotacji (`openticket-auto-backup.current.otbackup` + `.previous.otbackup`).
+
+## Test integralności backupu (.otbackup + klucz)
+```bash
+./Moj/testy/backup-verify-smoke.sh
+```
+Zakres:
+- setup od zera + wygenerowanie klucza backupu,
+- eksport `.otbackup`,
+- weryfikacja integralności przez API (`/system/backup/verify-path`) z poprawnym kluczem,
+- kontrola błędu dla złego klucza.
+
+Raport:
+```bash
+./Moj/testy/runtime/reports/backup-verify-smoke-*.json
+```
 
 ## Test klient→serwer (osobne runtime)
 ```bash

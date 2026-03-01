@@ -58,6 +58,26 @@ export interface AutoBackupStatus {
   dueNow?: boolean;
 }
 
+export interface BackupVerificationResult {
+  success: boolean;
+  archivePath: string;
+  archiveBytes: number;
+  encrypted: boolean;
+  contains: {
+    database: boolean;
+    uploads: boolean;
+    config: boolean;
+  };
+  extractedEntries: number;
+  manifest: {
+    schemaVersion?: number;
+    createdAt?: string;
+    sourceDataPath?: string;
+    includes?: string[];
+  } | null;
+  warnings: string[];
+}
+
 export async function getAutoBackupStatus(): Promise<AutoBackupStatus> {
   return requestData<AutoBackupStatus>('/api/v1/system/backup/auto-status');
 }
@@ -71,5 +91,31 @@ export async function runAutoBackupNow(): Promise<{
   return requestData('/api/v1/system/backup/auto-run', {
     method: 'POST',
     body: JSON.stringify({}),
+  });
+}
+
+export async function verifyBackupByPath(
+  archivePath: string,
+  encryptionKey?: string,
+): Promise<BackupVerificationResult> {
+  return requestData<BackupVerificationResult>('/api/v1/system/backup/verify-path', {
+    method: 'POST',
+    body: JSON.stringify({ archivePath, encryptionKey }),
+  });
+}
+
+export async function verifyBackupFromFile(
+  file: File,
+  encryptionKey?: string,
+): Promise<BackupVerificationResult> {
+  const formData = new FormData();
+  formData.append('backup', file);
+  if (encryptionKey && encryptionKey.trim().length > 0) {
+    formData.append('encryptionKey', encryptionKey.trim());
+  }
+
+  return requestData<BackupVerificationResult>('/api/v1/system/backup/verify', {
+    method: 'POST',
+    body: formData,
   });
 }

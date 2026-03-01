@@ -62,6 +62,12 @@ export class BackupController {
     return this.backupService.importBackupByPath(body.archivePath || '', body.encryptionKey || '');
   }
 
+  @Post('verify-path')
+  @ApiOperation({ summary: 'Sprawdź integralność backupu ze ścieżki lokalnej (bez importu)' })
+  async verifyByPath(@Body() body: { archivePath?: string; encryptionKey?: string }) {
+    return this.backupService.verifyBackupByPath(body.archivePath || '', body.encryptionKey || '');
+  }
+
   @Post('import')
   @UseInterceptors(
     FileInterceptor('backup', {
@@ -88,6 +94,34 @@ export class BackupController {
         encryptionKey: body?.encryptionKey || '',
       });
       return { success: true };
+    } finally {
+      fs.rmSync(file.path, { force: true });
+    }
+  }
+
+  @Post('verify')
+  @UseInterceptors(
+    FileInterceptor('backup', {
+      dest: os.tmpdir(),
+      limits: { fileSize: BackupController.MAX_UPLOAD_BACKUP_BYTES },
+    }),
+  )
+  @ApiOperation({ summary: 'Sprawdź integralność uploadowanego backupu (.otbackup / .tar.gz) bez importu' })
+  async verifyUploaded(
+    @UploadedFile() file?: { path?: string; originalname?: string },
+    @Body() body?: { encryptionKey?: string },
+  ) {
+    if (!file?.path || !fs.existsSync(file.path)) {
+      throw new BadRequestException('Brak pliku backupu do weryfikacji.');
+    }
+
+    const originalName = (file.originalname || '').trim().toLowerCase();
+    if (originalName && !/\.(otbackup|tar\.gz|tgz|gz)$/.test(originalName)) {
+      throw new BadRequestException('Do weryfikacji backupu użyj pliku .otbackup lub .tar.gz.');
+    }
+
+    try {
+      return this.backupService.verifyBackupByPath(file.path, body?.encryptionKey || '');
     } finally {
       fs.rmSync(file.path, { force: true });
     }

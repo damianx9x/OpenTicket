@@ -9,6 +9,14 @@
 
 OpenTicket to lokalny system ticketowy dla serwisów elektroniki: backend + WebUI + aplikacja desktop (macOS/Windows), z naciskiem na stabilną pracę offline w warsztacie.
 
+## Status wdrożenia (remote host + local)
+- Etap 1 (token setup): ✅
+- Etap 2 (Docker + Synology): ✅
+- Etap 3 (native systemd): ✅
+- Etap 4 (wizard remote host): ✅
+- Etap 5 (backup/restore hardening): ✅ (rotacja + integralność backupu + testy)
+- Etap 6 (QA/release/docs dla laika): ✅
+
 ## Zakres produktu
 - Lokalny silnik (NestJS + Prisma + SQLite).
 - WebUI operatora (Next.js) osadzane również w desktop app.
@@ -54,6 +62,7 @@ Dokumentacja:
 - `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/REMOTE_INSTALL_LINUX.md`
 - `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/REMOTE_INSTALL_SYNOLOGY.md`
 - `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/REMOTE_INSTALL_NATIVE_SYSTEMD.md`
+- `/Users/icex/Projekty/git_repos/OpenTicket-clean/docs/OPERATOR_FLOW.md`
 
 Token setup (jednorazowy, TTL):
 ```bash
@@ -62,6 +71,14 @@ curl -fsS -X POST http://127.0.0.1:3200/api/v1/setup/token/create \
   -d '{"ttlMinutes":15,"maxAttempts":5}'
 ```
 Następnie w wizardze: `Serwer + klient` -> `Serwer na hoście zdalnym` i podaj `API URL + token`.
+
+Weryfikacja integralności backupu (bez importu):
+```bash
+curl -fsS -X POST http://127.0.0.1:3200/api/v1/system/backup/verify-path \
+  -H "Authorization: Bearer <ADMIN_TOKEN>" \
+  -H 'content-type: application/json' \
+  -d '{"archivePath":"/var/lib/openticket/data/backups/ticket-backup-20260301-100000.otbackup","encryptionKey":"<backup_key>"}'
+```
 
 ## Build instalatorów
 ```bash
@@ -78,7 +95,7 @@ Po buildzie:
 - `Moj/OpenTicket-Installer.exe` (Windows)
 - `Moj/latest-mac.yml` + `Moj/latest.yml` (metadane auto-update)
 
-## Screenshoty UI (aktualne)
+## Screenshoty UI (aktualne, release)
 - Dashboard (demo): `docs/screenshots/v0.4/dashboard-chromium.png`
 - Dashboard (Cupertino Glass): `docs/screenshots/v0.4/dashboard-cupertino-chromium.png`
 - Dashboard (theme: Graphite): `docs/screenshots/v0.4/dashboard-theme-graphite.png`
@@ -99,14 +116,13 @@ Po buildzie:
 - Serwer/diagnostyka: `docs/screenshots/v0.4/server-chromium.png`
 - Serwer po świeżej instalacji: `docs/screenshots/v0.4/server-status-after-install.png`
 
-![Dashboard](docs/screenshots/v0.4/dashboard-chromium.png)
-![Dashboard Cupertino](docs/screenshots/v0.4/dashboard-cupertino-chromium.png)
+![Dashboard Demo](docs/screenshots/v0.4/dashboard-demo-helpdesk.png)
+![Dashboard Filtry](docs/screenshots/v0.4/dashboard-filters-preset.png)
 ![Setup Step 1 Demo](docs/screenshots/v0.4/setup-step1-demo.png)
 ![Setup Step 4 Complete](docs/screenshots/v0.4/setup-step4-complete.png)
-![Ticket modal](docs/screenshots/v0.4/ticket-modal-chromium.png)
 ![Konfiguracja](docs/screenshots/v0.4/settings-chromium.png)
 ![Konfiguracja Logo](docs/screenshots/v0.4/settings-logo-custom.png)
-![Filtry Preset](docs/screenshots/v0.4/dashboard-filters-preset.png)
+![Server Status](docs/screenshots/v0.4/server-status-after-install.png)
 
 ## Status (v0.4.0)
 Zrobione:
@@ -125,6 +141,8 @@ Zrobione:
 - „Moje filtry”: domknięte presety (save/apply/rename/delete + preset domyślny i szybkie przełączanie).
 - CI smoke: dodany test „clean user account” na macOS i Windows.
 - pipeline release na tagu: publikacja assetów updatera przez `gh release` + walidacja `latest-mac.yml` / `latest.yml`.
+- backup hardening: endpointy `verify-path` i `verify` (upload) sprawdzające integralność backupu bez importu.
+- smoke test integralności backupu: `./Moj/testy/backup-verify-smoke.sh`.
 
 ## Pełna deinstalacja (macOS)
 Wersja kompletna (usuwa app + dane + cache + launch agents + receipts):

@@ -70,6 +70,9 @@ import {
   importBackupFromFile,
   runAutoBackupNow,
   type AutoBackupStatus,
+  type BackupVerificationResult,
+  verifyBackupByPath,
+  verifyBackupFromFile,
 } from '@/lib/backup-client';
 import {
   getAdminSettings,
@@ -491,6 +494,7 @@ export default function DashboardPage() {
   const [backupPath, setBackupPath] = useState('');
   const [backupEncryptionKey, setBackupEncryptionKey] = useState('');
   const [backupFileToImport, setBackupFileToImport] = useState<File | null>(null);
+  const [backupVerification, setBackupVerification] = useState<BackupVerificationResult | null>(null);
   const [autoBackupStatus, setAutoBackupStatus] = useState<AutoBackupStatus | null>(null);
   const [autoBackupLoading, setAutoBackupLoading] = useState(false);
   const [loadingDemoDataset, setLoadingDemoDataset] = useState(false);
@@ -2281,6 +2285,57 @@ export default function DashboardPage() {
           input.value = '';
         }
       }
+    }
+  };
+
+  const handleVerifyBackupByPath = async () => {
+    if (!isAdmin) {
+      notify({ type: 'error', text: 'Weryfikacja backupu wymaga roli ADMIN.' });
+      return;
+    }
+    if (!backupPath.trim()) {
+      notify({ type: 'error', text: 'Podaj ścieżkę do backupu do weryfikacji.' });
+      return;
+    }
+    try {
+      const result = await verifyBackupByPath(backupPath.trim(), backupEncryptionKey.trim() || undefined);
+      setBackupVerification(result);
+      const includeCount = result.manifest?.includes?.length || 0;
+      notify({
+        type: 'success',
+        text: `Backup zweryfikowany: ${result.encrypted ? 'szyfrowany' : 'nieszyfrowany'}, plików: ${result.extractedEntries}, manifest: ${includeCount} pozycji.`,
+      });
+    } catch (error) {
+      setBackupVerification(null);
+      notify({
+        type: 'error',
+        text: `Weryfikacja backupu nie powiodła się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    }
+  };
+
+  const handleVerifyBackupFile = async () => {
+    if (!isAdmin) {
+      notify({ type: 'error', text: 'Weryfikacja backupu wymaga roli ADMIN.' });
+      return;
+    }
+    if (!backupFileToImport) {
+      notify({ type: 'error', text: 'Najpierw wybierz plik backupu do weryfikacji.' });
+      return;
+    }
+    try {
+      const result = await verifyBackupFromFile(backupFileToImport, backupEncryptionKey.trim() || undefined);
+      setBackupVerification(result);
+      notify({
+        type: 'success',
+        text: `Backup zweryfikowany poprawnie (${result.encrypted ? 'AES-256-GCM' : 'plain archive'}).`,
+      });
+    } catch (error) {
+      setBackupVerification(null);
+      notify({
+        type: 'error',
+        text: `Weryfikacja pliku backupu nie powiodła się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
     }
   };
 
@@ -5657,6 +5712,14 @@ export default function DashboardPage() {
                       >
                         Importuj po ścieżce
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleVerifyBackupByPath()}
+                        disabled={!isAdmin}
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Sprawdź integralność (ścieżka)
+                      </button>
                     </div>
 
                     <div className="space-y-2 rounded-lg border border-slate-200 p-3">
@@ -5679,6 +5742,14 @@ export default function DashboardPage() {
                       >
                         Importuj z pliku
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleVerifyBackupFile()}
+                        disabled={!isAdmin || !backupFileToImport}
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-700 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Sprawdź integralność (plik)
+                      </button>
                       <p className="text-xs text-slate-500">
                         Dla pliku `.otbackup` podaj klucz szyfrowania. Po imporcie zalecany restart aplikacji.
                       </p>
@@ -5687,6 +5758,36 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
+                  {backupVerification ? (
+                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                      <p className="font-semibold">Wynik weryfikacji backupu</p>
+                      <p>Plik: {backupVerification.archivePath}</p>
+                      <p>
+                        Rozmiar: {(backupVerification.archiveBytes / 1024 / 1024).toFixed(2)} MB | Tryb:{' '}
+                        {backupVerification.encrypted ? 'szyfrowany (.otbackup)' : 'archiwum (.tar.gz)'}
+                      </p>
+                      <p>
+                        Zawartość: baza {backupVerification.contains.database ? 'OK' : 'BRAK'}, uploady{' '}
+                        {backupVerification.contains.uploads ? 'OK' : 'BRAK'}, config{' '}
+                        {backupVerification.contains.config ? 'OK' : 'BRAK'}, wpisów: {backupVerification.extractedEntries}
+                      </p>
+                      {backupVerification.manifest ? (
+                        <p>
+                          Manifest: schema v{backupVerification.manifest.schemaVersion ?? '?'} | utworzono:{' '}
+                          {backupVerification.manifest.createdAt ? formatDate(backupVerification.manifest.createdAt) : '-'}
+                        </p>
+                      ) : (
+                        <p>Manifest: brak (archiwum legacy).</p>
+                      )}
+                      {backupVerification.warnings.length > 0 ? (
+                        <ul className="mt-1 list-disc pl-5">
+                          {backupVerification.warnings.map((warning) => (
+                            <li key={warning}>{warning}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="ticket-surface rounded-xl border border-slate-100 p-5">

@@ -26,8 +26,8 @@ run_case "01-fresh-install-usage" "$ROOT_DIR/Moj/testy/full-install-usage-smoke.
 # Live #2: client connects to running server instance (remote-like scenario)
 run_case "02-client-connect-server" "$ROOT_DIR/Moj/testy/client-connect-installed-server.sh"
 
-# Live #3: backup export/import disaster-restore
-run_case "03-disaster-restore" "$ROOT_DIR/Moj/testy/setup-import-smoke.sh"
+# Live #3: backup export/import + integrity verification
+run_case "03-disaster-restore" "$ROOT_DIR/Moj/testy/disaster-restore-live.sh"
 
 cat > "$OUT_DIR/SUMMARY.md" <<MD
 # Live 3 Suite
@@ -39,7 +39,7 @@ cat > "$OUT_DIR/SUMMARY.md" <<MD
 ## Cases
 1. Fresh install + setup + operator flow
 2. Client -> running server
-3. Disaster restore from backup
+3. Disaster restore + backup integrity verification
 MD
 
 echo "[live-3] DONE: $OUT_DIR/SUMMARY.md"

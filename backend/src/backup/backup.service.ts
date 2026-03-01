@@ -35,6 +35,26 @@ type AutoBackupState = {
   lastTrigger?: string | null;
 };
 
+type BackupVerificationResult = {
+  success: boolean;
+  archivePath: string;
+  archiveBytes: number;
+  encrypted: boolean;
+  contains: {
+    database: boolean;
+    uploads: boolean;
+    config: boolean;
+  };
+  extractedEntries: number;
+  manifest: {
+    schemaVersion?: number;
+    createdAt?: string;
+    sourceDataPath?: string;
+    includes?: string[];
+  } | null;
+  warnings: string[];
+};
+
 @Injectable()
 export class BackupService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BackupService.name);
@@ -245,6 +265,19 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
     return { success: true, archivePath: resolved };
   }
 
+  async verifyBackupByPath(archivePath: string, encryptionKey?: string): Promise<BackupVerificationResult> {
+    if (!archivePath || archivePath.trim().length === 0) {
+      throw new BadRequestException('Brak ścieżki do pliku backupu.');
+    }
+
+    const resolved = path.resolve(archivePath);
+    if (!fs.existsSync(resolved)) {
+      throw new BadRequestException(`Plik backupu nie istnieje: ${resolved}`);
+    }
+
+    return this.inspectBackupArchive(resolved, { encryptionKey });
+  }
+
   async importFromArchiveFile(archivePath: string, options?: { encryptionKey?: string }) {
     const runtime = await this.resolveRuntimePaths();
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-import-'));
@@ -415,6 +448,120 @@ export class BackupService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
+  }
+
+  private async inspectBackupArchive(
+    archivePath: string,
+    options?: { encryptionKey?: string },
+  ): Promise<BackupVerificationResult> {
+    const resolvedArchivePath = path.resolve(archivePath);
+    this.assertArchiveFileIsSafe(resolvedArchivePath);
+
+    const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-verify-'));
+    const extractedDir = path.join(stageDir, 'extracted');
+    fs.mkdirSync(extractedDir, { recursive: true });
+
+    const warnings: string[] = [];
+    const archiveBytes = fs.statSync(resolvedArchivePath).size;
+    const encrypted = isEncryptedBackupFile(resolvedArchivePath);
+
+    try {
+      let archiveToExtract = resolvedArchivePath;
+      if (encrypted) {
+        const decryptionKey = await this.resolveImportBackupEncryptionKey(options?.encryptionKey);
+        archiveToExtract = path.join(stageDir, 'decrypted.tar.gz');
+        try {
+          await decryptBackupFileToArchive({
+            inputBackupPath: resolvedArchivePath,
+            outputArchivePath: archiveToExtract,
+            encryptionKey: decryptionKey,
+          });
+        } catch (error: any) {
+          throw new BadRequestException(
+            `Nie udało się odszyfrować backupu: ${error?.message || 'nieprawidłowy klucz lub uszkodzony plik'}`,
+          );
+        }
+      }
+
+      this.assertArchiveFileIsSafe(archiveToExtract);
+      this.assertArchiveEntriesSafe(archiveToExtract);
+
+      const tarResult = spawnSync(
+        'tar',
+        ['-xzf', archiveToExtract, '-C', extractedDir, '--no-same-owner', '--no-same-permissions'],
+        {
+          encoding: 'utf-8',
+        },
+      );
+      if (tarResult.status !== 0) {
+        throw new BadRequestException(
+          `Nie udało się rozpakować backupu: ${(tarResult.stderr || tarResult.stdout || 'tar extract failed').trim()}`,
+        );
+      }
+
+      this.assertNoSymlinks(extractedDir);
+
+      const dbExists = fs.existsSync(path.join(extractedDir, 'app.db'));
+      if (!dbExists) {
+        throw new BadRequestException('Backup nie zawiera pliku app.db.');
+      }
+
+      const uploadsExists = fs.existsSync(path.join(extractedDir, 'uploads'));
+      const configExists = fs.existsSync(path.join(extractedDir, 'config.json'));
+
+      let manifest: BackupVerificationResult['manifest'] = null;
+      const manifestPath = path.join(extractedDir, 'manifest.json');
+      if (fs.existsSync(manifestPath)) {
+        try {
+          const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as Record<string, unknown>;
+          manifest = {
+            schemaVersion: typeof parsed.schemaVersion === 'number' ? parsed.schemaVersion : undefined,
+            createdAt: typeof parsed.createdAt === 'string' ? parsed.createdAt : undefined,
+            sourceDataPath: typeof parsed.sourceDataPath === 'string' ? parsed.sourceDataPath : undefined,
+            includes: Array.isArray(parsed.includes)
+              ? parsed.includes.filter((item): item is string => typeof item === 'string')
+              : undefined,
+          };
+        } catch {
+          warnings.push('Nie udało się odczytać manifest.json (plik uszkodzony lub niepoprawny JSON).');
+        }
+      } else {
+        warnings.push('Backup nie zawiera manifest.json (legacy lub archiwum niestandardowe).');
+      }
+
+      return {
+        success: true,
+        archivePath: resolvedArchivePath,
+        archiveBytes,
+        encrypted,
+        contains: {
+          database: dbExists,
+          uploads: uploadsExists,
+          config: configExists,
+        },
+        extractedEntries: this.countExtractedEntries(extractedDir),
+        manifest,
+        warnings,
+      };
+    } finally {
+      fs.rmSync(stageDir, { recursive: true, force: true });
+    }
+  }
+
+  private countExtractedEntries(rootDir: string): number {
+    let count = 0;
+    const stack = [rootDir];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        count += 1;
+        if (entry.isDirectory()) {
+          stack.push(path.join(current, entry.name));
+        }
+      }
+    }
+    return count;
   }
 
   private async resolveConfiguredBackupEncryptionKey(): Promise<string> {
