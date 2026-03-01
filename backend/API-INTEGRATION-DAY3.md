@@ -34,10 +34,10 @@
 - `GET /ticket/:publicToken` - Public ticket view
 
 ### 3. Frontend API Client Layer
-- **File:** `frontend/strona-test/src/services/api.ts`
-- **Functions:** ticketsAPI, usersAPI, vatRatesAPI, attachmentsAPI, diagnosticsAPI
-- **Error Handling:** Global try-catch + error messages
-- **Base URL:** Configurable via VITE_API_URL env var
+- **File:** `frontend/lib/*-client.ts`
+- **Functions:** tickets, users, settings, backup, diagnostics, reminders, attachments
+- **Error Handling:** central envelope/error handling in `frontend/lib/api-base.ts`
+- **Base URL:** runtime base URL z `frontend/lib/setup-client.ts` (same-origin + setup aware)
 
 ### 4. Frontend Components Updated
 
@@ -148,16 +148,16 @@ backend/
 ├── test-integration.sh        (Integration Tests)
 └── package.json              (dependencies)
 
-frontend/strona-test/src/
-├── services/
-│   ├── api.ts                (API Client Layer) ✨ NEW
-│   └── dataStore.ts          (Local mock - backup)
-├── components/
-│   ├── TopHeader.tsx         (Updated)
-│   ├── TicketsTable.tsx       (Updated)
-│   ├── NewTicketModal.tsx     (✨ NEW)
-│   └── ...
-└── App.tsx                    (Updated)
+frontend/
+├── app/
+│   ├── dashboard/page.tsx
+│   ├── login/page.tsx
+│   └── setup/page.tsx
+└── lib/
+    ├── api-base.ts
+    ├── tickets-client.ts
+    ├── users-client.ts
+    └── ...
 ```
 
 ---

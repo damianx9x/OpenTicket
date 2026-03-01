@@ -104,6 +104,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all installer artifacts
         uses: actions/download-artifact@v4
         with:
@@ -114,11 +116,36 @@ jobs:
       - name: Show collected release files
         run: ls -lah release-artifacts/
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release-artifacts/*
-          draft: false
-          prerelease: false
+      - name: Validate updater metadata artifacts
+        run: |
+          set -euo pipefail
+          test -f release-artifacts/latest-mac.yml
+          test -f release-artifacts/latest.yml
+          while IFS= read -r rel; do
+            [[ -z "$rel" ]] && continue
+            test -f "release-artifacts/$rel"
+          done < <(
+            awk '
+              /^path:[[:space:]]*/ { print $2 }
+              /^[[:space:]]*-[[:space:]]*url:[[:space:]]*/ { print $3 }
+            ' release-artifacts/latest-mac.yml release-artifacts/latest.yml | tr -d '"' | sort -u
+          )
+
+      - name: Publish release via gh CLI
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          TITLE="OpenTicket ${TAG}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TITLE" --notes "OpenTicket ${TAG}"
+          fi
+          gh release upload "$TAG" release-artifacts/* --clobber
+
+      - name: Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-summary
+          path: release-artifacts/
+          retention-days: 7

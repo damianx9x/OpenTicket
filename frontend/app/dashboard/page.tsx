@@ -316,6 +316,7 @@ type DashboardPreferences = {
   widgetOrder?: DashboardWidgetKey[];
   widgetSizes?: Partial<Record<DashboardWidgetKey, DashboardWidgetSize>>;
   savedFilters?: SavedFilterPreset[];
+  defaultPresetName?: string;
   compactMode?: boolean;
   theme?: DashboardTheme;
   defaultFilters?: {
@@ -1026,6 +1027,26 @@ export default function DashboardPage() {
     }
   };
 
+  const buildPresetFromFilters = (name: string): SavedFilterPreset => {
+    const normalizedMinAge = Number(filters.minAgeDays);
+    return {
+      name,
+      status: filters.status || undefined,
+      priority: filters.priority || undefined,
+      channel: filters.channel || undefined,
+      assignedAgentId: filters.assignedAgentId || undefined,
+      assignedState: filters.assignedState || undefined,
+      search: filters.search || undefined,
+      onlyMine: filters.onlyMine || undefined,
+      minAgeDays: Number.isFinite(normalizedMinAge) && normalizedMinAge > 0 ? Math.floor(normalizedMinAge) : undefined,
+      hasAttachments: filters.hasAttachments === 'yes' ? true : filters.hasAttachments === 'no' ? false : undefined,
+      hasComments: filters.hasComments === 'yes' ? true : filters.hasComments === 'no' ? false : undefined,
+      createdFrom: filters.createdFrom || undefined,
+      createdTo: filters.createdTo || undefined,
+      sort: filters.sort || undefined,
+    };
+  };
+
   const applySavedFilter = (filter: SavedFilterPreset) => {
     setFilters((prev) => ({
       ...prev,
@@ -1064,23 +1085,7 @@ export default function DashboardPage() {
       return;
     }
 
-    const normalizedMinAge = Number(filters.minAgeDays);
-    const nextPreset: SavedFilterPreset = {
-      name: normalizedName,
-      status: filters.status || undefined,
-      priority: filters.priority || undefined,
-      channel: filters.channel || undefined,
-      assignedAgentId: filters.assignedAgentId || undefined,
-      assignedState: filters.assignedState || undefined,
-      search: filters.search || undefined,
-      onlyMine: filters.onlyMine || undefined,
-      minAgeDays: Number.isFinite(normalizedMinAge) && normalizedMinAge > 0 ? Math.floor(normalizedMinAge) : undefined,
-      hasAttachments: filters.hasAttachments === 'yes' ? true : filters.hasAttachments === 'no' ? false : undefined,
-      hasComments: filters.hasComments === 'yes' ? true : filters.hasComments === 'no' ? false : undefined,
-      createdFrom: filters.createdFrom || undefined,
-      createdTo: filters.createdTo || undefined,
-      sort: filters.sort || undefined,
-    };
+    const nextPreset = buildPresetFromFilters(normalizedName);
     const existing = dashboardPrefs.savedFilters || [];
     const deduped = existing.filter((preset) => preset.name !== normalizedName);
     const next: DashboardPreferences = {
@@ -1090,6 +1095,63 @@ export default function DashboardPage() {
     await savePrefs(next);
     setSelectedPresetName(normalizedName);
     setNewPresetName(normalizedName);
+    notify({
+      type: 'success',
+      text: isPolish ? `Zapisano preset: ${normalizedName}` : `Saved preset: ${normalizedName}`,
+    });
+  };
+
+  const renameSavedFilter = async (oldName: string) => {
+    const nextNamePrompt = window.prompt(
+      isPolish ? `Nowa nazwa dla filtra "${oldName}"` : `New name for "${oldName}" filter`,
+      oldName,
+    );
+    if (!nextNamePrompt) {
+      return;
+    }
+
+    const newName = nextNamePrompt.trim();
+    if (!newName || newName === oldName) {
+      return;
+    }
+
+    const existing = dashboardPrefs.savedFilters || [];
+    const source = existing.find((preset) => preset.name === oldName);
+    if (!source) {
+      return;
+    }
+
+    const deduped = existing.filter((preset) => preset.name !== oldName && preset.name !== newName);
+    const renamed: SavedFilterPreset = { ...source, name: newName };
+    await savePrefs({
+      ...dashboardPrefs,
+      savedFilters: [...deduped, renamed],
+      defaultPresetName: dashboardPrefs.defaultPresetName === oldName ? newName : dashboardPrefs.defaultPresetName,
+    });
+    if (selectedPresetName === oldName) {
+      setSelectedPresetName(newName);
+    }
+    if (newPresetName === oldName) {
+      setNewPresetName(newName);
+    }
+    notify({
+      type: 'success',
+      text: isPolish ? `Zmieniono nazwę filtra na "${newName}".` : `Filter renamed to "${newName}".`,
+    });
+  };
+
+  const setDefaultSavedFilter = async (name: string) => {
+    if (!name) {
+      return;
+    }
+    await savePrefs({
+      ...dashboardPrefs,
+      defaultPresetName: name,
+    });
+    notify({
+      type: 'success',
+      text: isPolish ? `Ustawiono domyślny preset: ${name}` : `Default preset set to: ${name}`,
+    });
   };
 
   const applyInfoCardFilter = (target: 'all' | 'waiting' | 'closed') => {
@@ -1397,6 +1459,8 @@ export default function DashboardPage() {
             (prefObject.widgetSizes as DashboardPreferences['widgetSizes']) || prev.widgetSizes,
           savedFilters:
             (prefObject.savedFilters as DashboardPreferences['savedFilters']) || prev.savedFilters,
+          defaultPresetName:
+            typeof prefObject.defaultPresetName === 'string' ? prefObject.defaultPresetName : prev.defaultPresetName,
           theme: normalizeDashboardTheme(prefObject.theme || prev.theme),
           defaultFilters:
             (prefObject.defaultFilters as DashboardPreferences['defaultFilters']) || prev.defaultFilters,
@@ -1434,6 +1498,13 @@ export default function DashboardPage() {
             createdTo: prefObject.defaultFilters?.createdTo || prev.createdTo,
             sort: normalizeFilterSort(prefObject.defaultFilters?.sort, normalizeFilterSort(prev.sort)),
           }));
+        } else if (typeof prefObject.defaultPresetName === 'string' && prefObject.defaultPresetName.trim().length > 0) {
+          const defaultPreset = (prefObject.savedFilters || []).find(
+            (preset) => preset.name === prefObject.defaultPresetName,
+          );
+          if (defaultPreset) {
+            applySavedFilter(defaultPreset);
+          }
         }
 
         await Promise.all([loadTicketsData(), loadAssignableAgents(), loadGlobalReminders(), loadCostCatalogData()]);
@@ -1959,6 +2030,7 @@ export default function DashboardPage() {
     await savePrefs({
       ...dashboardPrefs,
       savedFilters: next,
+      defaultPresetName: dashboardPrefs.defaultPresetName === name ? undefined : dashboardPrefs.defaultPresetName,
     });
     if (selectedPresetName === name) {
       setSelectedPresetName('');
@@ -3215,7 +3287,9 @@ export default function DashboardPage() {
                         <option value="">{isPolish ? 'Wczytaj zapisany filtr' : 'Load saved filter'}</option>
                         {savedPresetOptions.map((preset) => (
                           <option key={preset.name} value={preset.name}>
-                            {preset.name}
+                            {dashboardPrefs.defaultPresetName === preset.name
+                              ? `${preset.name} ★`
+                              : preset.name}
                           </option>
                         ))}
                       </select>
@@ -3233,6 +3307,15 @@ export default function DashboardPage() {
                       >
                         <ArrowDownUp className="h-3.5 w-3.5" />
                         {isPolish ? 'Zapisz filtr' : 'Save filter'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!selectedPresetName}
+                        onClick={() => void setDefaultSavedFilter(selectedPresetName)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-blue-300 px-3 py-2 text-xs text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        title={isPolish ? 'Ustaw wybrany preset jako domyślny' : 'Set selected preset as default'}
+                      >
+                        {isPolish ? 'Ustaw domyślny' : 'Set default'}
                       </button>
                     </div>
                   </div>
@@ -4798,7 +4881,14 @@ export default function DashboardPage() {
                           className="flex flex-col justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 md:flex-row md:items-center"
                         >
                           <div className="text-sm text-slate-700">
-                            <strong>{saved.name}</strong>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong>{saved.name}</strong>
+                              {dashboardPrefs.defaultPresetName === saved.name && (
+                                <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                  {isPolish ? 'domyślny' : 'default'}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-slate-500">
                               status={saved.status || '-'}, priorytet={saved.priority || '-'}, kanał={saved.channel || '-'},
                               przypisanie={saved.assignedState || '-'}, onlyMine={saved.onlyMine ? '1' : '0'}, minAgeDays=
@@ -4814,6 +4904,20 @@ export default function DashboardPage() {
                               className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                             >
                               {isPolish ? 'Zastosuj' : 'Apply'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void setDefaultSavedFilter(saved.name)}
+                              className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                            >
+                              {isPolish ? 'Domyślny' : 'Set default'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void renameSavedFilter(saved.name)}
+                              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                            >
+                              {isPolish ? 'Zmień nazwę' : 'Rename'}
                             </button>
                             <button
                               type="button"

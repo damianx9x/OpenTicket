@@ -87,6 +87,10 @@ Zrobione:
 - nowy motyw dashboardu: `Cupertino Glass Pro` (Apple-inspired),
 - deep dependency check: `./scripts/dependency-deep-check.sh` (audit + outdated + transitive summary),
 - pełny test flow instalacji i użycia: setup demo (200) + motywy + logo + filtry + backup + security.
+- pełna migracja UI: usunięte legacy `frontend/strona-test` i duplikat `frontend/page.tsx`.
+- „Moje filtry”: domknięte presety (save/apply/rename/delete + preset domyślny i szybkie przełączanie).
+- CI smoke: dodany test „clean user account” na macOS i Windows.
+- pipeline release na tagu: publikacja assetów updatera przez `gh release` + walidacja `latest-mac.yml` / `latest.yml`.
 
 ## Pełna deinstalacja (macOS)
 Wersja kompletna (usuwa app + dane + cache + launch agents + receipts):
@@ -108,6 +112,7 @@ Uwaga:
 ```bash
 cd /Users/icex/Projekty/git_repos/OpenTicket-clean
 ./Moj/testy/full-install-usage-smoke.sh
+node ./scripts/ci/clean-user-account-smoke.mjs --platform=macos
 ```
 
 Co waliduje:
@@ -128,11 +133,10 @@ Zawiera:
 - wynik końcowy: `PASS`.
 
 ## TODO (najbliższe kroki)
-1. Zamknąć pełną migrację UI `strona-test` -> główny WebUI i usunąć duplikaty komponentów.
-2. Dodać automatyczny pipeline release (tag + upload wszystkich assetów updatera przez `gh`).
-3. Dodać test instalacji „czysty user account” dla macOS i Windows do CI smoke.
-4. Domknąć ekran „Moje filtry” (zapisywanie presetów i szybkie przełączanie w dashboard).
-5. Rozpocząć etap iOS: pairing + ticket create + upload zdjęć + QR scan flow.
+1. Rozpocząć etap iOS: pairing + ticket create + upload zdjęć + QR scan flow.
+2. Dodać test upgrade: poprzednia wersja -> update -> zachowanie danych i backup rollback.
+3. Rozszerzyć politykę release o automatyczny changelog z commitów.
+4. Dodać e2e PDF/statistics export test do macOS + Windows matrix.
 
 ## Diagnostyka i reset
 ```bash

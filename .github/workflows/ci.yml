@@ -46,3 +46,26 @@ jobs:
           node-version: '18'
       - run: npm ci
       - run: npm run build:electron
+
+  smoke-clean-user-account:
+    name: Smoke clean user account (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+          - os: windows-latest
+            platform: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+      - name: Build backend
+        run: npm --prefix backend run build
+      - name: Run clean user account smoke
+        run: node scripts/ci/clean-user-account-smoke.mjs --platform=${{ matrix.platform }}
