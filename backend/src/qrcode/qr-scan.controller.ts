@@ -1,7 +1,12 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { QrService } from './qr.service';
+import { AuthGuard } from '../common/auth/auth.guard';
+import { RolesGuard } from '../common/auth/roles.guard';
+import { Roles } from '../common/auth/roles.decorator';
 
 @Controller('qr')
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('ADMIN', 'AGENT')
 export class QrScanController {
   constructor(private readonly qr: QrService) {}
 

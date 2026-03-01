@@ -119,8 +119,12 @@ export class SetupController {
 
   private assertLoopbackRequest(req: Request): void {
     const rawIp = (req.ip || req.socket.remoteAddress || '').trim();
-    const ip = rawIp.replace(/^::ffff:/, '');
+    const firstHop = rawIp.split(',')[0].trim();
+    const ip = firstHop.replace(/^::ffff:/, '');
     if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') {
+      return;
+    }
+    if (process.env.TICKET_SYSTEM_ALLOW_REMOTE_SETUP === '1') {
       return;
     }
     throw new ForbiddenException('Endpoint is available only from local machine.');

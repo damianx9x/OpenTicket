@@ -27,6 +27,8 @@ import { AuthenticatedUser } from '../auth/auth.types';
 @UseGuards(AuthGuard, RolesGuard)
 @Roles('ADMIN')
 export class BackupController {
+  private static readonly MAX_UPLOAD_BACKUP_BYTES = 2 * 1024 * 1024 * 1024;
+
   constructor(private readonly backupService: BackupService) {}
 
   @Post('export')
@@ -49,11 +51,21 @@ export class BackupController {
   }
 
   @Post('import')
-  @UseInterceptors(FileInterceptor('backup', { dest: os.tmpdir() }))
+  @UseInterceptors(
+    FileInterceptor('backup', {
+      dest: os.tmpdir(),
+      limits: { fileSize: BackupController.MAX_UPLOAD_BACKUP_BYTES },
+    }),
+  )
   @ApiOperation({ summary: 'Import backupu z uploadowanego pliku .tar.gz' })
-  async importUploaded(@UploadedFile() file?: { path?: string }) {
+  async importUploaded(@UploadedFile() file?: { path?: string; originalname?: string }) {
     if (!file?.path || !fs.existsSync(file.path)) {
       throw new BadRequestException('Brak pliku backupu do importu.');
+    }
+
+    const originalName = (file.originalname || '').trim().toLowerCase();
+    if (originalName && !/\.(tar\.gz|tgz|gz)$/.test(originalName)) {
+      throw new BadRequestException('Do importu backupu użyj pliku .tar.gz, .tgz lub .gz.');
     }
 
     try {

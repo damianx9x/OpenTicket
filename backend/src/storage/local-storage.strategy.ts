@@ -54,8 +54,9 @@ export class LocalStorageStrategy implements IStorageStrategy {
 
   async uploadFile(params: StorageUploadParams): Promise<{ objectKey: string; url: string }> {
     this.ensureReady();
-    const objectKey = `${params.ticketId}/${Date.now()}-${params.filename}`;
-    const filePath = path.join(this.uploadsPath, objectKey);
+    const safeFilename = this.sanitizeFilename(params.filename);
+    const objectKey = `${params.ticketId}/${Date.now()}-${safeFilename}`;
+    const filePath = this.resolveSafePath(objectKey);
 
     // Create subdirectory if needed
     const dirPath = path.dirname(filePath);
@@ -75,7 +76,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
 
   async deleteFile(params: { objectKey: string }): Promise<void> {
     this.ensureReady();
-    const filePath = path.join(this.uploadsPath, params.objectKey);
+    const filePath = this.resolveSafePath(params.objectKey);
 
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -85,7 +86,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
 
   async fileExists(params: { objectKey: string }): Promise<boolean> {
     this.ensureReady();
-    const filePath = path.join(this.uploadsPath, params.objectKey);
+    const filePath = this.resolveSafePath(params.objectKey);
     return fs.existsSync(filePath);
   }
 
@@ -98,7 +99,7 @@ export class LocalStorageStrategy implements IStorageStrategy {
    */
   async readFile(objectKey: string): Promise<Buffer> {
     this.ensureReady();
-    const filePath = path.join(this.uploadsPath, objectKey);
+    const filePath = this.resolveSafePath(objectKey);
     
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${objectKey}`);
@@ -112,6 +113,37 @@ export class LocalStorageStrategy implements IStorageStrategy {
    */
   getFilePath(objectKey: string): string {
     this.ensureReady();
-    return path.join(this.uploadsPath, objectKey);
+    return this.resolveSafePath(objectKey);
+  }
+
+  private sanitizeFilename(name: string): string {
+    const base = path
+      .basename((name || '').trim())
+      .replace(/[^A-Za-z0-9._()\-\s]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!base || base === '.' || base === '..') {
+      return `attachment-${Date.now()}.bin`;
+    }
+
+    if (base.length <= 180) {
+      return base;
+    }
+
+    const ext = path.extname(base);
+    const stem = base.slice(0, Math.max(1, 180 - ext.length));
+    return `${stem}${ext}`;
+  }
+
+  private resolveSafePath(objectKey: string): string {
+    const normalizedKey = (objectKey || '').replace(/\\/g, '/');
+    const root = path.resolve(this.uploadsPath);
+    const target = path.resolve(root, normalizedKey);
+    const relative = path.relative(root, target);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error('Invalid storage object key path.');
+    }
+    return target;
   }
 }

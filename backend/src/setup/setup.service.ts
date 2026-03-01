@@ -35,6 +35,7 @@ export interface DataPathValidationResult {
 @Injectable()
 export class SetupService {
   private readonly logger = new Logger(SetupService.name);
+  private readonly maxBackupArchiveBytes = 2 * 1024 * 1024 * 1024;
 
   constructor(
     private readonly configLoader: ConfigLoaderService,
@@ -840,15 +841,22 @@ export class SetupService {
     if (!fs.existsSync(archivePath)) {
       throw new Error(`Nie znaleziono archiwum backupu: ${archivePath}`);
     }
+    this.assertBackupArchiveFileSafe(archivePath);
+    this.assertBackupArchiveEntriesSafe(archivePath);
 
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openticket-setup-import-'));
 
     try {
-      const extract = spawnSync('tar', ['-xzf', archivePath, '-C', stageDir], { encoding: 'utf-8' });
+      const extract = spawnSync(
+        'tar',
+        ['-xzf', archivePath, '-C', stageDir, '--no-same-owner', '--no-same-permissions'],
+        { encoding: 'utf-8' },
+      );
       if (extract.status !== 0) {
         const reason = (extract.stderr || extract.stdout || 'tar extract failed').trim();
         throw new Error(`Nie udało się rozpakować backupu: ${reason}`);
       }
+      this.assertNoSymlinksInDirectory(stageDir);
 
       const importedDbPath = path.join(stageDir, 'app.db');
       if (!fs.existsSync(importedDbPath)) {
@@ -890,6 +898,65 @@ export class SetupService {
       return;
     }
     fs.copyFileSync(source, target);
+  }
+
+  private assertBackupArchiveFileSafe(archivePath: string): void {
+    const stat = fs.statSync(archivePath);
+    if (!stat.isFile()) {
+      throw new Error('Nieprawidłowy backup (oczekiwano pliku).');
+    }
+    if (stat.size <= 0) {
+      throw new Error('Plik backupu jest pusty.');
+    }
+    if (stat.size > this.maxBackupArchiveBytes) {
+      throw new Error(
+        `Plik backupu jest za duży (${Math.round(stat.size / 1024 / 1024)}MB). Maksymalny rozmiar: ${Math.round(
+          this.maxBackupArchiveBytes / 1024 / 1024,
+        )}MB.`,
+      );
+    }
+  }
+
+  private assertBackupArchiveEntriesSafe(archivePath: string): void {
+    const listResult = spawnSync('tar', ['-tzf', archivePath], { encoding: 'utf-8' });
+    if (listResult.status !== 0) {
+      const reason = (listResult.stderr || listResult.stdout || 'tar list failed').trim();
+      throw new Error(`Backup jest niepoprawnym archiwum tar.gz: ${reason}`);
+    }
+
+    const entries = (listResult.stdout || '')
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    for (const entry of entries) {
+      const normalized = entry.replace(/\\/g, '/');
+      if (normalized.startsWith('/')) {
+        throw new Error(`Backup zawiera niedozwoloną ścieżkę absolutną: ${entry}`);
+      }
+      const segments = normalized.split('/').filter(Boolean);
+      if (segments.some((segment) => segment === '..')) {
+        throw new Error(`Backup zawiera niedozwolony segment '..': ${entry}`);
+      }
+    }
+  }
+
+  private assertNoSymlinksInDirectory(rootDir: string): void {
+    const stack = [rootDir];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(current, entry.name);
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isSymbolicLink()) {
+          throw new Error(`Backup zawiera niedozwolony link symboliczny: ${entry.name}`);
+        }
+        if (stat.isDirectory()) {
+          stack.push(fullPath);
+        }
+      }
+    }
   }
 
   validateDataPath(inputPath?: string): DataPathValidationResult {

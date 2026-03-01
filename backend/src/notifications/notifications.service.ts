@@ -22,6 +22,8 @@ export class NotificationsService {
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           type: 'EMAIL',
           to,
@@ -58,6 +60,8 @@ export class NotificationsService {
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           type: 'SMS',
           to,
@@ -91,6 +95,7 @@ export class NotificationsService {
           Authorization: `Basic ${auth}`,
           'Content-Type': 'application/x-www-form-urlencoded',
         },
+        signal: AbortSignal.timeout(10_000),
         body: bodyData.toString(),
       });
 

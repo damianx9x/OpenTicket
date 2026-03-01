@@ -41,6 +41,11 @@ Publikacja release na GitHub (z metadanymi auto-update):
 ./Moj/install-local.sh
 ```
 
+Po zakończeniu instalacji `.pkg`:
+- instalator automatycznie uruchamia `OpenTicket.app` z asystentem setup,
+- gdy aplikacja nie może się otworzyć (np. ograniczenia domeny instalacji), uruchamiany jest fallback do `http://127.0.0.1:3200/setup?source=installer`,
+- jeśli użytkownik wybrał instalację „tylko dla mnie”, skrypt postinstall szuka aplikacji także w `~/Applications/OpenTicket.app`.
+
 Po pierwszym uruchomieniu, w kreatorze setup (krok 1) wybierasz:
 - `Serwer + klient` (pełna instalacja lokalna),
 - `Sam klient` (łączenie z już działającym serwerem przez URL API).

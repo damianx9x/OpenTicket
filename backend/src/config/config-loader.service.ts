@@ -80,7 +80,7 @@ export class ConfigLoaderService {
     const configFile = path.join(configPath, 'config.json');
 
     if (!fs.existsSync(configPath)) {
-      fs.mkdirSync(configPath, { recursive: true });
+      fs.mkdirSync(configPath, { recursive: true, mode: 0o700 });
       this.logger.log(`Created config directory: ${configPath}`);
     }
 
@@ -88,7 +88,12 @@ export class ConfigLoaderService {
     toSave.port = this.resolvePort(toSave.port);
     toSave.createdAt = toSave.createdAt.toISOString() as any;
 
-    fs.writeFileSync(configFile, JSON.stringify(toSave, null, 2));
+    fs.writeFileSync(configFile, JSON.stringify(toSave, null, 2), { mode: 0o600 });
+    try {
+      fs.chmodSync(configFile, 0o600);
+    } catch {
+      // ignore chmod errors on unsupported filesystems
+    }
     this.logger.log(`Configuration saved to ${configFile}`);
 
     ConfigLoaderService.cachedConfig = toSave as AppConfig;

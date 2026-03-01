@@ -184,6 +184,20 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
+  const parsedMaxUrlLength = Number(process.env.TICKET_SYSTEM_MAX_URL_LENGTH || 2048);
+  const maxUrlLength = Number.isFinite(parsedMaxUrlLength) && parsedMaxUrlLength > 256 ? parsedMaxUrlLength : 2048;
+  app.use((req, res, next) => {
+    const requestUrl = req.originalUrl || req.url || '';
+    if (requestUrl.length > maxUrlLength) {
+      res.status(414).json({
+        success: false,
+        message: 'Request URL is too long.',
+      });
+      return;
+    }
+    next();
+  });
+
   const rateRules: RateRule[] = [
     {
       pattern: /^\/api\/v1\/auth\/login$/,

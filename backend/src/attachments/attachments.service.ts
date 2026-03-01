@@ -4,6 +4,7 @@ import { CreateAttachmentDto } from './dto/create-attachment.dto';
 import { StorageService } from '../storage/storage.service';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as path from 'path';
 
 type UploadedFileLike = {
   originalname: string;
@@ -35,13 +36,14 @@ export class AttachmentsService {
     }
 
     await this.ensureTicketExists(dto.ticketId);
+    const normalizedFilename = this.normalizeFilename(dto.filename);
     this.validateAttachmentInput({
-      filename: dto.filename,
+      filename: normalizedFilename,
       mimeType: dto.mimeType,
       byteSize: dto.byteSize,
     });
 
-    const ext = dto.filename.split('.').pop() || 'bin';
+    const ext = normalizedFilename.split('.').pop() || 'bin';
     const objectKey = `${dto.ticketId}/${crypto.randomUUID()}.${ext}`;
     const upload = await this.storageService.generateUploadUrl({
       objectKey,
@@ -53,7 +55,7 @@ export class AttachmentsService {
       data: {
         ticketId: dto.ticketId,
         uploadedBy: dto.uploadedBy ?? null,
-        filename: dto.filename,
+        filename: normalizedFilename,
         mimeType: dto.mimeType,
         byteSize: BigInt(dto.byteSize),
         storageProvider: this.storageService.getProviderName(),
@@ -70,7 +72,7 @@ export class AttachmentsService {
       },
     });
 
-    this.logger.log(`Attachment registered: ${attachment.id} (${dto.filename})`);
+    this.logger.log(`Attachment registered: ${attachment.id} (${normalizedFilename})`);
     return {
       attachment: this.normalizeAttachment(attachment),
       uploadUrl: upload.url,
@@ -80,8 +82,9 @@ export class AttachmentsService {
 
   async uploadAndCreate(ticketId: string, file: UploadedFileLike, uploadedBy?: string) {
     await this.ensureTicketExists(ticketId);
+    const normalizedFilename = this.normalizeFilename(file.originalname);
     this.validateAttachmentInput({
-      filename: file.originalname,
+      filename: normalizedFilename,
       mimeType: file.mimetype,
       byteSize: file.size,
     });
@@ -92,7 +95,7 @@ export class AttachmentsService {
 
     const upload = await this.storageService.uploadFile({
       fileBuffer: file.buffer,
-      filename: file.originalname,
+      filename: normalizedFilename,
       mimeType: file.mimetype,
       byteSize: file.size,
       ticketId,
@@ -102,7 +105,7 @@ export class AttachmentsService {
       data: {
         ticketId,
         uploadedBy: uploadedBy ?? null,
-        filename: file.originalname,
+        filename: normalizedFilename,
         mimeType: file.mimetype,
         byteSize: BigInt(file.size),
         storageProvider: this.storageService.getProviderName(),
@@ -119,7 +122,7 @@ export class AttachmentsService {
       },
     });
 
-    this.logger.log(`Attachment uploaded: ${attachment.id} (${file.originalname})`);
+    this.logger.log(`Attachment uploaded: ${attachment.id} (${normalizedFilename})`);
     return {
       attachment: this.normalizeAttachment(attachment),
       downloadUrl: `/api/v1/attachments/${attachment.id}/file`,
@@ -256,6 +259,21 @@ export class AttachmentsService {
         )}`,
       );
     }
+  }
+
+  private normalizeFilename(rawName: string): string {
+    const base = path.basename((rawName || '').trim());
+    const sanitized = base
+      .replace(/[\u0000-\u001F\u007F]/g, '')
+      .replace(/[\\/]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!sanitized || sanitized === '.' || sanitized === '..') {
+      return `attachment-${Date.now()}.bin`;
+    }
+
+    return sanitized.length > 180 ? sanitized.slice(0, 180) : sanitized;
   }
 
   private normalizeAttachment<T extends { byteSize: bigint | number | string }>(attachment: T) {

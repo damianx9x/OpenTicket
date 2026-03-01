@@ -22,6 +22,7 @@ type ResolvedRuntimePaths = {
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
+  private readonly maxArchiveBytes = 2 * 1024 * 1024 * 1024;
 
   constructor(
     private readonly configLoader: ConfigLoaderService,
@@ -123,6 +124,7 @@ export class BackupService {
     if (!fs.existsSync(resolved)) {
       throw new BadRequestException(`Plik backupu nie istnieje: ${resolved}`);
     }
+    this.assertArchiveFileIsSafe(resolved);
 
     await this.importFromArchiveFile(resolved);
     return { success: true, archivePath: resolved };
@@ -133,12 +135,20 @@ export class BackupService {
     const stageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ticket-backup-import-'));
 
     try {
-      const tarResult = spawnSync('tar', ['-xzf', archivePath, '-C', stageDir], {
-        encoding: 'utf-8',
-      });
+      this.assertArchiveFileIsSafe(archivePath);
+      this.assertArchiveEntriesSafe(archivePath);
+
+      const tarResult = spawnSync(
+        'tar',
+        ['-xzf', archivePath, '-C', stageDir, '--no-same-owner', '--no-same-permissions'],
+        {
+          encoding: 'utf-8',
+        },
+      );
       if (tarResult.status !== 0) {
         throw new Error((tarResult.stderr || tarResult.stdout || 'tar extract failed').trim());
       }
+      this.assertNoSymlinks(stageDir);
 
       const importedDb = path.join(stageDir, 'app.db');
       if (!fs.existsSync(importedDb)) {
@@ -203,6 +213,74 @@ export class BackupService {
     }
 
     return fullPath;
+  }
+
+  private assertArchiveFileIsSafe(archivePath: string): void {
+    const resolved = path.resolve(archivePath);
+    if (!fs.existsSync(resolved)) {
+      throw new BadRequestException(`Plik backupu nie istnieje: ${resolved}`);
+    }
+
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) {
+      throw new BadRequestException('Plik backupu jest nieprawidłowy (oczekiwano pliku).');
+    }
+    if (stat.size <= 0) {
+      throw new BadRequestException('Plik backupu jest pusty.');
+    }
+    if (stat.size > this.maxArchiveBytes) {
+      throw new BadRequestException(
+        `Plik backupu jest za duży (${Math.round(stat.size / 1024 / 1024)}MB). Maksymalny rozmiar: ${Math.round(
+          this.maxArchiveBytes / 1024 / 1024,
+        )}MB.`,
+      );
+    }
+  }
+
+  private assertArchiveEntriesSafe(archivePath: string): void {
+    const listResult = spawnSync('tar', ['-tzf', archivePath], {
+      encoding: 'utf-8',
+    });
+    if (listResult.status !== 0) {
+      throw new BadRequestException(
+        `Backup jest niepoprawnym archiwum tar.gz: ${(listResult.stderr || listResult.stdout || 'tar list failed').trim()}`,
+      );
+    }
+
+    const entries = (listResult.stdout || '')
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    for (const entry of entries) {
+      const normalized = entry.replace(/\\/g, '/');
+      if (normalized.startsWith('/')) {
+        throw new BadRequestException(`Backup zawiera niedozwoloną ścieżkę absolutną: ${entry}`);
+      }
+
+      const segments = normalized.split('/').filter(Boolean);
+      if (segments.some((segment) => segment === '..')) {
+        throw new BadRequestException(`Backup zawiera niedozwolony segment '..': ${entry}`);
+      }
+    }
+  }
+
+  private assertNoSymlinks(rootDir: string): void {
+    const stack = [rootDir];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      const entries = fs.readdirSync(current, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(current, entry.name);
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isSymbolicLink()) {
+          throw new BadRequestException(`Backup zawiera niedozwolony link symboliczny: ${entry.name}`);
+        }
+        if (stat.isDirectory()) {
+          stack.push(fullPath);
+        }
+      }
+    }
   }
 
   private async resolveRuntimePaths(): Promise<ResolvedRuntimePaths> {
@@ -341,12 +419,20 @@ export class BackupService {
       createdAt: new Date(),
     };
 
-    fs.mkdirSync(runtime.configDir, { recursive: true });
+    fs.mkdirSync(runtime.configDir, { recursive: true, mode: 0o700 });
     const serializable = {
       ...merged,
       createdAt: new Date().toISOString(),
     };
-    fs.writeFileSync(runtime.configFile, JSON.stringify(serializable, null, 2), 'utf-8');
+    fs.writeFileSync(runtime.configFile, JSON.stringify(serializable, null, 2), {
+      encoding: 'utf-8',
+      mode: 0o600,
+    });
+    try {
+      fs.chmodSync(runtime.configFile, 0o600);
+    } catch {
+      // ignore chmod errors on unsupported filesystems
+    }
   }
 
   private readConfigFile(configPath: string): Partial<AppConfig> | null {

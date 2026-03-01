@@ -131,11 +131,6 @@ cat > "$PKG_SCRIPTS_DIR/postinstall" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_PATH="/Applications/OpenTicket.app"
-if [[ ! -d "$APP_PATH" ]]; then
-  exit 0
-fi
-
 CONSOLE_USER="$(stat -f%Su /dev/console 2>/dev/null || true)"
 if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
   exit 0
@@ -146,8 +141,33 @@ if [[ -z "$CONSOLE_UID" ]]; then
   exit 0
 fi
 
-# Start setup assistant immediately after installation (without browser flow).
-/bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open -a "$APP_PATH" --args --setup-assistant --permissions-assistant >/dev/null 2>&1 || true
+SYSTEM_APP="/Applications/OpenTicket.app"
+USER_APP="/Users/$CONSOLE_USER/Applications/OpenTicket.app"
+APP_PATH="$SYSTEM_APP"
+
+if [[ ! -d "$APP_PATH" && -d "$USER_APP" ]]; then
+  APP_PATH="$USER_APP"
+fi
+
+if [[ ! -d "$APP_PATH" ]]; then
+  exit 0
+fi
+
+# Improve visibility in Finder when user-level install domain was selected.
+if [[ "$APP_PATH" == "$USER_APP" && ! -e "$SYSTEM_APP" ]]; then
+  ln -s "$USER_APP" "$SYSTEM_APP" >/dev/null 2>&1 || true
+fi
+
+# Clear quarantine if present (best-effort).
+/usr/bin/xattr -dr com.apple.quarantine "$APP_PATH" >/dev/null 2>&1 || true
+
+# Start setup assistant immediately after installation.
+if /bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open "$APP_PATH" --args --setup-assistant --permissions-assistant >/dev/null 2>&1; then
+  exit 0
+fi
+
+# Fallback: at least open WebUI setup in browser.
+/bin/launchctl asuser "$CONSOLE_UID" /usr/bin/open "http://127.0.0.1:3200/setup?source=installer" >/dev/null 2>&1 || true
 exit 0
 EOF
 chmod 755 "$PKG_SCRIPTS_DIR/postinstall"

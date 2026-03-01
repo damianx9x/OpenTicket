@@ -1,22 +1,28 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import * as crypto from 'crypto';
+import { AuthGuard } from '../common/auth/auth.guard';
+import { RolesGuard } from '../common/auth/roles.guard';
+import { Roles } from '../common/auth/roles.decorator';
 
 @Controller('provision')
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('ADMIN')
 export class ProvisionController {
   @Post('qr-accept')
   async qrAccept(@Body() body: { qr_token: string; deviceId: string }) {
-    // Stub: verify QR, create session, return credentials
+    // Controlled stub (admin-only): production pairing flow should use dedicated signed workflow.
     return {
       ok: true,
       qr_token: body.qr_token,
       deviceId: body.deviceId,
-      session: 'stub-session-token',
       message: 'Provisioning accepted (stub)'
     };
   }
 }
 
 @Controller('pairings')
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('ADMIN')
 export class PairingsController {
   @Post('create')
   async create(@Body() body: { deviceName?: string }) {
