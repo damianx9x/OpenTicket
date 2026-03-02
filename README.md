@@ -2,9 +2,9 @@
 <!-- INSTALLER_LINK:START -->
 ## Installers (macOS + Windows)
 - macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- macOS PKG (v0.5.0-pre-alpha): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.0-pre-alpha/OpenTicket-Installer.pkg)
+- macOS PKG (v0.5.1-pre-alpha): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.1-pre-alpha/OpenTicket-Installer.pkg)
 - Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
-- Windows EXE (v0.5.0-pre-alpha): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.0-pre-alpha/OpenTicket-Installer.exe)
+- Windows EXE (v0.5.1-pre-alpha): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.1-pre-alpha/OpenTicket-Installer.exe)
 <!-- INSTALLER_LINK:END -->
 
 **Język:** Polski (domyślnie) | [English](/README.en.md)
@@ -13,7 +13,7 @@ OpenTicket to system ticketowy dla małych i średnich serwisów elektroniki. Pr
 
 ## Wersja
 - **Release line:** `0.5 pre-alpha`
-- **SemVer:** `0.5.0-pre-alpha`
+- **SemVer:** `0.5.1-pre-alpha`
 - **Status:** aktywny milestone produktowy (macOS + WebUI + Windows installer)
 
 ## Co dostajesz w produkcie
@@ -102,6 +102,7 @@ Pełne guide:
 
 ## Dokumentacja
 - [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
+- [Plan rozwoju iOS](/docs/IOS_DEVELOPMENT_PLAN.md)
 - [CHANGELOG](/CHANGELOG.md)
 - [Security Test Plan](/docs/SECURITY_TEST_PLAN.md)
 - [Security Report](/docs/SECURITY_AGENT_REPORT_2026-02-27.md)

@@ -1,48 +1,74 @@
 import Foundation
 
-// MARK: - Setup Response from Desktop
-struct SetupResponse: Codable {
-    let success: Bool
-    let message: String
-    let configPath: String?
-    let adminUserId: String?
-    let migrationsApplied: Int?
-}
-
 // MARK: - QR Code Data
 struct QRCodeData: Codable {
     let apiBase: String
-    let token: String
+    let token: String?
 }
 
-// MARK: - Ticket Models
+// MARK: - Auth
+struct AuthUser: Codable {
+    let id: String
+    let email: String
+    let name: String?
+    let role: String
+    let phone: String?
+}
+
+struct AuthLoginPayload: Codable {
+    let token: String
+    let expiresAt: String
+    let user: AuthUser
+}
+
+// MARK: - API Envelope
+struct ApiEnvelope<T: Codable>: Codable {
+    let data: T?
+    let meta: [String: String]?
+    let success: Bool?
+    let error: String?
+    let message: String?
+}
+
+// MARK: - Ticket
+struct UserRef: Codable {
+    let id: String
+    let name: String?
+    let email: String?
+}
+
 struct Ticket: Identifiable, Codable {
     let id: String
+    let number: Int?
     let title: String
     let description: String
     let status: String
     let priority: String
     let createdAt: String
     let updatedAt: String
-    let assignee: String?
-    
+    let owner: UserRef?
+    let assignedAgent: UserRef?
+
+    var assigneeDisplayName: String {
+        assignedAgent?.name ?? "Nieprzypisany"
+    }
+
+    var ownerDisplayName: String {
+        owner?.name ?? owner?.email ?? "Klient"
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
+        case number
         case title
         case description
         case status
         case priority
         case createdAt
         case updatedAt
-        case assignee
+        case owner
+        case assignedAgent
     }
-}
-
-// MARK: - API Responses
-struct ApiResponse<T: Codable>: Codable {
-    let success: Bool
-    let data: T?
-    let error: String?
 }
 
 // MARK: - Connection Status

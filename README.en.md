@@ -6,7 +6,7 @@ OpenTicket is a modern ticketing system for small and mid-size electronics servi
 
 ## Version
 - **Release line:** `0.5 pre-alpha`
-- **SemVer:** `0.5.0-pre-alpha`
+- **SemVer:** `0.5.1-pre-alpha`
 - **Status:** active product milestone (macOS app + WebUI + Windows installer)
 
 ## Core value for service teams
@@ -57,6 +57,7 @@ Reports:
 - `/docs/test-reports/live-3-20260301-205513/SUMMARY.md`
 
 ## Documentation
+- [iOS Development Plan](/docs/IOS_DEVELOPMENT_PLAN.md)
 - [CHANGELOG](/CHANGELOG.md)
 - [Security Test Plan](/docs/SECURITY_TEST_PLAN.md)
 - [Security Report](/docs/SECURITY_AGENT_REPORT_2026-02-27.md)

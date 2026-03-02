@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.5.1-pre-alpha - 2026-03-02
+
+### Windows setup hotfix
+- Naprawiono błąd setupu na Windows: `Nie udało się sprawdzić lokalizacji: Failed to fetch`.
+- Dodano wielowarstwowy fallback walidacji ścieżki:
+  - retry + fallback endpointów loopback po stronie frontend,
+  - fallback przez IPC Electron (`setup-validate-path`) przy problemach sieci/CORS.
+- Dodano bezpieczne dopuszczenie `Origin: null` tylko w `setupMode`, aby ograniczyć fałszywe błędy połączenia z instalatora.
+
+### iOS foundation update
+- Przebudowano iOS `NetworkManager`:
+  - jawne połączenie z API,
+  - logowanie `/api/v1/auth/login`,
+  - walidacja sesji + pobieranie ticketów,
+  - stabilniejsze błędy i obsługa tokenu.
+- Rozszerzono modele iOS o `AuthUser`, `AuthLoginPayload`, `ApiEnvelope`, `UserRef`.
+- Dodano ekran logowania po połączeniu z serwerem (zamiast ślepego „temporary token”).
+
+### iOS test flow (USB-C + Xcode)
+- Dodano `Moj/testy/start-ios-device.sh`:
+  - start backendu na `0.0.0.0`,
+  - włączenie CORS dla LAN,
+  - podanie gotowego URL API dla iPhone.
+- Dodano dokumentację:
+  - `ios/README.md` (uruchomienie i testy na fizycznym iPhone),
+  - `docs/IOS_DEVELOPMENT_PLAN.md` (plan rozwoju iOS).
+
 ## v0.5.0-pre-alpha - 2026-03-01
 
 ### Milestone productowy

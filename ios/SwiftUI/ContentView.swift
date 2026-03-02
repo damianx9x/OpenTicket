@@ -4,6 +4,8 @@ struct ContentView: View {
     @StateObject private var networkManager = NetworkManager()
     @State private var showScanner = false
     @State private var connectionURL = ""
+    @State private var loginEmail = ""
+    @State private var loginPassword = ""
     
     var body: some View {
         Group {
@@ -30,10 +32,19 @@ struct ContentView: View {
                 .background(Color(.systemBackground))
             
             case .connected(let url):
-                ConnectedView(
-                    apiBase: url,
-                    networkManager: networkManager
-                )
+                if networkManager.isAuthenticated {
+                    ConnectedView(
+                        apiBase: url,
+                        networkManager: networkManager
+                    )
+                } else {
+                    AuthRequiredView(
+                        apiBase: url,
+                        loginEmail: $loginEmail,
+                        loginPassword: $loginPassword,
+                        networkManager: networkManager
+                    )
+                }
             
             case .error(let message):
                 ErrorView(
@@ -60,7 +71,18 @@ struct DisconnectedView: View {
     let networkManager: NetworkManager
     
     var body: some View {
-        VStack(spacing: 24) {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.95, green: 0.97, blue: 1.0),
+                    Color(red: 0.91, green: 0.95, blue: 1.0),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 24) {
             Spacer()
             
             VStack(spacing: 12) {
@@ -105,11 +127,12 @@ struct DisconnectedView: View {
                     }
                 
                 Button(action: {
-                    let qrData = """
-                    {"apiBase":"\(connectionURL)","token":"temporary-pairing-token"}
-                    """
                     Task {
-                        await networkManager.processQRData(qrData)
+                        do {
+                            try await networkManager.connect(apiBaseUrl: connectionURL)
+                        } catch {
+                            networkManager.connectionStatus = .error("Nie udało się połączyć: \(error.localizedDescription)")
+                        }
                     }
                 }) {
                     HStack {
@@ -131,6 +154,105 @@ struct DisconnectedView: View {
         }
         .padding(24)
         .navigationTitle("Ticket System")
+        }
+    }
+}
+
+// MARK: - Auth View
+struct AuthRequiredView: View {
+    let apiBase: String
+    @Binding var loginEmail: String
+    @Binding var loginPassword: String
+    @ObservedObject var networkManager: NetworkManager
+    @State private var isLoggingIn = false
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [Color(red: 0.95, green: 0.97, blue: 1), Color.white],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                VStack(spacing: 20) {
+                    VStack(spacing: 8) {
+                        Text("OpenTicket")
+                            .font(.largeTitle.weight(.bold))
+                        Text("Zaloguj się, aby pracować na zgłoszeniach")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 20)
+
+                    VStack(spacing: 12) {
+                        TextField("E-mail", text: $loginEmail)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textFieldStyle(.roundedBorder)
+
+                        SecureField("Hasło", text: $loginPassword)
+                            .textFieldStyle(.roundedBorder)
+
+                        Button {
+                            Task {
+                                isLoggingIn = true
+                                defer { isLoggingIn = false }
+                                do {
+                                    try await networkManager.login(email: loginEmail, password: loginPassword)
+                                } catch {
+                                    networkManager.errorMessage = "Logowanie nieudane: \(error.localizedDescription)"
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                if isLoggingIn {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .tint(.white)
+                                }
+                                Text(isLoggingIn ? "Logowanie..." : "Zaloguj")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                        }
+                        .disabled(isLoggingIn)
+
+                        if let errorMessage = networkManager.errorMessage {
+                            Text(errorMessage)
+                                .font(.footnote)
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                    .padding(16)
+                    .background(.ultraThinMaterial)
+                    .cornerRadius(14)
+
+                    VStack(spacing: 8) {
+                        Text("Połączono z")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(apiBase)
+                            .font(.caption.monospaced())
+                            .foregroundColor(.primary)
+                    }
+
+                    Button("Zmień serwer") {
+                        networkManager.disconnect()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+                }
+                .padding(20)
+            }
+            .navigationTitle("Logowanie")
+        }
     }
 }
 
@@ -242,6 +364,16 @@ struct TicketRow: View {
                 
                 StatusBadge(status: ticket.status)
             }
+            HStack(spacing: 8) {
+                if let number = ticket.number {
+                    Text("#\(number)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundColor(.secondary)
+                }
+                Text(ticket.ownerDisplayName)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
             
             Text(ticket.description)
                 .font(.caption)
@@ -292,9 +424,8 @@ struct TicketDetailView: View {
                     InfoRow(label: "ID", value: ticket.id)
                     InfoRow(label: "Status", value: ticket.status)
                     InfoRow(label: "Priority", value: ticket.priority)
-                    if let assignee = ticket.assignee {
-                        InfoRow(label: "Assignee", value: assignee)
-                    }
+                    InfoRow(label: "Klient", value: ticket.ownerDisplayName)
+                    InfoRow(label: "Technik", value: ticket.assigneeDisplayName)
                     InfoRow(label: "Created", value: formatDateTime(ticket.createdAt))
                     InfoRow(label: "Updated", value: formatDateTime(ticket.updatedAt))
                 }
@@ -366,6 +497,15 @@ struct SettingsView: View {
                 }
                 
                 Section {
+                    Button(action: {
+                        networkManager.logout()
+                    }) {
+                        HStack {
+                            Image(systemName: "person.crop.circle.badge.minus")
+                            Text("Wyloguj (zachowaj serwer)")
+                        }
+                    }
+
                     Button(role: .destructive, action: { showDisconnectAlert = true }) {
                         HStack {
                             Image(systemName: "power")

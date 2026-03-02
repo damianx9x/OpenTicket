@@ -18,6 +18,16 @@ cd <repo-root>
 ./Moj/testy/start.sh --fresh
 ```
 
+## Test fizycznego iPhone (USB-C + Xcode)
+```bash
+./Moj/testy/start-ios-device.sh
+```
+
+Co robi:
+- uruchamia backend w trybie LAN (`BIND_HOST=0.0.0.0`),
+- włącza CORS dla prywatnej sieci LAN,
+- wypisuje gotowy adres API do wpisania w aplikacji iOS.
+
 ## Smoke test (5/5)
 ```bash
 ./Moj/testy/smoke.sh
