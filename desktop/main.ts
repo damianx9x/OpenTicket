@@ -106,6 +106,109 @@ type BackendRunnerCandidate = {
   label: string;
 };
 
+type SetupValidatePathPayload = {
+  dataPath?: string;
+  apiBaseUrl?: string;
+  setupSessionToken?: string;
+};
+
+type SetupValidatePathResult = {
+  ok: boolean;
+  requestedPath: string;
+  resolvedPath: string;
+  createdDirectory: boolean;
+  writable: boolean;
+  warning?: string;
+  error?: string;
+};
+
+function pickResponseMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") {
+    return fallback;
+  }
+  const obj = payload as Record<string, unknown>;
+  if (typeof obj.message === "string" && obj.message.trim().length > 0) {
+    return obj.message;
+  }
+  if (typeof obj.error === "string" && obj.error.trim().length > 0) {
+    return obj.error;
+  }
+  if (Array.isArray(obj.message) && obj.message.length > 0) {
+    return obj.message.map((item) => String(item)).join(", ");
+  }
+  return fallback;
+}
+
+async function proxySetupValidatePath(payload?: SetupValidatePathPayload): Promise<SetupValidatePathResult> {
+  const requestedPath = (payload?.dataPath || "").trim();
+  if (!requestedPath) {
+    throw new Error("Brak ścieżki do walidacji.");
+  }
+
+  let apiBaseUrl = `http://127.0.0.1:${currentBackendPort}`;
+  if (payload?.apiBaseUrl && payload.apiBaseUrl.trim().length > 0) {
+    try {
+      const parsed = new URL(payload.apiBaseUrl.trim());
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        throw new Error("API base must use http/https.");
+      }
+      parsed.pathname = "";
+      parsed.search = "";
+      parsed.hash = "";
+      apiBaseUrl = parsed.toString().replace(/\/+$/, "");
+    } catch {
+      throw new Error("Niepoprawny adres API serwera.");
+    }
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (payload?.setupSessionToken && payload.setupSessionToken.trim().length > 0) {
+    headers["x-setup-session-token"] = payload.setupSessionToken.trim();
+  }
+
+  const response = await fetch(`${apiBaseUrl}/api/v1/setup/validate-path`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      dataPath: requestedPath,
+      setupSessionToken: payload?.setupSessionToken,
+    }),
+  });
+
+  const rawText = await response.text();
+  let responseJson: unknown = null;
+  if (rawText) {
+    try {
+      responseJson = JSON.parse(rawText);
+    } catch {
+      responseJson = { message: rawText };
+    }
+  }
+
+  if (!response.ok) {
+    const fallback = `Walidacja ścieżki nie powiodła się (HTTP ${response.status}).`;
+    throw new Error(pickResponseMessage(responseJson, fallback));
+  }
+
+  const envelopeData =
+    responseJson && typeof responseJson === "object" && "data" in (responseJson as Record<string, unknown>)
+      ? ((responseJson as Record<string, unknown>).data as unknown)
+      : responseJson;
+
+  if (!envelopeData || typeof envelopeData !== "object") {
+    throw new Error("Silnik zwrócił niepoprawny wynik walidacji ścieżki.");
+  }
+
+  const result = envelopeData as SetupValidatePathResult;
+  if (typeof result.ok !== "boolean" || typeof result.resolvedPath !== "string") {
+    throw new Error("Silnik zwrócił niekompletne dane walidacji ścieżki.");
+  }
+
+  return result;
+}
+
 function toSqliteDatabaseUrl(dbPath: string): string {
   return `file:${encodeURI(path.resolve(dbPath))}`;
 }
@@ -1958,6 +2061,10 @@ app.on("ready", async () => {
         return result.filePaths[0];
       }
       return null;
+    });
+
+    ipcMain.handle("setup-validate-path", async (_event, payload?: SetupValidatePathPayload) => {
+      return proxySetupValidatePath(payload);
     });
 
     ipcMain.handle("get-local-ip", () => {

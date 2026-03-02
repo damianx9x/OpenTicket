@@ -40,6 +40,19 @@ declare global {
   interface ElectronBridge {
     selectFolder: () => Promise<string | null>;
     selectFile: (kind: 'database' | 'backup') => Promise<string | null>;
+    setupValidatePath: (payload: {
+      dataPath: string;
+      apiBaseUrl?: string;
+      setupSessionToken?: string;
+    }) => Promise<{
+      ok: boolean;
+      requestedPath: string;
+      resolvedPath: string;
+      createdDirectory: boolean;
+      writable: boolean;
+      warning?: string;
+      error?: string;
+    }>;
     getLocalIp: () => Promise<string>;
     getAppPath: () => Promise<string>;
     resetSetup: () => Promise<{ success: boolean; message: string }>;

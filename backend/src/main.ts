@@ -27,6 +27,10 @@ function isPrivateLanOrigin(origin: string): boolean {
   );
 }
 
+function isNullOrigin(origin: string): boolean {
+  return origin.trim().toLowerCase() === 'null';
+}
+
 function resolveCorsAllowedOrigins(): Set<string> {
   const set = new Set<string>();
   const raw = process.env.CORS_ALLOWED_ORIGINS || '';
@@ -53,6 +57,16 @@ function isSwaggerEnabled(): boolean {
     return false;
   }
   return process.env.APP_ENV === 'DEV_LOCAL';
+}
+
+function isNullOriginCorsAllowed(setupMode: boolean): boolean {
+  if (process.env.CORS_ALLOW_NULL_ORIGIN === '1') {
+    return true;
+  }
+  if (process.env.CORS_ALLOW_NULL_ORIGIN === '0') {
+    return false;
+  }
+  return setupMode;
 }
 
 function resolvePrismaCommand(backendRoot: string): {
@@ -158,9 +172,15 @@ async function bootstrap() {
   // Enable CORS
   const corsAllowlist = resolveCorsAllowedOrigins();
   const allowPrivateLanCors = isPrivateLanCorsAllowed();
+  const allowNullOriginCors = isNullOriginCorsAllowed(config.setupMode);
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowNullOriginCors && isNullOrigin(origin)) {
         callback(null, true);
         return;
       }

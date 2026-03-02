@@ -5,8 +5,10 @@
 import {
   buildApiUrl,
   clearApiBaseOverride,
+  getApiBase,
   normalizeApiBaseUrl,
   requestData,
+  ApiRequestError,
   setApiBaseOverride,
 } from '@/lib/api-base';
 export { buildApiUrl } from '@/lib/api-base';
@@ -148,7 +150,7 @@ function localSetupBase(): string {
   if (typeof window === 'undefined') {
     return process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || 'http://127.0.0.1:3000';
   }
-  return window.location.origin;
+  return getApiBase();
 }
 
 function buildLocalSetupUrl(pathname: string): string {
@@ -176,6 +178,134 @@ function mergeSetupHeaders(init: RequestInit | undefined, setupSessionToken?: st
     ...(init || {}),
     headers,
   };
+}
+
+function isRetryableNetworkError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  if (error instanceof ApiRequestError) {
+    return false;
+  }
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return error.name === 'NetworkError' || error.name === 'AbortError';
+  }
+  if (error instanceof Error) {
+    return /(failed to fetch|networkerror|load failed|err_connection|err_name_not_resolved|econnrefused|socket hang up)/i.test(
+      error.message,
+    );
+  }
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toLoopbackVariant(baseUrl: string, hostname: '127.0.0.1' | 'localhost'): string | null {
+  try {
+    const parsed = new URL(baseUrl);
+    if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+      return null;
+    }
+    parsed.hostname = hostname;
+    parsed.pathname = '';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+function resolveSetupFallbackEndpoints(pathname: string, apiBaseUrl?: string): string[] {
+  const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  const candidates: string[] = [];
+  const add = (url: string | null | undefined) => {
+    if (!url) {
+      return;
+    }
+    const trimmed = url.trim();
+    if (!trimmed || candidates.includes(trimmed)) {
+      return;
+    }
+    candidates.push(trimmed);
+  };
+
+  const primary = resolveSetupEndpoint(normalizedPath, apiBaseUrl);
+  add(primary);
+
+  if (apiBaseUrl) {
+    const normalizedBase = normalizeApiBaseUrl(apiBaseUrl);
+    add(`${normalizedBase}${normalizedPath}`);
+    add(
+      (() => {
+        const variant = toLoopbackVariant(normalizedBase, '127.0.0.1');
+        return variant ? `${variant}${normalizedPath}` : null;
+      })(),
+    );
+    add(
+      (() => {
+        const variant = toLoopbackVariant(normalizedBase, 'localhost');
+        return variant ? `${variant}${normalizedPath}` : null;
+      })(),
+    );
+    return candidates;
+  }
+
+  if (typeof window !== 'undefined') {
+    const rawOrigin = window.location.origin;
+    if (/^https?:\/\//i.test(rawOrigin)) {
+      try {
+        const parsed = new URL(rawOrigin);
+        const port = parsed.port
+          ? `:${parsed.port}`
+          : parsed.protocol === 'https:'
+            ? ':443'
+            : ':80';
+        add(`http://127.0.0.1${port}${normalizedPath}`);
+        add(`http://localhost${port}${normalizedPath}`);
+      } catch {
+        // ignore origin parse errors
+      }
+    }
+  }
+
+  for (const fallbackPort of ['3200', '3000', '3001', '3002']) {
+    add(`http://127.0.0.1:${fallbackPort}${normalizedPath}`);
+    add(`http://localhost:${fallbackPort}${normalizedPath}`);
+  }
+
+  return candidates;
+}
+
+async function validateDataPathViaDesktopBridge(
+  dataPath: string,
+  options?: { apiBaseUrl?: string; setupSessionToken?: string },
+): Promise<DataPathValidation | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const bridge = (window as any).electron || (window as any).electronAPI;
+  if (!bridge?.setupValidatePath) {
+    return null;
+  }
+
+  try {
+    const result = await bridge.setupValidatePath({
+      dataPath,
+      apiBaseUrl: options?.apiBaseUrl,
+      setupSessionToken: options?.setupSessionToken,
+    });
+    if (result && typeof result === 'object' && 'ok' in result) {
+      return result as DataPathValidation;
+    }
+  } catch {
+    // fallback failed; caller will throw original networking error
+  }
+
+  return null;
 }
 
 /**
@@ -325,18 +455,45 @@ export async function validateDataPath(
   dataPath: string,
   options?: { apiBaseUrl?: string; setupSessionToken?: string },
 ): Promise<DataPathValidation> {
-  return requestData<DataPathValidation>(
-    resolveSetupEndpoint('/api/v1/setup/validate-path', options?.apiBaseUrl),
-    mergeSetupHeaders(
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          dataPath,
-          setupSessionToken: options?.setupSessionToken,
-        }),
-      },
-      options?.setupSessionToken,
-    ),
+  const payload = JSON.stringify({
+    dataPath,
+    setupSessionToken: options?.setupSessionToken,
+  });
+
+  const requestInit = mergeSetupHeaders(
+    {
+      method: 'POST',
+      body: payload,
+    },
+    options?.setupSessionToken,
+  );
+
+  const endpoints = resolveSetupFallbackEndpoints('/api/v1/setup/validate-path', options?.apiBaseUrl);
+  let lastError: unknown = null;
+
+  for (let index = 0; index < endpoints.length; index += 1) {
+    const endpoint = endpoints[index];
+    try {
+      return await requestData<DataPathValidation>(endpoint, requestInit);
+    } catch (error) {
+      if (!isRetryableNetworkError(error)) {
+        throw error;
+      }
+      lastError = error;
+      if (index < endpoints.length - 1) {
+        await delay(160);
+      }
+    }
+  }
+
+  const bridgeResult = await validateDataPathViaDesktopBridge(dataPath, options);
+  if (bridgeResult) {
+    return bridgeResult;
+  }
+
+  throw (
+    lastError ||
+    new Error('Nie udało się połączyć z silnikiem lokalnym podczas walidacji ścieżki.')
   );
 }
 

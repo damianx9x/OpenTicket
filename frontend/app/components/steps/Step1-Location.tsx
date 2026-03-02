@@ -161,9 +161,15 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
 
       return result.resolvedPath;
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'nieznany błąd';
+      const isConnectionError = /failed to fetch|networkerror|load failed|err_connection|econnrefused/i.test(
+        message,
+      );
       setPathFeedback({
         type: 'error',
-        text: `Nie udało się sprawdzić lokalizacji: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+        text: isConnectionError
+          ? 'Nie udało się połączyć z lokalnym silnikiem. Sprawdź czy aplikacja działa i spróbuj ponownie.'
+          : `Nie udało się sprawdzić lokalizacji: ${message}`,
       });
       return null;
     } finally {

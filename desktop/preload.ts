@@ -11,6 +11,22 @@ const api = {
     return ipcRenderer.invoke("select-file", { kind });
   },
 
+  setupValidatePath: async (payload: {
+    dataPath: string;
+    apiBaseUrl?: string;
+    setupSessionToken?: string;
+  }): Promise<{
+    ok: boolean;
+    requestedPath: string;
+    resolvedPath: string;
+    createdDirectory: boolean;
+    writable: boolean;
+    warning?: string;
+    error?: string;
+  }> => {
+    return ipcRenderer.invoke("setup-validate-path", payload);
+  },
+
   // Network methods
   getLocalIp: async (): Promise<string> => {
     return ipcRenderer.invoke("get-local-ip");
