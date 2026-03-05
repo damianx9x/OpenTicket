@@ -2,9 +2,9 @@
 <!-- INSTALLER_LINK:START -->
 ## Installers (macOS + Windows)
 - macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- macOS PKG (v0.5.1-pre-alpha): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.1-pre-alpha/OpenTicket-Installer.pkg)
+- macOS PKG (v0.5.2-pre-alpha): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.2-pre-alpha/OpenTicket-Installer.pkg)
 - Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
-- Windows EXE (v0.5.1-pre-alpha): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.1-pre-alpha/OpenTicket-Installer.exe)
+- Windows EXE (v0.5.2-pre-alpha): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.2-pre-alpha/OpenTicket-Installer.exe)
 <!-- INSTALLER_LINK:END -->
 
 **Język:** Polski (domyślnie) | [English](/README.en.md)

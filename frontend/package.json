@@ -1,6 +1,6 @@
 {
   "name": "openticket-frontend",
-  "version": "0.5.1-pre-alpha",
+  "version": "0.5.2-pre-alpha",
   "private": true,
   "scripts": {
     "dev": "next dev",
