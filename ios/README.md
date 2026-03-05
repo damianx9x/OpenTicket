@@ -1,43 +1,51 @@
 # OpenTicket iOS (SwiftUI)
 
-Ten katalog zawiera aplikację iOS do pracy technika:
-- szybkie połączenie z serwerem (QR lub ręcznie),
-- logowanie kontem OpenTicket,
-- podgląd i odświeżanie zgłoszeń.
+Ten katalog to aplikacja iOS dla technika serwisu.
 
-## Co już jest gotowe
-1. Szkielet SwiftUI (`ios/SwiftUI/*`).
-2. Integracja z backendem OpenTicket (`/api/v1/setup/status`, `/api/v1/auth/login`, `/api/v1/tickets`).
-3. Przechowywanie tokenu w Keychain.
-4. Obsługa QR (`apiBase`, opcjonalny `token`).
+## Co działa teraz
+1. Parowanie przez QR lub ręczny URL API.
+2. Logowanie (`/api/v1/auth/login`) i token w Keychain.
+3. Dashboard iOS (metryki + szybkie przełączniki statusów).
+4. Lista ticketów z filtrami: status, `Tylko moje`, `> X dni`, fulltext.
+5. Dodawanie nowego ticketu z iPhone (`POST /api/v1/tickets`).
+6. Szczegóły ticketu z etapami, komentarzami, załącznikami i zmianą etapu (`PATCH /api/v1/tickets/:id`).
+7. Motywy UI: `System`, `Cupertino`, `Graphite`, `Emerald`.
 
-## Szybkie testy na iPhone (USB-C + Xcode)
-1. Podłącz iPhone kablem USB-C do Maca.
-2. Włącz iPhone i zaakceptuj zaufanie dla tego komputera.
-3. Uruchom backend do testów urządzenia:
+## Test na żywym iPhonie (USB-C, krok po kroku)
+1. Podłącz iPhone kablem USB-C do Maca i zaakceptuj „Trust this computer”.
+2. Uruchom backend + WebUI w trybie iOS LAN:
 ```bash
 cd /Users/icex/Projekty/git_repos/OpenTicket-clean
 ./Moj/testy/start-ios-device.sh
 ```
-4. Skrypt pokaże adres API dla telefonu, np. `http://192.168.1.20:3200`.
-5. W Xcode:
-- utwórz projekt iOS App (SwiftUI) lub użyj istniejącego,
+Skrót z pełną walidacją (health + setup):
+```bash
+./Moj/testy/ios-usb-check.sh
+```
+3. Skrypt wyświetli gotowe adresy:
+- `WebUI (Mac): http://127.0.0.1:3200`
+- `API (iPhone): http://<twoje-lan-ip>:3200`
+4. W Xcode:
+- utwórz projekt typu `iOS App (SwiftUI)` albo użyj istniejącego,
 - dodaj pliki z `ios/SwiftUI`,
-- ustaw Team + Signing,
-- wybierz fizyczne urządzenie jako target,
-- Run.
-6. W aplikacji iOS:
-- zeskanuj QR z setupu OpenTicket **albo** wpisz ręcznie adres API,
-- zaloguj się kontem admin/technik,
-- sprawdź listę ticketów.
+- ustaw `Signing & Capabilities` (Team),
+- wybierz fizyczny iPhone jako target,
+- kliknij `Run`.
+5. W aplikacji iOS:
+- zeskanuj QR z OpenTicket lub wpisz ręcznie URL API,
+- zaloguj konto admin/technik,
+- przetestuj: dashboard, filtry, nowe zgłoszenie, zmianę etapu.
 
-## Wymagania sieciowe pod testy urządzenia
-1. Backend musi słuchać na `0.0.0.0` (skrypt robi to automatycznie).
-2. CORS dla LAN musi być włączony (skrypt też ustawia automatycznie).
-3. iPhone i Mac muszą być w tej samej sieci lokalnej (kabel służy do deploy/debug w Xcode).
+## Szybki check backend<->iOS
+```bash
+# backend działa i słucha dla urządzeń LAN
+lsof -nP -iTCP:3200 -sTCP:LISTEN
 
-## Następne kroki (roadmap iOS)
-1. Formularz tworzenia zgłoszenia + zdjęcia (`multipart upload`).
-2. Skan QR ticketu i przejście do akcji serwisowej.
-3. Powiadomienia i przypomnienia technika.
-4. Personalizacja widoku technika (filtry, presety).
+# setup status z Maca
+curl -s -X POST http://127.0.0.1:3200/api/v1/setup/status
+```
+
+## Najbliższy etap iOS
+1. Upload zdjęć do ticketu z `PhotosPicker` + endpoint `tickets/:id/attachments/upload`.
+2. Push powiadomienia i przypomnienia technika.
+3. Tryb offline queue (kolejka operacji i retry po odzyskaniu sieci).

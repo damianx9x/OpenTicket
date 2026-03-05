@@ -85,6 +85,7 @@ make test
 ```
 
 ## Instalacja zdalna (host)
+- Szybki poradnik krok-po-kroku: `/docs/REMOTE_INSTALL_QUICKSTART_PL.md`
 - Linux Docker: `/deploy/docker/install.sh`
 - Linux native systemd: `/deploy/native/install.sh`
 - Synology: `/docs/REMOTE_INSTALL_SYNOLOGY.md`
@@ -103,6 +104,8 @@ Pełne guide:
 ## Dokumentacja
 - [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
 - [Plan rozwoju iOS](/docs/IOS_DEVELOPMENT_PLAN.md)
+- [Remote Install Quickstart PL](/docs/REMOTE_INSTALL_QUICKSTART_PL.md)
+- [Rozszerzone scenariusze testowe](/docs/TEST_SCENARIOS_EXTENDED_2026-03-05.md)
 - [CHANGELOG](/CHANGELOG.md)
 - [Security Test Plan](/docs/SECURITY_TEST_PLAN.md)
 - [Security Report](/docs/SECURITY_AGENT_REPORT_2026-02-27.md)

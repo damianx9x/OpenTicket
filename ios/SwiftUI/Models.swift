@@ -71,6 +71,54 @@ struct Ticket: Identifiable, Codable {
     }
 }
 
+struct TicketComment: Codable, Identifiable {
+    let id: String
+    let body: String
+    let isInternal: Bool?
+    let createdAt: String
+    let author: UserRef?
+}
+
+struct TicketAttachment: Codable, Identifiable {
+    let id: String
+    let filename: String
+    let mimeType: String
+    let createdAt: String
+    let byteSize: Int?
+}
+
+struct TicketStatusEvent: Codable, Identifiable {
+    let id: String
+    let fromStatus: String?
+    let toStatus: String
+    let changedAt: String
+    let user: UserRef?
+}
+
+struct TicketDetail: Codable, Identifiable {
+    let id: String
+    let number: Int?
+    let title: String
+    let description: String
+    let status: String
+    let priority: String
+    let createdAt: String
+    let updatedAt: String
+    let owner: UserRef?
+    let assignedAgent: UserRef?
+    let comments: [TicketComment]?
+    let attachments: [TicketAttachment]?
+    let statusHistory: [TicketStatusEvent]?
+
+    var assigneeDisplayName: String {
+        assignedAgent?.name ?? "Nieprzypisany"
+    }
+
+    var ownerDisplayName: String {
+        owner?.name ?? owner?.email ?? "Klient"
+    }
+}
+
 // MARK: - Connection Status
 enum ConnectionStatus {
     case disconnected

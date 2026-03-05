@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 @MainActor
 final class NetworkManager: ObservableObject {
@@ -69,7 +70,6 @@ final class NetworkManager: ObservableObject {
                 try await fetchCurrentUser()
                 try await fetchTickets()
             } catch {
-                // Token from QR may be temporary. Keep connected state but require login.
                 KeychainManager.shared.deleteToken()
                 isAuthenticated = false
                 sessionUser = nil
@@ -118,7 +118,15 @@ final class NetworkManager: ObservableObject {
     }
 
     // MARK: - Tickets
-    func fetchTickets() async throws {
+    func fetchTickets(
+        page: Int = 1,
+        limit: Int = 50,
+        search: String? = nil,
+        status: String? = nil,
+        onlyMine: Bool = false,
+        minAgeDays: Int? = nil,
+        sort: String = "createdAt_desc"
+    ) async throws {
         guard !apiBase.isEmpty else {
             throw NSError(domain: "OpenTicket.iOS", code: 400, userInfo: [NSLocalizedDescriptionKey: "Brak adresu API."])
         }
@@ -129,7 +137,26 @@ final class NetworkManager: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        var request = URLRequest(url: try buildUrl(path: "/api/v1/tickets?limit=50&page=1&sort=createdAt_desc"))
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "limit", value: String(max(1, min(limit, 100)))),
+            URLQueryItem(name: "page", value: String(max(1, page))),
+            URLQueryItem(name: "sort", value: sort),
+        ]
+
+        if let search, !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            items.append(URLQueryItem(name: "search", value: search))
+        }
+        if let status, !status.isEmpty, status != "ALL" {
+            items.append(URLQueryItem(name: "status", value: status))
+        }
+        if onlyMine {
+            items.append(URLQueryItem(name: "onlyMine", value: "true"))
+        }
+        if let minAgeDays, minAgeDays > 0 {
+            items.append(URLQueryItem(name: "minAgeDays", value: String(minAgeDays)))
+        }
+
+        var request = URLRequest(url: try buildUrl(path: "/api/v1/tickets", queryItems: items))
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
@@ -142,6 +169,71 @@ final class NetworkManager: ObservableObject {
             errorMessage = "Nie udało się pobrać zgłoszeń: \(error.localizedDescription)"
             throw error
         }
+    }
+
+    func fetchTicketDetail(id: String) async throws -> TicketDetail {
+        guard let token = authToken else {
+            throw NSError(domain: "OpenTicket.iOS", code: 401, userInfo: [NSLocalizedDescriptionKey: "Brak tokenu logowania."])
+        }
+        var request = URLRequest(url: try buildUrl(path: "/api/v1/tickets/\(id)"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let data = try await performDataRequest(request)
+        return try JSONDecoder().decode(TicketDetail.self, from: data)
+    }
+
+    func createTicket(
+        title: String,
+        description: String,
+        priority: String,
+        customerName: String?,
+        customerEmail: String?
+    ) async throws {
+        guard let token = authToken else {
+            throw NSError(domain: "OpenTicket.iOS", code: 401, userInfo: [NSLocalizedDescriptionKey: "Brak tokenu logowania."])
+        }
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw NSError(domain: "OpenTicket.iOS", code: 400, userInfo: [NSLocalizedDescriptionKey: "Podaj tytuł zgłoszenia."])
+        }
+        guard description.trimmingCharacters(in: .whitespacesAndNewlines).count >= 10 else {
+            throw NSError(domain: "OpenTicket.iOS", code: 400, userInfo: [NSLocalizedDescriptionKey: "Opis musi mieć minimum 10 znaków."])
+        }
+
+        var payload: [String: Any] = [
+            "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
+            "description": description.trimmingCharacters(in: .whitespacesAndNewlines),
+            "priority": priority,
+            "channel": "APP",
+        ]
+        if let customerName, !customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["customerName"] = customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let customerEmail, !customerEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            payload["customerEmail"] = customerEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        var request = URLRequest(url: try buildUrl(path: "/api/v1/tickets"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        _ = try await performDataRequest(request)
+        try await fetchTickets()
+    }
+
+    func updateTicketStatus(ticketId: String, status: String) async throws {
+        guard let token = authToken else {
+            throw NSError(domain: "OpenTicket.iOS", code: 401, userInfo: [NSLocalizedDescriptionKey: "Brak tokenu logowania."])
+        }
+        var request = URLRequest(url: try buildUrl(path: "/api/v1/tickets/\(ticketId)"))
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["status": status])
+
+        _ = try await performDataRequest(request)
+        try await fetchTickets()
     }
 
     // MARK: - Session Reset
@@ -165,9 +257,22 @@ final class NetworkManager: ObservableObject {
         return "http://\(trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "/")))"
     }
 
-    private func buildUrl(path: String) throws -> URL {
-        guard let url = URL(string: "\(apiBase)\(path)") else {
+    private func buildUrl(path: String, queryItems: [URLQueryItem] = []) throws -> URL {
+        guard let baseUrl = URL(string: apiBase) else {
             throw NSError(domain: "OpenTicket.iOS", code: 400, userInfo: [NSLocalizedDescriptionKey: "Niepoprawny adres API."])
+        }
+
+        let normalizedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        guard var components = URLComponents(url: baseUrl.appendingPathComponent(normalizedPath), resolvingAgainstBaseURL: false) else {
+            throw NSError(domain: "OpenTicket.iOS", code: 400, userInfo: [NSLocalizedDescriptionKey: "Niepoprawny URL endpointu."])
+        }
+
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+
+        guard let url = components.url else {
+            throw NSError(domain: "OpenTicket.iOS", code: 400, userInfo: [NSLocalizedDescriptionKey: "Nie udało się zbudować URL endpointu."])
         }
         return url
     }
@@ -208,4 +313,3 @@ final class NetworkManager: ObservableObject {
         return data
     }
 }
-

@@ -107,12 +107,27 @@ log "Budowa desktop main"
 npm --prefix desktop run build:electron
 
 log "Budowa artefaktów macOS (zip + .app)"
-(
-  cd "$ROOT_DIR/desktop"
-  # Build only zip target here (dmg in electron-builder is flaky on some macOS hosts due hdiutil resize race).
-  # We generate user-facing DMG from installer payload later in this script.
-  npx electron-builder --mac zip --publish never --config.directories.output="$RELEASE_DIR"
-)
+build_mac_artifacts() {
+  (
+    cd "$ROOT_DIR/desktop"
+    # Build only zip target here (dmg in electron-builder is flaky on some macOS hosts due hdiutil resize race).
+    # We generate user-facing DMG from installer payload later in this script.
+    npx electron-builder --mac zip --publish never --config.directories.output="$RELEASE_DIR"
+  )
+}
+
+if ! build_mac_artifacts; then
+  if [[ "${OPENTICKET_ALLOW_UNSIGNED_BUILD:-1}" == "1" ]]; then
+    log "UWAGA: podpisywanie macOS nie powiodło się (np. problem timestamp/clock). Przechodzę na build unsigned."
+    (
+      cd "$ROOT_DIR/desktop"
+      CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder --mac zip --publish never --config.directories.output="$RELEASE_DIR"
+    )
+  else
+    echo "Budowa artefaktów macOS nieudana. Ustaw OPENTICKET_ALLOW_UNSIGNED_BUILD=1 aby wymusić fallback unsigned."
+    exit 1
+  fi
+fi
 
 APP_BUNDLE="$(find_app_bundle || true)"
 if [[ -z "$APP_BUNDLE" ]]; then

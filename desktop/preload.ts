@@ -106,6 +106,12 @@ const api = {
     return ipcRenderer.invoke("request-desktop-permissions");
   },
 
+  openSystemSettings: async (
+    section?: "privacy" | "notifications" | "camera" | "microphone",
+  ): Promise<{ success: boolean; message: string; target?: string }> => {
+    return ipcRenderer.invoke("open-system-settings", { section });
+  },
+
   getUpdateStatus: async (): Promise<{
     supported: boolean;
     state: string;
@@ -210,6 +216,14 @@ const api = {
     const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
     ipcRenderer.on("update-status", listener);
     return () => ipcRenderer.removeListener("update-status", listener);
+  },
+
+  onPermissionsAssistantResult: (
+    callback: (payload: { success: boolean; message: string; details: Record<string, string> }) => void,
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
+    ipcRenderer.on("permissions-assistant-result", listener);
+    return () => ipcRenderer.removeListener("permissions-assistant-result", listener);
   },
 };
 

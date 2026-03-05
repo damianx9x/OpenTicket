@@ -659,8 +659,8 @@ function resolveDesktopRuntimePaths(): DesktopRuntimePaths {
   }>(configFile);
 
   const dataPath =
-    process.env.TICKET_SYSTEM_DATA_DIR?.trim() ||
     config?.dataPath?.trim() ||
+    process.env.TICKET_SYSTEM_DATA_DIR?.trim() ||
     path.join(userDataPath, "data");
 
   const dbFile =
@@ -1431,9 +1431,10 @@ async function spawnBackend(port: number): Promise<void> {
   backendStarting = true;
   backendLastError = null;
   const backendPath = resolveBackendEntry();
-  const userDataPath = app.getPath("userData");
-  const dataPath = path.join(userDataPath, "data");
-  const configPath = path.join(userDataPath, "config");
+  const runtimePaths = resolveDesktopRuntimePaths();
+  const userDataPath = runtimePaths.userDataPath;
+  const dataPath = runtimePaths.dataPath;
+  const configPath = runtimePaths.configDir;
   const logsPath = path.join(userDataPath, "logs");
 
   if (!fs.existsSync(logsPath)) {
@@ -1442,7 +1443,7 @@ async function spawnBackend(port: number): Promise<void> {
 
   const env: Record<string, string> = {
     ...process.env,
-    DATABASE_URL: toSqliteDatabaseUrl(path.join(dataPath, "app.db")),
+    DATABASE_URL: toSqliteDatabaseUrl(runtimePaths.dbFile),
     TICKET_SYSTEM_CONFIG_DIR: configPath,
     TICKET_SYSTEM_DATA_DIR: dataPath,
     TICKET_SYSTEM_FORCE_SQLITE_FALLBACK:
@@ -1854,16 +1855,19 @@ async function requestDesktopPermissions(): Promise<{
   }
 
   const details: Record<string, string> = {};
+  details.filesAndFolders = "manual-check-required";
   try {
-    const camera = await systemPreferences.askForMediaAccess("camera");
-    details.camera = camera ? "granted" : "denied";
+    const cameraStatusBefore = systemPreferences.getMediaAccessStatus("camera");
+    const camera = cameraStatusBefore === "granted" ? true : await systemPreferences.askForMediaAccess("camera");
+    details.camera = camera ? "granted" : `denied (${cameraStatusBefore})`;
   } catch (error: any) {
     details.camera = `error:${error?.message || "unknown"}`;
   }
 
   try {
-    const microphone = await systemPreferences.askForMediaAccess("microphone");
-    details.microphone = microphone ? "granted" : "denied";
+    const micStatusBefore = systemPreferences.getMediaAccessStatus("microphone");
+    const microphone = micStatusBefore === "granted" ? true : await systemPreferences.askForMediaAccess("microphone");
+    details.microphone = microphone ? "granted" : `denied (${micStatusBefore})`;
   } catch (error: any) {
     details.microphone = `error:${error?.message || "unknown"}`;
   }
@@ -1882,17 +1886,51 @@ async function requestDesktopPermissions(): Promise<{
   }
 
   const denied = Object.entries(details)
-    .filter(([_, status]) => /denied|error/.test(status))
+    .filter(([key, status]) => (key === "filesAndFolders" ? false : /denied|error/.test(status)))
     .map(([key]) => key);
 
   return {
     success: denied.length === 0,
     message:
       denied.length === 0
-        ? "Uprawnienia macOS sprawdzone."
-        : `Część uprawnień wymaga ręcznej akceptacji: ${denied.join(", ")}.`,
+        ? "Zgody macOS są poprawne. Dla folderów spoza katalogu użytkownika może być wymagana ręczna zgoda w Ustawieniach systemowych."
+        : `Wymagana ręczna akceptacja zgód: ${denied.join(", ")}. Otwórz Ustawienia systemowe -> Prywatność i bezpieczeństwo.`,
     details,
   };
+}
+
+async function openSystemSettings(
+  section?: "privacy" | "notifications" | "camera" | "microphone",
+): Promise<{ success: boolean; message: string; target?: string }> {
+  if (process.platform !== "darwin") {
+    return {
+      success: false,
+      message: "Ta akcja działa tylko na macOS.",
+    };
+  }
+
+  const targetMap: Record<string, string> = {
+    privacy: "x-apple.systempreferences:com.apple.preference.security",
+    notifications: "x-apple.systempreferences:com.apple.preference.notifications",
+    camera: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera",
+    microphone: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+  };
+
+  const target = targetMap[section || "privacy"] || targetMap.privacy;
+  try {
+    await shell.openExternal(target);
+    return {
+      success: true,
+      message: "Otwarto Ustawienia systemowe.",
+      target,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error?.message || "Nie udało się otworzyć Ustawień systemowych.",
+      target,
+    };
+  }
 }
 
 /**
@@ -1978,9 +2016,12 @@ app.on("ready", async () => {
     configureAutoUpdater();
     const userDataPath = app.getPath("userData");
     const configFilePath = path.join(userDataPath, "config", "config.json");
-
-    // Clean old configuration to ensure setup wizard on first run
-    cleanOldConfig(configFilePath);
+    const allowStaleConfigCleanup = process.env.TICKET_SYSTEM_ENABLE_STALE_CONFIG_CLEANUP === "1";
+    if (allowStaleConfigCleanup) {
+      cleanOldConfig(configFilePath);
+    } else {
+      console.log("Stale config auto-cleanup disabled (safe mode).");
+    }
     await ensureUpgradeBackupOnVersionChange();
 
     // Find free port and start backend
@@ -2017,13 +2058,7 @@ app.on("ready", async () => {
             // ignore marker write failures
           }
           if (mainWindow && !mainWindow.isDestroyed()) {
-            dialog.showMessageBox(mainWindow, {
-              type: result.success ? "info" : "warning",
-              title: "OpenTicket - uprawnienia systemowe",
-              message: result.message,
-              detail: JSON.stringify(result.details, null, 2),
-              buttons: ["OK"],
-            }).catch(() => undefined);
+            mainWindow.webContents.send("permissions-assistant-result", result);
           }
         });
       }, 1200);
@@ -2294,6 +2329,13 @@ app.on("ready", async () => {
     ipcMain.handle("request-desktop-permissions", async () => {
       return requestDesktopPermissions();
     });
+
+    ipcMain.handle(
+      "open-system-settings",
+      async (_event, payload?: { section?: "privacy" | "notifications" | "camera" | "microphone" }) => {
+        return openSystemSettings(payload?.section);
+      },
+    );
 
     ipcMain.handle("update-get-status", async () => {
       return { ...updateStatus };

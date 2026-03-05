@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Folder, Loader2, RefreshCw, Wifi } from 'lucide-react';
+import { CheckCircle2, Folder, Loader2, RefreshCw, Settings2, ShieldAlert, ShieldCheck, Wifi } from 'lucide-react';
 import { normalizeApiBaseUrl } from '@/lib/api-base';
 import {
   claimRemoteSetupToken,
@@ -35,6 +35,13 @@ interface Step1Props {
   }) => void;
   defaultValue: string;
 }
+
+type PermissionAssistantResult = {
+  success: boolean;
+  message: string;
+  details: Record<string, string>;
+  checkedAt: string;
+};
 
 /**
  * Step 1: Storage Location
@@ -97,6 +104,8 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     type: 'success' | 'error' | 'info' | 'warning';
     text: string;
   } | null>(null);
+  const [permissionAssistantRunning, setPermissionAssistantRunning] = useState(false);
+  const [permissionAssistantResult, setPermissionAssistantResult] = useState<PermissionAssistantResult | null>(null);
   const effectiveDefaultPath =
     installationMode === 'server_client' && deploymentTarget === 'remote_host'
       ? remoteHostDefaultPath
@@ -105,6 +114,110 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
   const isElectron =
     typeof window !== 'undefined' &&
     Boolean((window as any).electron?.selectFolder || (window as any).electronAPI?.selectFolder);
+
+  const normalizePermissionStatus = (rawValue: string): 'ok' | 'attention' | 'manual' | 'unknown' => {
+    const normalized = String(rawValue || '').toLowerCase();
+    if (normalized.includes('granted') || normalized === 'true') {
+      return 'ok';
+    }
+    if (normalized.includes('manual')) {
+      return 'manual';
+    }
+    if (normalized.includes('denied') || normalized.includes('error')) {
+      return 'attention';
+    }
+    return 'unknown';
+  };
+
+  const permissionLabelMap: Record<string, string> = {
+    camera: 'Kamera (QR / zdjęcia)',
+    microphone: 'Mikrofon',
+    notifications: 'Powiadomienia',
+    filesAndFolders: 'Pliki i foldery',
+  };
+
+  const formatPermissionValue = (value: string): string => {
+    const normalized = String(value || '').toLowerCase();
+    if (normalized.includes('granted')) {
+      return 'OK';
+    }
+    if (normalized.includes('manual')) {
+      return 'Wymaga ręcznej zgody';
+    }
+    if (normalized.includes('denied')) {
+      return 'Odmowa';
+    }
+    if (normalized.includes('error')) {
+      return 'Błąd odczytu';
+    }
+    return value || 'Nieznany';
+  };
+
+  const runPermissionAssistant = async () => {
+    const bridge =
+      typeof window !== 'undefined'
+        ? ((window as any).electron || (window as any).electronAPI)
+        : null;
+
+    if (!bridge?.requestDesktopPermissions) {
+      setPathFeedback({
+        type: 'info',
+        text: 'Asystent zgód działa tylko w aplikacji desktop z instalatora.',
+      });
+      return;
+    }
+
+    setPermissionAssistantRunning(true);
+    try {
+      const result = await bridge.requestDesktopPermissions();
+      setPermissionAssistantResult({
+        ...result,
+        checkedAt: new Date().toISOString(),
+      });
+      setPathFeedback({
+        type: result.success ? 'success' : 'warning',
+        text: result.message,
+      });
+    } catch (error) {
+      setPathFeedback({
+        type: 'error',
+        text: `Asystent zgód nie powiódł się: ${error instanceof Error ? error.message : 'nieznany błąd'}`,
+      });
+    } finally {
+      setPermissionAssistantRunning(false);
+    }
+  };
+
+  const openSystemSettings = async (
+    section: 'privacy' | 'notifications' | 'camera' | 'microphone' = 'privacy',
+  ) => {
+    const bridge =
+      typeof window !== 'undefined'
+        ? ((window as any).electron || (window as any).electronAPI)
+        : null;
+    if (!bridge?.openSystemSettings) {
+      setPathFeedback({
+        type: 'info',
+        text: 'Ta funkcja jest dostępna tylko w aplikacji desktop na macOS.',
+      });
+      return;
+    }
+
+    try {
+      const result = await bridge.openSystemSettings(section);
+      setPathFeedback({
+        type: result.success ? 'info' : 'error',
+        text: result.message,
+      });
+    } catch (error) {
+      setPathFeedback({
+        type: 'error',
+        text: `Nie udało się otworzyć Ustawień systemowych: ${
+          error instanceof Error ? error.message : 'nieznany błąd'
+        }`,
+      });
+    }
+  };
 
   const selectFilePath = async (kind: 'database' | 'backup'): Promise<string | null> => {
     const bridge =
@@ -317,6 +430,38 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
     const nextBase = useDefault ? effectiveDefaultPath : dataPath;
     setAutoBackupPath(defaultBackupPathFor(nextBase));
   }, [autoBackupPathTouched, dataPath, effectiveDefaultPath, useDefault]);
+
+  useEffect(() => {
+    const bridge =
+      typeof window !== 'undefined'
+        ? ((window as any).electron || (window as any).electronAPI)
+        : null;
+
+    if (!bridge?.onPermissionsAssistantResult) {
+      return;
+    }
+
+    const unsubscribe = bridge.onPermissionsAssistantResult((payload: {
+      success: boolean;
+      message: string;
+      details: Record<string, string>;
+    }) => {
+      setPermissionAssistantResult({
+        ...payload,
+        checkedAt: new Date().toISOString(),
+      });
+      setPathFeedback({
+        type: payload.success ? 'info' : 'warning',
+        text: payload.message,
+      });
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (installationMode !== 'client_only') {
@@ -1169,6 +1314,75 @@ export function InitStep1({ onContinue, defaultValue }: Step1Props) {
               >
                 {checkingPath ? 'Sprawdzanie...' : 'Sprawdź uprawnienia'}
               </button>
+            </div>
+          )}
+
+          {isElectron && (
+            <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-indigo-900">Asystent zgód systemowych (ważne)</p>
+                  <p className="mt-1 text-xs text-indigo-800">
+                    Ten krok łatwo przeoczyć. Najpierw uruchom asystenta, potem w razie potrzeby otwórz Ustawienia
+                    systemowe i wróć tutaj.
+                  </p>
+                </div>
+                <div className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700">Krok obowiązkowy</div>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => void runPermissionAssistant()}
+                  disabled={permissionAssistantRunning}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {permissionAssistantRunning ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                  {permissionAssistantRunning ? 'Sprawdzam zgody...' : 'Uruchom asystenta zgód'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openSystemSettings('privacy')}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-300 bg-white px-4 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-100"
+                >
+                  <Settings2 size={16} />
+                  Otwórz Ustawienia systemowe
+                </button>
+              </div>
+
+              {permissionAssistantResult && (
+                <div className="rounded-lg border border-white/70 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      Ostatni wynik sprawdzenia zgód
+                    </p>
+                    <span className="text-xs text-slate-500">
+                      {new Date(permissionAssistantResult.checkedAt).toLocaleString('pl-PL')}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {Object.entries(permissionAssistantResult.details).map(([key, value]) => {
+                      const status = normalizePermissionStatus(value);
+                      const isGood = status === 'ok' || status === 'manual';
+                      return (
+                        <div
+                          key={key}
+                          className={`flex items-center justify-between rounded border px-2 py-1 text-xs ${
+                            isGood ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'
+                          }`}
+                        >
+                          <span className="font-medium">{permissionLabelMap[key] || key}</span>
+                          <span className="inline-flex items-center gap-1">
+                            {isGood ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+                            {formatPermissionValue(value)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600">{permissionAssistantResult.message}</p>
+                </div>
+              )}
             </div>
           )}
 

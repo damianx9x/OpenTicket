@@ -557,6 +557,12 @@ export default function DashboardPage() {
     | null
   >(null);
   const [serviceInfo, setServiceInfo] = useState('');
+  const [permissionAssistantResult, setPermissionAssistantResult] = useState<{
+    success: boolean;
+    message: string;
+    details: Record<string, string>;
+    checkedAt: string;
+  } | null>(null);
 
   const [ticketForm, setTicketForm] = useState<CreateTicketInput>(emptyTicketForm);
   const [ticketFiles, setTicketFiles] = useState<File[]>([]);
@@ -2989,8 +2995,23 @@ export default function DashboardPage() {
     setServiceBusy(action);
     try {
       const result = await runner(bridge);
-      const message = result?.message || 'Akcja wykonana.';
+      const details = result?.details as Record<string, string> | undefined;
+      const detailsText =
+        action === 'permissions' && details
+          ? `\n${Object.entries(details)
+              .map(([key, value]) => `- ${key}: ${value}`)
+              .join('\n')}`
+          : '';
+      const message = `${result?.message || 'Akcja wykonana.'}${detailsText}`;
       setServiceInfo(message);
+      if (action === 'permissions' && details) {
+        setPermissionAssistantResult({
+          success: result?.success !== false,
+          message: result?.message || 'Sprawdzono zgody systemowe.',
+          details,
+          checkedAt: new Date().toISOString(),
+        });
+      }
       if (result?.success === false) {
         notify({ type: 'error', text: message });
       } else {
@@ -5968,11 +5989,64 @@ export default function DashboardPage() {
                       >
                         {serviceBusy === 'permissions' ? 'Sprawdzam...' : 'Sprawdź zgody macOS'}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void runEngineAction('permissions', (bridge) =>
+                            bridge.openSystemSettings
+                              ? bridge.openSystemSettings('privacy')
+                              : Promise.resolve({
+                                  success: false,
+                                  message: 'Brak funkcji otwierania Ustawień systemowych w tej wersji.',
+                                }),
+                          )
+                        }
+                        disabled={serviceBusy !== null}
+                        className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+                      >
+                        {serviceBusy === 'permissions' ? 'Otwieram...' : 'Otwórz Ustawienia systemowe'}
+                      </button>
                     </div>
                   )}
                   {serviceInfo && (
-                    <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
+                    <div className="mb-3 whitespace-pre-line rounded-lg border border-blue-200 bg-blue-50 p-2 text-xs text-blue-800">
                       {serviceInfo}
+                    </div>
+                  )}
+                  {permissionAssistantResult && (
+                    <div className="mb-3 rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-900">
+                          Wynik asystenta zgód
+                        </p>
+                        <span className="text-xs text-indigo-800">
+                          {formatDate(permissionAssistantResult.checkedAt)}
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        {Object.entries(permissionAssistantResult.details).map(([key, value]) => {
+                          const normalized = String(value || '').toLowerCase();
+                          const ok = normalized.includes('granted') || normalized.includes('manual');
+                          const labelMap: Record<string, string> = {
+                            camera: 'Kamera',
+                            microphone: 'Mikrofon',
+                            notifications: 'Powiadomienia',
+                            filesAndFolders: 'Pliki i foldery',
+                          };
+                          return (
+                            <div
+                              key={key}
+                              className={`flex items-center justify-between rounded border px-2 py-1 ${
+                                ok ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-red-200 bg-red-50 text-red-800'
+                              }`}
+                            >
+                              <span className="font-medium">{labelMap[key] || key}</span>
+                              <span>{value}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-2 text-xs text-indigo-900">{permissionAssistantResult.message}</p>
                     </div>
                   )}
                   {serverLoading ? (

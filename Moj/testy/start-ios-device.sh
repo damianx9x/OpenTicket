@@ -4,9 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 PORT="${PORT:-3200}"
-FRESH_FLAG="${FRESH_FLAG:---fresh}"
+FRESH_FLAG="${FRESH_FLAG-__UNSET__}"
 START_ARGS=("--no-open")
-if [[ -n "$FRESH_FLAG" ]]; then
+if [[ "$FRESH_FLAG" == "__UNSET__" ]]; then
+  START_ARGS=("--fresh" "${START_ARGS[@]}")
+elif [[ -n "$FRESH_FLAG" ]]; then
   START_ARGS=("$FRESH_FLAG" "${START_ARGS[@]}")
 fi
 

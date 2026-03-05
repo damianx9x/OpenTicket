@@ -8,29 +8,30 @@ Zbudować aplikację iOS dla technika, która działa szybko na żywym serwisie 
 2. iOS działa jako klient API (bez lokalnej bazy serwera).
 3. Priorytet: stabilność + szybkie operacje terenowe (nowe zgłoszenie, zdjęcia, statusy).
 
-## Etap 1 - Stabilne połączenie i logowanie (done/foundation)
+## Etap 1 - Stabilne połączenie i logowanie (done)
 1. Połączenie z API przez QR lub ręczny URL.
 2. Logowanie przez `/api/v1/auth/login`.
 3. Token w Keychain.
 4. Lista ticketów z backendu.
 
-## Etap 2 - USB-C test flow (dla Ciebie na dziś)
+## Etap 2 - USB-C test flow (done)
 1. `./Moj/testy/start-ios-device.sh` uruchamia backend na `0.0.0.0` + CORS LAN.
 2. Deploy aplikacji przez Xcode na fizyczny iPhone.
 3. Połączenie i testy login + lista zgłoszeń.
 
-## Etap 3 - Core funkcje serwisowe (następny sprint)
-1. Utwórz zgłoszenie z iPhone (formularz + walidacja).
-2. Dodaj zdjęcia do zgłoszenia.
-3. Zmiana statusu kroku serwisowego.
-4. Dodawanie komentarzy wewnętrznych/publicznych.
+## Etap 3 - Core funkcje serwisowe (in progress)
+1. Utwórz zgłoszenie z iPhone (formularz + walidacja) - DONE.
+2. Zmiana statusu kroku serwisowego - DONE.
+3. Widok historii etapów, komentarzy, załączników - DONE (read).
+4. Dodaj zdjęcia do zgłoszenia - TODO (upload).
+5. Dodawanie komentarzy wewnętrznych/publicznych - TODO (write).
 
-## Etap 4 - UI premium (Apple inspired, bez „przeładowania”)
-1. Nawigacja: `NavigationStack` + dolny pasek sekcji.
-2. Kartowy dashboard technika (dzisiaj / pilne / moje / oczekujące).
-3. Ticket detail jako czytelny ekran etapów (timeline).
-4. Animacje kontekstowe: przejścia kart, loading skeleton, szybkie akcje.
-5. Tryby motywu: Light, Graphite, Emerald (spójne z desktop/web).
+## Etap 4 - UI premium (Apple inspired, bez „przeładowania”) (in progress)
+1. Nawigacja: `TabView` + czytelne sekcje - DONE.
+2. Kartowy dashboard technika (metryki + szybkie przełączniki) - DONE.
+3. Ticket detail jako ekran etapów i historii - DONE.
+4. Animacje kontekstowe i skeleton loading - TODO.
+5. Tryby motywu: System, Cupertino, Graphite, Emerald - DONE.
 
 ## Etap 5 - Produkcyjna ergonomia
 1. Offline queue (lokalne kolejki operacji gdy internet padnie).
@@ -45,6 +46,6 @@ Zbudować aplikację iOS dla technika, która działa szybko na żywym serwisie 
 4. Dokumentacja onboardingu i checklista deploy.
 
 ## 3 scenariusze live (Twoje wymaganie)
-1. Nowa instalacja -> iOS connect -> login -> lista ticketów.
-2. Dodanie ticketu + zdjęcia -> widoczne od razu w WebUI.
-3. Zmiana statusu z iOS -> historia etapów poprawna w desktop/web.
+1. Nowa instalacja -> iOS connect -> login -> dashboard + lista ticketów.
+2. Dodanie ticketu w iOS -> ticket widoczny od razu w WebUI.
+3. Zmiana statusu w iOS -> historia etapów poprawna w desktop/web.

@@ -5,7 +5,7 @@ FRONTEND_PORT ?= 3001
 BIND_HOST ?= 127.0.0.1
 BACKEND_HEALTH_HOST ?= 127.0.0.1
 
-.PHONY: up down reset diagnose test smoke stage3-test desktop-dev installer-official installer-official-win moj-testy-start moj-testy-stop moj-testy-reset moj-testy-smoke moj-testy-auth-smoke moj-testy-client-only-smoke moj-testy-profile-ui-smoke moj-testy-backup-ui-smoke moj-testy-custom-path-backup-smoke moj-testy-fresh-10x-smoke moj-testy-setup-import-smoke moj-testy-diagnose moj-testy-open-fresh
+.PHONY: up down reset diagnose test smoke metrics stage3-test desktop-dev installer-official installer-official-win moj-testy-start moj-testy-stop moj-testy-reset moj-testy-smoke moj-testy-auth-smoke moj-testy-client-only-smoke moj-testy-profile-ui-smoke moj-testy-backup-ui-smoke moj-testy-custom-path-backup-smoke moj-testy-fresh-10x-smoke moj-testy-setup-import-smoke moj-testy-diagnose moj-testy-open-fresh moj-testy-server-only-deep moj-testy-role-guard
 
 up:
 	@BACKEND_PORT=$(BACKEND_PORT) FRONTEND_PORT=$(FRONTEND_PORT) BIND_HOST=$(BIND_HOST) BACKEND_HEALTH_HOST=$(BACKEND_HEALTH_HOST) ./scripts/up.sh
@@ -26,6 +26,9 @@ test:
 
 smoke:
 	@BACKEND_PORT=$(BACKEND_PORT) BACKEND_HEALTH_HOST=$(BACKEND_HEALTH_HOST) ./scripts/smoke.sh
+
+metrics:
+	@./scripts/code-metrics.sh
 
 stage3-test:
 	@./scripts/stage3-go-no-go.sh
@@ -77,3 +80,9 @@ moj-testy-diagnose:
 
 moj-testy-open-fresh:
 	@./Moj/testy/open-fresh-browser.sh --reset-profile
+
+moj-testy-server-only-deep:
+	@./Moj/testy/server-only-deep-smoke.sh
+
+moj-testy-role-guard:
+	@./Moj/testy/role-guard-smoke.sh

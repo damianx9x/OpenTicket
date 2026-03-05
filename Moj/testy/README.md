@@ -151,6 +151,28 @@ Zakres:
 - setup klienta w trybie `client_only`,
 - logowanie przez UI klienta i walidacja, że widzi dane z serwera.
 
+## Test server-only (głęboki scenariusz API)
+```bash
+./Moj/testy/server-only-deep-smoke.sh
+```
+Zakres:
+- setup i logowanie admina,
+- auto-przypisanie technika przy tworzeniu zgłoszenia,
+- łączenie historii klienta po danych kontaktowych,
+- komentarze + załączniki + przypomnienia,
+- wyszukiwanie po numerze/treści/imieniu oraz filtry `hasComments/hasAttachments`,
+- przejścia etapów + reopen,
+- eksport backupu `.otbackup`.
+
+## Test ról i uprawnień (admin vs technik)
+```bash
+./Moj/testy/role-guard-smoke.sh
+```
+Zakres:
+- admin tworzy konto technika,
+- technik nie może wykonać endpointów tylko dla admina (`403`),
+- technik ma dostęp do endpointów dozwolonych dla swojej roli.
+
 ## Test drukowania raportu statystyk (bez popup-blockera)
 ```bash
 ./Moj/testy/print-report-smoke.sh

@@ -71,6 +71,9 @@ declare global {
       message: string;
       details: Record<string, string>;
     }>;
+    openSystemSettings: (
+      section?: 'privacy' | 'notifications' | 'camera' | 'microphone',
+    ) => Promise<{ success: boolean; message: string; target?: string }>;
     getUpdateStatus: () => Promise<UpdateStatus>;
     checkForUpdates: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;
     downloadUpdate: () => Promise<{ success: boolean; message: string; status: UpdateStatus }>;
@@ -121,6 +124,13 @@ declare global {
     ) => () => void;
     onUpdateStatus: (
       callback: (payload: UpdateStatus) => void,
+    ) => () => void;
+    onPermissionsAssistantResult: (
+      callback: (payload: {
+        success: boolean;
+        message: string;
+        details: Record<string, string>;
+      }) => void,
     ) => () => void;
   }
 

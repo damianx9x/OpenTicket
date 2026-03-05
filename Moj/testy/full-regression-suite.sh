@@ -76,11 +76,13 @@ run_step "08-backup-verify-smoke" "$ROOT_DIR/Moj/testy/backup-verify-smoke.sh"
 run_step "09-auto-backup-smoke" "$ROOT_DIR/Moj/testy/auto-backup-smoke.sh"
 run_step "10-profile-ui-smoke" "$ROOT_DIR/Moj/testy/profile-ui-smoke.sh"
 run_step "11-client-connect-installed-server" "$ROOT_DIR/Moj/testy/client-connect-installed-server.sh"
-run_step "12-ui-random-10-all-browsers" "$ROOT_DIR/Moj/testy/ui-random-10.sh" --all-browsers
-run_step "13-print-report-smoke" "$ROOT_DIR/Moj/testy/print-report-smoke.sh"
-run_step "14-security-check" "$ROOT_DIR/scripts/security-check.sh"
-run_step "15-dependency-deep-check" "$ROOT_DIR/scripts/dependency-deep-check.sh"
-run_step "16-fresh-10x-smoke" "$ROOT_DIR/Moj/testy/fresh-10x-smoke.sh"
+run_step "12-server-only-deep-smoke" "$ROOT_DIR/Moj/testy/server-only-deep-smoke.sh"
+run_step "13-role-guard-smoke" "$ROOT_DIR/Moj/testy/role-guard-smoke.sh"
+run_step "14-ui-random-10-all-browsers" "$ROOT_DIR/Moj/testy/ui-random-10.sh" --all-browsers
+run_step "15-print-report-smoke" "$ROOT_DIR/Moj/testy/print-report-smoke.sh"
+run_step "16-security-check" "$ROOT_DIR/scripts/security-check.sh"
+run_step "17-dependency-deep-check" "$ROOT_DIR/scripts/dependency-deep-check.sh"
+run_step "18-fresh-10x-smoke" "$ROOT_DIR/Moj/testy/fresh-10x-smoke.sh"
 
 SUMMARY_MD="$OUT_DIR/SUMMARY.md"
 {
