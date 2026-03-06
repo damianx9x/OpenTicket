@@ -28,6 +28,15 @@ Co robi:
 - włącza CORS dla prywatnej sieci LAN,
 - wypisuje gotowy adres API do wpisania w aplikacji iOS.
 
+## iOS API contract smoke (nowe)
+```bash
+node ./scripts/ci/ios-contract-smoke.mjs
+```
+Zakres:
+- setup + login,
+- utworzenie zgłoszenia, komentarza i zmiana etapu,
+- walidacja JSON shape endpointów używanych przez iOS (`auth/login`, `tickets list`, `ticket detail`).
+
 ## Smoke test (5/5)
 ```bash
 ./Moj/testy/smoke.sh
@@ -260,6 +269,23 @@ Screenshoty:
 Wynik zapisuje się do:
 ```bash
 docs/test-reports/full-regression-<timestamp>/SUMMARY.md
+```
+
+## Mac/Windows/iOS platform matrix smoke (nowe)
+Jedna komenda uruchamia zestaw platformowy:
+```bash
+./scripts/ci/platform-matrix-smoke.sh
+```
+Zakres:
+- clean-user smoke dla profilu `macOS`,
+- clean-user smoke dla profilu `Windows` (symulacja na aktualnym hoście),
+- iOS USB/LAN check (`ios-usb-check`),
+- kompilacyjny typecheck SwiftUI (`swiftc -typecheck`),
+- walidacja artefaktów updater/installera (`latest*.yml` + pliki release).
+
+Raport:
+```bash
+./.runtime/reports/platform-matrix-smoke-*.json
 ```
 
 ## Live policy (3 scenariusze)

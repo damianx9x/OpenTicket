@@ -28,6 +28,10 @@ final class NetworkManager: ObservableObject {
         KeychainManager.shared.getToken()
     }
 
+    var sessionToken: String? {
+        authToken
+    }
+
     // MARK: - Pairing / Connection
     func processQRData(_ qrString: String) async {
         connectionStatus = .scanning
@@ -179,7 +183,7 @@ final class NetworkManager: ObservableObject {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let data = try await performDataRequest(request)
-        return try JSONDecoder().decode(TicketDetail.self, from: data)
+        return try decodeEnvelopeOrPlain(TicketDetail.self, from: data)
     }
 
     func createTicket(
@@ -296,9 +300,17 @@ final class NetworkManager: ObservableObject {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         let data = try await performDataRequest(request)
-        let user = try JSONDecoder().decode(AuthUser.self, from: data)
+        let user = try decodeEnvelopeOrPlain(AuthUser.self, from: data)
         sessionUser = user
         isAuthenticated = true
+    }
+
+    private func decodeEnvelopeOrPlain<T: Codable>(_ type: T.Type, from data: Data) throws -> T {
+        let decoder = JSONDecoder()
+        if let envelope = try? decoder.decode(ApiEnvelope<T>.self, from: data), let payload = envelope.data {
+            return payload
+        }
+        return try decoder.decode(T.self, from: data)
     }
 
     private func performDataRequest(_ request: URLRequest) async throws -> Data {

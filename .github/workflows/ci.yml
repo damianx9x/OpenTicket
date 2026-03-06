@@ -47,6 +47,29 @@ jobs:
       - run: npm ci
       - run: npm run build:electron
 
+  ios-swift-typecheck:
+    name: iOS Swift typecheck
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run iOS SwiftUI typecheck
+        run: ./scripts/ci/ios-swift-typecheck.sh
+
+  ios-contract-smoke:
+    name: iOS API contract smoke
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+      - name: Build backend
+        run: npm --prefix backend run build
+      - name: Run iOS contract smoke
+        run: node scripts/ci/ios-contract-smoke.mjs
+
   smoke-clean-user-account:
     name: Smoke clean user account (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

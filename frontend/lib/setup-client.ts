@@ -150,7 +150,10 @@ function localSetupBase(): string {
   if (typeof window === 'undefined') {
     return process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') || 'http://127.0.0.1:3000';
   }
-  return getApiBase();
+  // Setup/status must always talk to the local bootstrap instance.
+  // Using API override here breaks client_only mode (it points to remote server
+  // and we lose local installation metadata).
+  return window.location.origin.replace(/\/+$/, '');
 }
 
 function buildLocalSetupUrl(pathname: string): string {

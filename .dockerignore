@@ -1,0 +1,6 @@
+# Keep Docker build context minimal and deterministic.
+**
+!.dockerignore
+!Dockerfile
+!backend/**
+!frontend/**

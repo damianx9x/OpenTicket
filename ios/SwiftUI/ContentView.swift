@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 private enum AppThemeStyle: String, CaseIterable, Identifiable {
     case system
@@ -125,6 +126,20 @@ private enum TicketWorkflow {
     ]
 }
 
+private enum IOSInterfaceMode: String, CaseIterable, Identifiable {
+    case unifiedWeb
+    case nativeSwift
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .unifiedWeb: return "Unified WebUI (1:1)"
+        case .nativeSwift: return "Native iOS"
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var networkManager = NetworkManager()
     @State private var showScanner = false
@@ -132,9 +147,14 @@ struct ContentView: View {
     @State private var loginEmail = ""
     @State private var loginPassword = ""
     @AppStorage("iosThemeStyle") private var themeRaw = AppThemeStyle.cupertino.rawValue
+    @AppStorage("iosInterfaceMode") private var interfaceModeRaw = IOSInterfaceMode.unifiedWeb.rawValue
 
     private var theme: AppThemeStyle {
         AppThemeStyle(rawValue: themeRaw) ?? .cupertino
+    }
+
+    private var interfaceMode: IOSInterfaceMode {
+        IOSInterfaceMode(rawValue: interfaceModeRaw) ?? .unifiedWeb
     }
 
     var body: some View {
@@ -165,7 +185,9 @@ struct ContentView: View {
                         apiBase: url,
                         networkManager: networkManager,
                         theme: theme,
-                        onThemeChange: { themeRaw = $0.rawValue }
+                        onThemeChange: { themeRaw = $0.rawValue },
+                        interfaceMode: interfaceMode,
+                        onInterfaceModeChange: { interfaceModeRaw = $0.rawValue }
                     )
                 } else {
                     AuthRequiredView(
@@ -396,43 +418,277 @@ private struct ConnectedRootView: View {
     @ObservedObject var networkManager: NetworkManager
     let theme: AppThemeStyle
     let onThemeChange: (AppThemeStyle) -> Void
+    let interfaceMode: IOSInterfaceMode
+    let onInterfaceModeChange: (IOSInterfaceMode) -> Void
 
     @State private var selectedTab = 0
     @State private var selectedStatusPreset: TicketStatusFilter = .all
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            DashboardHomeView(
-                networkManager: networkManager,
-                selectedStatusPreset: $selectedStatusPreset,
-                openTicketsTab: { selectedTab = 1 },
-                theme: theme
-            )
-            .tabItem {
-                Label("Dashboard", systemImage: "rectangle.grid.2x2")
-            }
-            .tag(0)
+        if interfaceMode == .unifiedWeb {
+            TabView(selection: $selectedTab) {
+                UnifiedWebShellScreen(
+                    apiBase: apiBase,
+                    authToken: networkManager.sessionToken
+                )
+                .tabItem {
+                    Label("OpenTicket", systemImage: "globe")
+                }
+                .tag(0)
 
-            TicketListScreen(
-                networkManager: networkManager,
-                selectedStatusPreset: $selectedStatusPreset,
-                theme: theme
-            )
-            .tabItem {
-                Label("Zgłoszenia", systemImage: "list.bullet.rectangle")
+                SettingsScreen(
+                    apiBase: apiBase,
+                    networkManager: networkManager,
+                    theme: theme,
+                    onThemeChange: onThemeChange,
+                    interfaceMode: interfaceMode,
+                    onInterfaceModeChange: onInterfaceModeChange
+                )
+                .tabItem {
+                    Label("Ustawienia", systemImage: "gearshape")
+                }
+                .tag(1)
             }
-            .tag(1)
+        } else {
+            TabView(selection: $selectedTab) {
+                DashboardHomeView(
+                    networkManager: networkManager,
+                    selectedStatusPreset: $selectedStatusPreset,
+                    openTicketsTab: { selectedTab = 1 },
+                    theme: theme
+                )
+                .tabItem {
+                    Label("Dashboard", systemImage: "rectangle.grid.2x2")
+                }
+                .tag(0)
 
-            SettingsScreen(
-                apiBase: apiBase,
-                networkManager: networkManager,
-                theme: theme,
-                onThemeChange: onThemeChange
-            )
-            .tabItem {
-                Label("Ustawienia", systemImage: "gearshape")
+                TicketListScreen(
+                    networkManager: networkManager,
+                    selectedStatusPreset: $selectedStatusPreset,
+                    theme: theme
+                )
+                .tabItem {
+                    Label("Zgłoszenia", systemImage: "list.bullet.rectangle")
+                }
+                .tag(1)
+
+                SettingsScreen(
+                    apiBase: apiBase,
+                    networkManager: networkManager,
+                    theme: theme,
+                    onThemeChange: onThemeChange,
+                    interfaceMode: interfaceMode,
+                    onInterfaceModeChange: onInterfaceModeChange
+                )
+                .tabItem {
+                    Label("Ustawienia", systemImage: "gearshape")
+                }
+                .tag(2)
             }
-            .tag(2)
+        }
+    }
+}
+
+private final class UnifiedWebViewStore: NSObject, ObservableObject, WKNavigationDelegate {
+    @Published var isLoading = false
+    @Published var canGoBack = false
+    @Published var canGoForward = false
+    @Published var currentUrl = ""
+    @Published var errorMessage: String?
+
+    let webView: WKWebView
+    private var loadedApiBase = ""
+
+    override init() {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = .default()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.allowsBackForwardNavigationGestures = true
+        self.webView = webView
+        super.init()
+        self.webView.navigationDelegate = self
+    }
+
+    func load(apiBase: String, authToken: String?) {
+        let normalizedBase = normalizeApiBase(apiBase)
+        guard let baseUrl = URL(string: normalizedBase) else {
+            errorMessage = "Niepoprawny adres serwera: \(apiBase)"
+            return
+        }
+        injectRuntimeSession(token: authToken, apiBase: normalizedBase)
+        let dashboardUrl = baseUrl.appendingPathComponent("dashboard")
+
+        if loadedApiBase != normalizedBase || webView.url == nil {
+            webView.load(URLRequest(url: dashboardUrl, cachePolicy: .reloadIgnoringLocalCacheData))
+            loadedApiBase = normalizedBase
+            return
+        }
+
+        if authToken != nil {
+            webView.reload()
+        }
+    }
+
+    func reload() {
+        webView.reload()
+    }
+
+    func goBack() {
+        if webView.canGoBack {
+            webView.goBack()
+        }
+    }
+
+    func goForward() {
+        if webView.canGoForward {
+            webView.goForward()
+        }
+    }
+
+    private func normalizeApiBase(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private func injectRuntimeSession(token: String?, apiBase: String) {
+        let sanitizedBase = jsEscape(apiBase)
+        let sanitizedToken = jsEscape(token ?? "")
+        let scriptSource = """
+        try {
+          if ('\(sanitizedToken)'.length > 0) {
+            localStorage.setItem('ts_auth_token', '\(sanitizedToken)');
+          }
+          localStorage.setItem('ts_api_base_url', '\(sanitizedBase)');
+        } catch (e) {}
+        """
+        let controller = webView.configuration.userContentController
+        controller.removeAllUserScripts()
+        controller.addUserScript(
+            WKUserScript(source: scriptSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        )
+    }
+
+    private func jsEscape(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+    }
+
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        isLoading = true
+        errorMessage = nil
+        currentUrl = webView.url?.absoluteString ?? currentUrl
+        canGoBack = webView.canGoBack
+        canGoForward = webView.canGoForward
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        isLoading = false
+        currentUrl = webView.url?.absoluteString ?? currentUrl
+        canGoBack = webView.canGoBack
+        canGoForward = webView.canGoForward
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        isLoading = false
+        errorMessage = "Błąd ładowania WebUI: \(error.localizedDescription)"
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        isLoading = false
+        errorMessage = "Błąd połączenia z WebUI: \(error.localizedDescription)"
+    }
+}
+
+private struct UnifiedWebViewRepresentable: UIViewRepresentable {
+    @ObservedObject var store: UnifiedWebViewStore
+
+    func makeUIView(context: Context) -> WKWebView {
+        store.webView
+    }
+
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+}
+
+private struct UnifiedWebShellScreen: View {
+    let apiBase: String
+    let authToken: String?
+    @StateObject private var store = UnifiedWebViewStore()
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Button {
+                        store.goBack()
+                    } label: {
+                        Image(systemName: "chevron.backward")
+                    }
+                    .disabled(!store.canGoBack)
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        store.goForward()
+                    } label: {
+                        Image(systemName: "chevron.forward")
+                    }
+                    .disabled(!store.canGoForward)
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        store.reload()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+
+                    Button {
+                        if let url = URL(string: "\(apiBase.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/dashboard") {
+                            openURL(url)
+                        }
+                    } label: {
+                        Label("Safari", systemImage: "safari")
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.secondarySystemBackground))
+
+                if store.isLoading {
+                    ProgressView("Ładowanie OpenTicket WebUI...")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background(Color(.systemBackground))
+                }
+
+                if let error = store.errorMessage {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.red.opacity(0.08))
+                }
+
+                UnifiedWebViewRepresentable(store: store)
+                    .onAppear {
+                        store.load(apiBase: apiBase, authToken: authToken)
+                    }
+                    .onChange(of: apiBase) { _, value in
+                        store.load(apiBase: value, authToken: authToken)
+                    }
+                    .onChange(of: authToken) { _, value in
+                        store.load(apiBase: apiBase, authToken: value)
+                    }
+            }
+            .navigationTitle("OpenTicket")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -1049,6 +1305,8 @@ private struct SettingsScreen: View {
     @ObservedObject var networkManager: NetworkManager
     let theme: AppThemeStyle
     let onThemeChange: (AppThemeStyle) -> Void
+    let interfaceMode: IOSInterfaceMode
+    let onInterfaceModeChange: (IOSInterfaceMode) -> Void
 
     @State private var showDisconnectAlert = false
 
@@ -1075,6 +1333,22 @@ private struct SettingsScreen: View {
                         }
                     }
                     .pickerStyle(.menu)
+                }
+
+                Section("Ekosystem UI") {
+                    Picker("Tryb interfejsu", selection: Binding(
+                        get: { interfaceMode },
+                        set: { onInterfaceModeChange($0) }
+                    )) {
+                        ForEach(IOSInterfaceMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text("Aby zachować identyczny wygląd i logikę między iOS, macOS, Windows i Web, wybierz „Unified WebUI (1:1)”.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Sesja") {

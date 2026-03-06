@@ -1,0 +1,37 @@
+{
+  "name": "profile-ui-smoke",
+  "createdAt": "2026-03-06T18:06:01.391Z",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "login",
+      "ok": true,
+      "detail": "dashboard opened"
+    },
+    {
+      "name": "open-profile-tab",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "set-theme",
+      "ok": true,
+      "detail": "graphite-noir"
+    },
+    {
+      "name": "enable-compact-mode",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "theme-persisted",
+      "ok": true,
+      "detail": "value=graphite-noir"
+    },
+    {
+      "name": "compact-persisted",
+      "ok": true,
+      "detail": "checked=true"
+    }
+  ]
+}

@@ -173,14 +173,20 @@ async function stopBackend(proc, forceAfterMs = 4500) {
   });
 }
 
-function expectedConfigPath() {
-  if (platform === 'darwin') {
+function expectedConfigPathFor(targetPlatform) {
+  if (targetPlatform === 'darwin') {
     return path.join(homeDir, 'Library', 'Application Support', 'OpenTicket', 'config.json');
   }
-  if (platform === 'win32') {
+  if (targetPlatform === 'win32') {
     return path.join(appDataDir, 'OpenTicket', 'config.json');
   }
   return path.join(homeDir, '.config', 'openticket', 'config.json');
+}
+
+function expectedConfigPaths() {
+  const requestedPath = expectedConfigPathFor(platform);
+  const hostPath = expectedConfigPathFor(process.platform);
+  return Array.from(new Set([requestedPath, hostPath]));
 }
 
 function buildReport(payload) {
@@ -192,7 +198,8 @@ async function main() {
   const checks = [];
   const dataPath = path.join(homeDir, 'OpenTicketData');
   const dbFile = path.join(dataPath, 'app.db');
-  const configPath = expectedConfigPath();
+  const configCandidates = expectedConfigPaths();
+  const configPath = configCandidates[0];
   const port = await findFreePort();
   const baseUrl = `http://127.0.0.1:${port}/api/v1`;
 
@@ -262,7 +269,8 @@ async function main() {
     const loginAfterRestart = unwrapEnvelope(loginAfterRestartEnvelope);
     record('login-after-restart', Boolean(loginAfterRestart?.token), loginAfterRestart?.token ? 'token issued' : 'missing token');
 
-    record('config-file-created', fs.existsSync(configPath), configPath);
+    const existingConfigPath = configCandidates.find((candidate) => fs.existsSync(candidate));
+    record('config-file-created', Boolean(existingConfigPath), configCandidates.join(' | '));
     record('db-file-created', fs.existsSync(dbFile), dbFile);
 
     const report = {
@@ -272,7 +280,8 @@ async function main() {
       homeDir,
       appDataDir,
       dataPath,
-      configPath,
+      configPath: existingConfigPath || configPath,
+      configPathCandidates: configCandidates,
       dbFile,
       logPath,
       checks,
@@ -291,6 +300,7 @@ async function main() {
       appDataDir,
       dataPath,
       configPath,
+      configPathCandidates: configCandidates,
       dbFile,
       logPath,
       checks,

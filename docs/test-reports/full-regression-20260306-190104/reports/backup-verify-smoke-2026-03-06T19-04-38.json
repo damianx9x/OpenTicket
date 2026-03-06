@@ -1,0 +1,48 @@
+{
+  "name": "backup-verify-smoke",
+  "createdAt": "2026-03-06T18:05:04.023Z",
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "setup-fresh",
+      "ok": true
+    },
+    {
+      "name": "export-created-file",
+      "ok": true,
+      "detail": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/state/data/backups/ticket-backup-20260306-190503.otbackup"
+    },
+    {
+      "name": "verify-path-valid-key",
+      "ok": true
+    },
+    {
+      "name": "verify-path-wrong-key",
+      "ok": true
+    }
+  ],
+  "verification": {
+    "success": true,
+    "archivePath": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/state/data/backups/ticket-backup-20260306-190503.otbackup",
+    "archiveBytes": 6967,
+    "encrypted": true,
+    "contains": {
+      "database": true,
+      "uploads": true,
+      "config": true
+    },
+    "extractedEntries": 4,
+    "manifest": {
+      "schemaVersion": 1,
+      "createdAt": "2026-03-06T18:05:03.562Z",
+      "sourceDataPath": "/Users/icex/Projekty/git_repos/OpenTicket-clean/Moj/testy/runtime/state/data",
+      "includes": [
+        "app.db",
+        "uploads/",
+        "config.json"
+      ]
+    },
+    "warnings": []
+  },
+  "wrongKeyError": "{\"message\":\"Nie udało się odszyfrować backupu: Nieprawidłowy klucz szyfrowania backupu lub uszkodzony plik backupu.\",\"error\":\"Bad Request\",\"statusCode\":400}"
+}

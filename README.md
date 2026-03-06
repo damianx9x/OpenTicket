@@ -13,7 +13,7 @@ OpenTicket to system ticketowy dla małych i średnich serwisów elektroniki. Pr
 
 ## Wersja
 - **Release line:** `0.5 pre-alpha`
-- **SemVer:** `0.5.1-pre-alpha`
+- **SemVer:** `0.5.2-pre-alpha`
 - **Status:** aktywny milestone produktowy (macOS + WebUI + Windows installer)
 
 ## Co dostajesz w produkcie
@@ -96,8 +96,10 @@ Pełne guide:
 - `/docs/REMOTE_INSTALL_SYNOLOGY.md`
 
 ## Ostatnia walidacja jakości
-- Full regression suite: `16/16 PASS`
-  - `/docs/test-reports/full-regression-20260301-203414/SUMMARY.md`
+- Full regression suite: `18/18 PASS`
+  - `/docs/test-reports/full-regression-20260306-190104/SUMMARY.md`
+- Platform matrix smoke (macOS + Windows profile + iOS + release artifacts): `PASS`
+  - `/.runtime/reports/platform-matrix-smoke-20260306-192125.json`
 - Live policy suite: `3/3 PASS`
   - `/docs/test-reports/live-3-20260301-205513/SUMMARY.md`
 
