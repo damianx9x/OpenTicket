@@ -1,117 +1,65 @@
 # OpenTicket
+
+### Zgłoszenia serwisowe od przyjęcia urządzenia do zakończenia naprawy
+
+System dla małych i średnich serwisów elektroniki: klienci, urządzenia, etapy naprawy, komentarze i koszty w jednym miejscu. Interfejs webowy oraz aplikacja desktopowa.
+
+[Wydania i instalatory](https://github.com/damianx9x/OpenTicket/releases) · [Galeria interfejsu](docs/UI_SHOWCASE_PL.md) · [Rozwój](DEVELOPMENT.md) · [Zgłoś problem](https://github.com/damianx9x/OpenTicket/issues) · [English](README.en.md)
+
+![Panel zgłoszeń OpenTicket](docs/screenshots/v0.5-pre-alpha/dashboard-demo-helpdesk.png)
+
+## Co obejmuje projekt
+
+| Obszar | Zakres |
+| :--- | :--- |
+| Przyjęcie zgłoszenia | Klient, urządzenie, opis problemu i zdjęcia |
+| Praca serwisu | Statusy, komentarze, koszty i historia |
+| Panel operatora | Filtry, ustawienia widoku i motywy |
+| Administracja | Role, konfiguracja, diagnostyka i kopie zapasowe |
+| Tryby pracy | Serwer z klientem, sam klient lub host zdalny |
+
+## Stan projektu
+
+- **Gałąź domyślna:** `develop`; wersja w pakietach: `0.5.2-pre-alpha`.
+- **Ostatnie stabilne wydanie widoczne w GitHub Releases:** `v0.4.1` (stan odczytany 26.10.2026).
+- Kod rozwojowy i opublikowany instalator mogą reprezentować różne etapy produktu. To projekt na etapie pre-alpha; przed użyciem z rzeczywistymi danymi sprawdź wybrany build i procedurę odzyskiwania.
+
 <!-- INSTALLER_LINK:START -->
-## Installers (macOS + Windows)
-- macOS PKG (latest): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
-- macOS PKG (v0.5.2-pre-alpha): [OpenTicket-Installer.pkg](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.2-pre-alpha/OpenTicket-Installer.pkg)
-- Windows EXE (latest): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
-- Windows EXE (v0.5.2-pre-alpha): [OpenTicket-Installer.exe](https://github.com/damianx9x/OpenTicket/releases/download/v0.5.2-pre-alpha/OpenTicket-Installer.exe)
+## Pobierz instalator
+
+- [macOS — PKG](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
+- [Windows — EXE](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
+- [Wszystkie wydania, warianty i sumy kontrolne](https://github.com/damianx9x/OpenTicket/releases)
 <!-- INSTALLER_LINK:END -->
 
-**Język:** Polski (domyślnie) | [English](/README.en.md)
+## Zacznij tutaj
 
-OpenTicket to system ticketowy dla małych i średnich serwisów elektroniki. Priorytetem jest szybkość pracy operatora, stabilność działania i prosty onboarding klienta końcowego.
+- **Chcesz poznać produkt?** Zobacz [katalog interfejsu](docs/UI_SHOWCASE_PL.md).
+- **Chcesz uruchomić kod?** Przejdź do [instrukcji deweloperskiej](DEVELOPMENT.md).
+- **Potrzebujesz hosta zdalnego?** Zobacz [szybki start](docs/REMOTE_INSTALL_QUICKSTART_PL.md), [Linux](docs/REMOTE_INSTALL_LINUX.md) lub [Synology](docs/REMOTE_INSTALL_SYNOLOGY.md).
+- **Chcesz pomóc?** Przeczytaj [zasady współpracy](CONTRIBUTING.md).
 
-## Wersja
-- **Release line:** `0.5 pre-alpha`
-- **SemVer:** `0.5.2-pre-alpha`
-- **Status:** aktywny milestone produktowy (macOS + WebUI + Windows installer)
+## Technologia i struktura
 
-## Co dostajesz w produkcie
-1. Przyjęcie zgłoszenia w kilka sekund (klient, urządzenie, opis, zdjęcia).
-2. Pełny workflow serwisowy: etapy, komentarze, koszty, historia.
-3. Personalizacja operatora: presety filtrów, motywy, układ dashboardu.
-4. Narzędzia admina: konfiguracja, backup/restore, status serwera, szybka naprawa.
-5. Instalatory gotowe do wysyłki klientowi: `.pkg`, `.dmg`, `.exe`, deinstalator.
+| Katalog | Technologia / odpowiedzialność |
+| :--- | :--- |
+| [backend/](backend/) | NestJS, TypeScript, Prisma, SQLite runtime |
+| [frontend/](frontend/) | Next.js, React, TypeScript |
+| [desktop/](desktop/) | Electron, electron-builder |
+| [ios/](ios/) | Osobny moduł iOS; [plan rozwoju](docs/IOS_DEVELOPMENT_PLAN.md) |
+| [deploy/](deploy/) | Skrypty instalacji hosta |
+| [docs/](docs/) | Interfejs, instrukcje i raporty |
 
-## Kluczowe możliwości
-- **Tryby pracy:**
-  - `Serwer + klient` (lokalnie),
-  - `Sam klient` (podpięcie do istniejącego serwera),
-  - `Serwer zdalny` (Linux/Synology).
-- **Backup i odzyskiwanie:**
-  - szyfrowany `.otbackup` (AES-256-GCM),
-  - klucz odzyskiwania,
-  - auto-backup z rotacją `current/previous`,
-  - import w setupie (baza/backup/demo).
-- **Bezpieczeństwo operacyjne:**
-  - setup token dla hosta zdalnego,
-  - role i uprawnienia,
-  - audyt i diagnostyka,
-  - raporty testów regresji i live.
+## Jakość i dokumentacja
 
-## Stack technologiczny
-- **Backend:** NestJS, Prisma ORM, SQLite (runtime v1), TypeScript
-- **Frontend/WebUI:** Next.js 14, TypeScript
-- **Desktop app:** Electron
-- **Testy E2E/UI:** Playwright
-- **Dystrybucja:** electron-builder, GitHub Releases, updater metadata (`latest-mac.yml`, `latest.yml`)
+Repozytorium zawiera scenariusze smoke, kontrolę uprawnień, testy interfejsu i raporty historyczne. Ich obecność nie potwierdza aktualnego przejścia testów na każdym urządzeniu. `make test` wykonuje kompilację trzech modułów; scenariusze runtime uruchamia się oddzielnie zgodnie z [DEVELOPMENT.md](DEVELOPMENT.md).
 
-## Galeria UI (v0.5 pre-alpha)
-Pełna dokumentacja zakładek i funkcji jest tutaj: [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
+[Historia zmian](CHANGELOG.md) · [Budowanie](BUILD.md) · [Plan testów bezpieczeństwa](docs/SECURITY_TEST_PLAN.md)
 
-### Setup i onboarding
-![Setup Step 1](/docs/screenshots/v0.5-pre-alpha/setup-step1-demo.png)
-![Setup Step 4](/docs/screenshots/v0.5-pre-alpha/setup-step4-complete.png)
+## Licencja
 
-### Dashboard i workflow
-![Dashboard](/docs/screenshots/v0.5-pre-alpha/dashboard-demo-helpdesk.png)
-![Ticket Modal](/docs/screenshots/v0.5-pre-alpha/ticket-modal-chromium.png)
+Kod jest publicznie dostępny. W tej gałęzi nie ma obecnie pliku LICENSE; wybór licencji open source pozostaje do zatwierdzenia przez autora.
 
-### Zakładki operacyjne
-![Statistics](/docs/screenshots/v0.5-pre-alpha/statistics-chromium.png)
-![Users](/docs/screenshots/v0.5-pre-alpha/users-chromium.png)
-![Settings](/docs/screenshots/v0.5-pre-alpha/settings-chromium.png)
-![Server](/docs/screenshots/v0.5-pre-alpha/server-chromium.png)
+---
 
-### Motywy kolorystyczne
-![Graphite Theme](/docs/screenshots/v0.5-pre-alpha/dashboard-theme-graphite.png)
-![Emerald Theme](/docs/screenshots/v0.5-pre-alpha/dashboard-theme-emerald.png)
-![Cupertino Theme](/docs/screenshots/v0.5-pre-alpha/dashboard-theme-cupertino.png)
-
-## Quickstart (DEV)
-```bash
-cd /Users/icex/Projekty/git_repos/OpenTicket-clean
-make test
-./Moj/testy/smoke.sh
-./Moj/testy/auth-smoke.sh
-./Moj/testy/live-3-suite.sh
-```
-
-## Build i publikacja
-```bash
-./Moj/build-oficjalna-instalka.sh
-./Moj/build-oficjalna-instalka-win.sh
-./Moj/publish-release.sh
-```
-
-## Instalacja zdalna (host)
-- Szybki poradnik krok-po-kroku: `/docs/REMOTE_INSTALL_QUICKSTART_PL.md`
-- Linux Docker: `/deploy/docker/install.sh`
-- Linux native systemd: `/deploy/native/install.sh`
-- Synology: `/docs/REMOTE_INSTALL_SYNOLOGY.md`
-
-Pełne guide:
-- `/docs/REMOTE_INSTALL_LINUX.md`
-- `/docs/REMOTE_INSTALL_NATIVE_SYSTEMD.md`
-- `/docs/REMOTE_INSTALL_SYNOLOGY.md`
-
-## Ostatnia walidacja jakości
-- Full regression suite: `18/18 PASS`
-  - `/docs/test-reports/full-regression-20260306-190104/SUMMARY.md`
-- Platform matrix smoke (macOS + Windows profile + iOS + release artifacts): `PASS`
-  - `/.runtime/reports/platform-matrix-smoke-20260306-192125.json`
-- Live policy suite: `3/3 PASS`
-  - `/docs/test-reports/live-3-20260301-205513/SUMMARY.md`
-
-## Dokumentacja
-- [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
-- [Plan rozwoju iOS](/docs/IOS_DEVELOPMENT_PLAN.md)
-- [Remote Install Quickstart PL](/docs/REMOTE_INSTALL_QUICKSTART_PL.md)
-- [Rozszerzone scenariusze testowe](/docs/TEST_SCENARIOS_EXTENDED_2026-03-05.md)
-- [CHANGELOG](/CHANGELOG.md)
-- [Security Test Plan](/docs/SECURITY_TEST_PLAN.md)
-- [Security Report](/docs/SECURITY_AGENT_REPORT_2026-02-27.md)
-- [Dependency Deep Check](/docs/DEPENDENCY_DEEP_CHECK_2026-02-28.md)
-
-## Dla właściciela serwisu
-OpenTicket jest projektowany tak, by technik mógł pracować od razu po instalacji: mniej klikania, mniej ryzyka utraty danych, więcej kontroli operacyjnej i czytelne statusy dla zespołu oraz klienta.
+Projekt: [Damian Eron](https://github.com/damianx9x) · [Portfolio](https://github.com/damianx9x/damianx9x)

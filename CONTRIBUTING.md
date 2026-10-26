@@ -1,6 +1,8 @@
-# Contributing to Ticket System
+# Współpraca przy OpenTicket
 
-Thank you for your interest in contributing to this project!
+Dzięki za zainteresowanie projektem. Błędy i propozycje zgłaszaj przez Issues; zmiany kodu przez Pull Request do `develop`.
+
+> Aktualne polecenia i ograniczenia środowiska: [DEVELOPMENT.md](DEVELOPMENT.md). Licencja projektu pozostaje do zatwierdzenia; przed większym wkładem uzgodnij z autorem zasady udostępnienia.
 
 ## Getting Started
 
@@ -11,7 +13,7 @@ Thank you for your interest in contributing to this project!
 
 ## Branch Strategy
 
-- `main` - production-ready code
+- `main` - branch wydaniowy, jeśli używany; sama nazwa nie gwarantuje gotowości produkcyjnej
 - `develop` - development branch
 - `feature/` - feature branches
 - `bugfix/` - bug fix branches

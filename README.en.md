@@ -1,64 +1,48 @@
 # OpenTicket
 
-**Language:** [Polski](/README.md) | English
+### Repair tickets from device intake to completed service
 
-OpenTicket is a modern ticketing system for small and mid-size electronics service shops. It focuses on fast day-to-day operations, stable runtime behavior, and simple onboarding.
+A ticket management project for small and mid-size electronics repair shops. Customer and device information, repair stages, comments and costs, with web and desktop interfaces.
 
-## Version
-- **Release line:** `0.5 pre-alpha`
-- **SemVer:** `0.5.1-pre-alpha`
-- **Status:** active product milestone (macOS app + WebUI + Windows installer)
+[Releases](https://github.com/damianx9x/OpenTicket/releases) · [UI gallery](docs/UI_SHOWCASE_PL.md) · [Development](DEVELOPMENT.md) · [Contributing](CONTRIBUTING.md) · [Polski](README.md)
 
-## Core value for service teams
-1. Fast ticket intake with customer/device details and photo attachments.
-2. End-to-end repair workflow with stages, comments, and cost breakdown.
-3. User personalization: saved filters, themes, and dashboard layout.
-4. Admin toolkit: configuration, backup/restore, server diagnostics, quick repair actions.
-5. Ready-to-send installers for customers (`.pkg`, `.dmg`, `.exe`) + uninstaller.
+![OpenTicket dashboard](docs/screenshots/v0.5-pre-alpha/dashboard-demo-helpdesk.png)
 
-## Technology
-- **Backend:** NestJS, Prisma ORM, SQLite runtime, TypeScript
-- **WebUI:** Next.js 14, TypeScript
-- **Desktop:** Electron
-- **E2E/UI testing:** Playwright
-- **Distribution:** electron-builder + GitHub Releases updater metadata
+## Scope
 
-## UI gallery
-See full UI catalog with function descriptions:
-- [UI Showcase PL](/docs/UI_SHOWCASE_PL.md)
+- Ticket intake with customer details, device information and photos.
+- Repair stages, comments, costs and ticket history.
+- Operator filters, view preferences and themes.
+- Administration, roles, diagnostics and backup/recovery features.
+- Local server/client, client-only and remote-host workflows.
 
-## Quickstart (DEV)
-```bash
-cd /Users/icex/Projekty/git_repos/OpenTicket-clean
-make test
-./Moj/testy/smoke.sh
-./Moj/testy/auth-smoke.sh
-./Moj/testy/live-3-suite.sh
-```
+## Project status
 
-## Build and release
-```bash
-./Moj/build-oficjalna-instalka.sh
-./Moj/build-oficjalna-instalka-win.sh
-./Moj/publish-release.sh
-```
+The default branch is `develop`; backend, frontend and desktop package versions are `0.5.2-pre-alpha`. The latest stable GitHub Release observed on 26 October 2026 is `v0.4.1`. Development code and published installers may differ. Validate the chosen build and recovery procedure before using real data.
 
-## Remote host support
-- Linux Docker: `/deploy/docker/install.sh`
-- Linux native systemd: `/deploy/native/install.sh`
-- Synology guide: `/docs/REMOTE_INSTALL_SYNOLOGY.md`
+## Downloads
 
-## Quality validation
-- Full regression: `16/16 PASS`
-- Live policy suite: `3/3 PASS`
+- [macOS PKG](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.pkg)
+- [Windows EXE](https://github.com/damianx9x/OpenTicket/releases/latest/download/OpenTicket-Installer.exe)
+- [All releases and checksums](https://github.com/damianx9x/OpenTicket/releases)
 
-Reports:
-- `/docs/test-reports/full-regression-20260301-203414/SUMMARY.md`
-- `/docs/test-reports/live-3-20260301-205513/SUMMARY.md`
+## Code and documentation
 
-## Documentation
-- [iOS Development Plan](/docs/IOS_DEVELOPMENT_PLAN.md)
-- [CHANGELOG](/CHANGELOG.md)
-- [Security Test Plan](/docs/SECURITY_TEST_PLAN.md)
-- [Security Report](/docs/SECURITY_AGENT_REPORT_2026-02-27.md)
-- [Dependency Deep Check](/docs/DEPENDENCY_DEEP_CHECK_2026-02-28.md)
+| Directory | Responsibility |
+| :--- | :--- |
+| [backend/](backend/) | NestJS, TypeScript, Prisma, SQLite runtime |
+| [frontend/](frontend/) | Next.js, React, TypeScript |
+| [desktop/](desktop/) | Electron and packaging |
+| [ios/](ios/) | Separate iOS module; see the development plan |
+| [deploy/](deploy/) | Remote-host installation scripts |
+| [docs/](docs/) | Guides, screenshots and historical reports |
+
+Start with [DEVELOPMENT.md](DEVELOPMENT.md) for source setup, [BUILD.md](BUILD.md) for packaging, or the [remote-host quickstart](docs/REMOTE_INSTALL_QUICKSTART_PL.md). `make test` builds three modules; runtime smoke checks are separate. Historical reports are not a current cross-platform test guarantee.
+
+## License
+
+The source is public. This branch currently has no LICENSE file; the author still needs to approve an open-source license.
+
+---
+
+[Damian Eron](https://github.com/damianx9x) · [Portfolio](https://github.com/damianx9x/damianx9x)

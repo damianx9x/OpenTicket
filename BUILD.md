@@ -1,185 +1,40 @@
-# Build & Compile Instructions
+# Budowanie OpenTicket
 
-## macOS App (Apple Service Ticketing)
+[← Opis projektu](README.md) · [Przygotowanie środowiska](DEVELOPMENT.md)
 
-### Option 1: Using Pre-built DMG (Simplest)
-```bash
-# Just download and install
-open final/MacOS/ticket-system-installer.dmg
-# → Drag to Applications
-# → Run from Launchpad
-```
+## Gotowe wydania
 
-### Option 2: Build Standalone DMG (Interactive Configuration)
+Instalatory i sumy kontrolne znajdują się w [GitHub Releases](https://github.com/damianx9x/OpenTicket/releases). Wersja kodu na `develop` może być nowsza od opublikowanych instalatorów.
 
-**Requirements:**
-- macOS 10.14+
-- No dependencies! (Uses native macOS tools only)
+## Kompilacja modułów
 
-**Build Command:**
-```bash
-cd "Projekt systemu ticketowego"
-bash scripts/build-macos-interactive.sh
-```
-
-**What it does:**
-1. Asks for backend URL (localhost:3000 / custom / none)
-2. Asks for database path (default ~/Library/Application Support/...)
-3. Asks for data folder (default ~/Documents/Apple Service Data)
-4. Creates standalone macOS app bundle (Apple Service.app)
-5. Packages into DMG installer
-6. Output: `dist/ticket-system-installer.dmg` and `final/MacOS/ticket-system-installer.dmg`
-
-**Features:**
-- ✅ Zero external dependencies
-- ✅ Uses WebUI (HTML offline)
-- ✅ Configurable backend URL
-- ✅ Custom database path selection
-- ✅ Auto-creates config files on first launch
-- ✅ Works 10.14+
-
----
-
-### Option 3: Manual DMG Creation (Fast)
-
-**If you want to build quickly without prompts:**
+Po instalacji zależności opisanej w DEVELOPMENT.md:
 
 ```bash
-PROJECT_DIR="$(pwd)"
-BUILD_DIR="/tmp/app-$$"
-mkdir -p "$BUILD_DIR/Apple Service.app/Contents/{MacOS,Resources}"
-
-# Create launcher
-cat > "$BUILD_DIR/Apple Service.app/Contents/MacOS/run" << 'EOF'
-#!/bin/bash
-open "$(cd "$(dirname "$0")/../Resources" && pwd)/app.html"
-EOF
-chmod +x "$BUILD_DIR/Apple Service.app/Contents/MacOS/run"
-
-# Copy WebUI
-cp demo-full.html "$BUILD_DIR/Apple Service.app/Contents/Resources/app.html"
-
-# Create Info.plist
-cat > "$BUILD_DIR/Apple Service.app/Contents/Info.plist" << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict><key>CFBundleExecutable</key><string>run</string><key>CFBundleIdentifier</key><string>local.applservice.ticketing</string><key>CFBundleName</key><string>Apple Service</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>1</string><key>LSMinimumSystemVersion</key><string>10.14</string></dict>
-</plist>
-EOF
-
-# Create DMG
-hdiutil create -srcfolder "$BUILD_DIR" -volname "Apple Service" -format UDZO -o dist/ticket-system-installer.dmg
-cp dist/ticket-system-installer.dmg final/MacOS/
-
-echo "✓ DMG created: dist/ticket-system-installer.dmg"
+make test
 ```
 
----
+Ten target buduje backend, frontend oraz kod Electron. Nie tworzy wszystkich instalatorów i nie zastępuje testów działania aplikacji.
 
-## iOS App
+## Pakowanie desktopu
 
-### Building in Xcode
+Polecenia z istniejącego `desktop/package.json`:
 
 ```bash
-# 1. Open Xcode project
-open final/ios/TicketApp.xcodeproj
-
-# 2. Select simulator or device
-# Product → Destination → Choose device
-
-# 3. Build & Run
-# Cmd + R
-
-# Or from command line:
-xcodebuild -scheme TicketApp -destination 'generic/platform=iOS' build
+npm --prefix desktop run dist:mac
+npm --prefix desktop run dist:win
 ```
 
-### Deployment to App Store
+Pakowanie zależy od systemu, narzędzi i konfiguracji podpisywania. Samo istnienie targetu nie oznacza, że cross-build przejdzie na dowolnym hoście. Wyniki electron-builder trafiają do `desktop/release/` według bieżącej konfiguracji.
 
-```bash
-# Create archive
-xcodebuild archive -scheme TicketApp \
-    -archivePath ./build/TicketApp.xcarchive
+## Dedykowane skrypty instalatorów
 
-# Upload (requires Apple Developer Account)
-xcodebuild -exportArchive \
-    -archivePath ./build/TicketApp.xcarchive \
-    -exportPath ./ipa \
-    -exportOptionsPlist exportOptions.plist
-```
+Repozytorium zawiera też targety `make installer-official` i `make installer-official-win`, korzystające z katalogu [Moj/](Moj/). Przed użyciem sprawdź skrypt oraz jego zależności. Szczegóły desktopu: [DESKTOP-BUILD.md](DESKTOP-BUILD.md).
 
----
+## Publikacja
 
-## WebUI (No Build Required!)
+Budowanie i publikowanie to osobne operacje. Publikację przeprowadzaj z kontrolowanego środowiska, po sprawdzeniu wersji, artefaktów, podpisów/sum kontrolnych i wyników testów. Nie wpisuj tokenów ani certyfikatów do repozytorium.
 
-The WebUI is **standalone** - no build process needed:
+## iOS i host zdalny
 
-```bash
-# 1. Use directly
-open final/final/index.html
-
-# 2. Or serve on web
-cd final/final
-python3 -m http.server 8000
-# → Open http://localhost:8000
-
-# 3. Or deploy to production
-cp final/final/index.html /var/www/app/
-```
-
-**All features work offline in a single HTML file (46 KB)**
-
----
-
-## Backend (Optional)
-
-If you want to integrate with a real backend:
-
-```bash
-# Build NestJS backend
-cd backend
-npm install
-npm run build
-npm run start
-
-# Backend will run on http://localhost:3000
-# Update WebUI config to point to this URL
-```
-
----
-
-## Summary
-
-| Platform | Build Time | Size | Complexity |
-|----------|-----------|------|-----------|
-| **WebUI** | None | 46 KB | ✅ Zero |
-| **macOS DMG** | 30 sec | 167 KB | ✅ Simple |
-| **iOS** | 2-5 min | ~100 MB | ⚠️ Requires Xcode |
-| **Backend** | 1 min | ~50 MB | ⚠️ Requires Docker |
-
----
-
-## Troubleshooting
-
-### Can't open DMG
-```bash
-xattr -d com.apple.quarantine ./ticket-system-installer.dmg
-```
-
-### DMG won't mount
-```bash
-# Check if already mounted
-diskutil list | grep "Apple Service"
-# Unmount if stuck
-diskutil unmount force "/Volumes/Apple Service"
-```
-
-### App doesn't launch
-- Check WebUI file exists: `ls -la "Apple Service.app/Contents/Resources/app.html"`
-- Check permissions: `ls -la "Apple Service.app/Contents/MacOS/run"`
-- Try rebuilding: `bash scripts/build-macos-interactive.sh`
-
----
-
-**Last Updated:** 16.02.2026
+Moduł iOS ma osobną ścieżkę rozwoju: [plan iOS](docs/IOS_DEVELOPMENT_PLAN.md). Instalacja hosta: [remote quickstart](docs/REMOTE_INSTALL_QUICKSTART_PL.md). Nie utożsamiaj spakowanego desktopu z wdrożeniem serwera lub wydaniem iOS.
